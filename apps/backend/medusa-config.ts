@@ -1,5 +1,6 @@
 import { readFileSync } from "fs"
-import { MedusaError, loadEnv, defineConfig } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, MedusaError, Modules, loadEnv, defineConfig } from "@medusajs/framework/utils"
+import { authProvidersFromEnv } from "./src/lib/auth/config"
 import {
   ecpayInvoiceConfigured,
   ecpayInvoiceOptionsFromEnv,
@@ -118,6 +119,18 @@ const fulfillmentModules = process.env.ECPAY_LOGISTICS_MERCHANT_ID
   ]
   : []
 
+// Customer login (P5-01): e-mail + password, plus Google / LINE when configured. Replacing the
+// auth module's options drops Medusa's default emailpass entry, so it is listed again. OAuth
+// state lives in the cache module (Medusa 2.21.2 auth-module setState/getState), hence the
+// explicit dependency; the default in-memory cache is enough for ONE server process (state
+// lasts 20 minutes and is lost on restart; several server replicas would need cache-redis).
+const auth = authProvidersFromEnv()
+const authModule = {
+  resolve: "@medusajs/medusa/auth",
+  dependencies: [Modules.CACHE, ContainerRegistrationKeys.LOGGER],
+  options: { providers: auth.providers },
+}
+
 module.exports = defineConfig({
   projectConfig: {
     databaseUrl,
@@ -130,6 +143,7 @@ module.exports = defineConfig({
       authCors: process.env.AUTH_CORS!,
       jwtSecret: process.env.JWT_SECRET,
       cookieSecret: process.env.COOKIE_SECRET,
+      authMethodsPerActor: { user: ["emailpass"], customer: auth.customerMethods },
     },
   },
   admin: {
@@ -141,5 +155,5 @@ module.exports = defineConfig({
   // registered, so the flag alone leaves the module disabled; the explicit module entry
   // below replaces the default (disabled) one. Verified in @medusajs/framework 2.21.2.
   featureFlags: { rbac: true },
-  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, ...paymentModules, ...fulfillmentModules],
+  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, authModule, ...paymentModules, ...fulfillmentModules],
 })

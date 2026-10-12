@@ -45,9 +45,10 @@
 | `SMS_PROVIDER` | `mitake`／`every8d`／`log`（`log` 只寫日誌不發送，開發預設） | 本專案定義 |
 | `SMS_USERNAME` 🔒 | 簡訊商帳號 | TODO(需查證：依選定簡訊商) |
 | `SMS_PASSWORD` 🔒 | 簡訊商密碼 | 同上 |
-| `LINE_LOGIN_CHANNEL_ID` | LINE Login（會員登入） | LINE Developers |
+| `LINE_LOGIN_CHANNEL_ID` | LINE Login（會員登入）；與 SECRET 必須同時設定，否則啟動失敗。Callback：`STOREFRONT_URL` + `/auth/callback/line` | LINE Developers |
 | `LINE_LOGIN_CHANNEL_SECRET` 🔒 | LINE Login | LINE Developers |
-| `GOOGLE_OAUTH_CLIENT_ID` | Google 登入 | Google Cloud Console |
+| `LINE_LOGIN_API_BASE_URL` | 僅測試／開發：LINE token／verify 改打本機替身；`NODE_ENV=production` 時設定會啟動失敗 | 本專案定義（P5-01） |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google 登入；與 SECRET 必須同時設定，否則啟動失敗。Callback：`STOREFRONT_URL` + `/auth/callback/google` | Google Cloud Console |
 | `GOOGLE_OAUTH_CLIENT_SECRET` 🔒 | Google 登入 | Google Cloud Console |
 | `FILE_S3_BUCKET` | 商品圖／上傳檔（Supabase Storage S3 相容端點，避免占用 VPS 磁碟） | Medusa S3 file provider |
 | `FILE_S3_REGION` | 同上 | 同上 |

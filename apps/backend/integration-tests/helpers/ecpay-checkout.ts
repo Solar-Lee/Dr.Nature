@@ -103,6 +103,18 @@ export function makeCheckoutHelpers({ api, getContainer }: { api: Api; getContai
     return { authorization: `Bearer ${token}` }
   }
 
+  // Registered member (emailpass): store headers with the member's bearer token.
+  const registerCustomer = async (email: string) => {
+    const password = "drn-test-only-Pw1" // local test account, never a real credential
+    const store = await storeHeaders()
+    const { data: reg } = await api.post("/auth/customer/emailpass/register", { email, password })
+    await api.post("/store/customers", { email, first_name: "測試", last_name: "會員" }, { headers: { ...store, authorization: `Bearer ${reg.token}` } })
+    const { data: login } = await api.post("/auth/customer/emailpass", { email, password })
+    const headers = { ...store, authorization: `Bearer ${login.token}` }
+    const { data: me } = await api.get("/store/customers/me", { headers })
+    return { headers, customerId: me.customer.id as string }
+  }
+
   // Store checkout up to an order awaiting payment (or stop before completing the cart).
   const checkout = async ({
     complete = true,
@@ -201,6 +213,7 @@ export function makeCheckoutHelpers({ api, getContainer }: { api: Api; getContai
   return {
     storeHeaders,
     superAdminHeaders,
+    registerCustomer,
     checkout,
     postNotice,
     postPaymentInfo,
