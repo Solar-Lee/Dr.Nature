@@ -3,7 +3,7 @@
 // ECPay retries notices for days and does not send them in real time, so:
 //  - a repeat (same code + UpdateStatusDate) is not recorded again and is reported as duplicate;
 //  - an older status is kept in the history but does not replace the current one.
-// Compensation restores the previous metadata.
+// Compensation restores our two metadata keys.
 import {
   createStep,
   createWorkflow,
@@ -38,16 +38,19 @@ export const recordLogisticsStatusStep = createStep(
         ecpay_status_history: [...history, input.status].slice(-50),
       },
     })
-    return new StepResponse<RecordLogisticsStatusResult, { id: string; metadata: Record<string, unknown> | null }>(
+    return new StepResponse<RecordLogisticsStatusResult, { id: string; status: unknown; history: unknown }>(
       { duplicate: false, latest },
-      { id: input.fulfillment_id, metadata: previous }
+      { id: input.fulfillment_id, status: previous?.ecpay_status ?? null, history: previous?.ecpay_status_history ?? null }
     )
   },
+  // metadata merges at the top level: restore our two keys themselves ("" deletes them).
   async (prev, { container }) => {
     if (!prev) {
       return
     }
-    await container.resolve(Modules.FULFILLMENT).updateFulfillment(prev.id, { metadata: prev.metadata })
+    await container.resolve(Modules.FULFILLMENT).updateFulfillment(prev.id, {
+      metadata: { ecpay_status: prev.status ?? "", ecpay_status_history: prev.history ?? "" },
+    })
   }
 )
 
