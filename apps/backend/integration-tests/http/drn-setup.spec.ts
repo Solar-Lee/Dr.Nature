@@ -15,10 +15,9 @@ import {
   generateJwtToken,
 } from "@medusajs/framework/utils"
 import { createProductsWorkflow } from "@medusajs/medusa/core-flows"
-import drnTwStoreRegionTax from "../../src/migration-scripts/drn-0001-tw-store-region-tax"
-import drnSalesChannelsAndKeys from "../../src/migration-scripts/drn-0002-sales-channels-and-keys"
+import { readdirSync } from "fs"
+import { join } from "path"
 import drnCatalog from "../../src/migration-scripts/drn-0003-catalog"
-import drnRbacRoles from "../../src/migration-scripts/drn-0004-rbac-roles"
 import devAddTestStock from "../../src/scripts/dev-add-test-stock"
 import catalog from "../../src/data/catalog.json"
 import {
@@ -32,11 +31,40 @@ import { ROLE_DEFINITIONS } from "../../src/lib/rbac-roles"
 
 jest.setTimeout(120 * 1000)
 
+// Every file in src/migration-scripts, in the order Medusa runs them (localeCompare of the
+// file name), so a new drn-000x script is exercised automatically.
+const MIGRATION_DIR = join(__dirname, "../../src/migration-scripts")
+const migrationScriptFiles = readdirSync(MIGRATION_DIR)
+  .filter((f) => /\.(ts|js)$/.test(f) && !f.endsWith(".d.ts"))
+  .sort((a, b) => a.localeCompare(b))
+
 const runAllSeeds = async (container: MedusaContainer) => {
-  await drnTwStoreRegionTax({ container })
-  await drnSalesChannelsAndKeys({ container })
-  await drnCatalog({ container })
-  await drnRbacRoles({ container })
+  for (const file of migrationScriptFiles) {
+    const mod = await import(join(MIGRATION_DIR, file))
+    await mod.default({ container })
+  }
+}
+
+// The test runner boots the full app first, which runs createDefaultsWorkflow (EUR store,
+// "Default Sales Channel", "Default Publishable API Key"). A fresh production database has
+// none of these when migration scripts run, so remove them to exercise that path.
+const removeBootDefaults = async (container: MedusaContainer) => {
+  const storeModule = container.resolve(Modules.STORE)
+  const stores = await storeModule.listStores({})
+  if (stores.length) {
+    await storeModule.deleteStores(stores.map((s) => s.id))
+  }
+  const salesChannelModule = container.resolve(Modules.SALES_CHANNEL)
+  const defaults = await salesChannelModule.listSalesChannels({ name: "Default Sales Channel" })
+  if (defaults.length) {
+    await salesChannelModule.deleteSalesChannels(defaults.map((c) => c.id))
+  }
+  const apiKeyModule = container.resolve(Modules.API_KEY)
+  const keys = await apiKeyModule.listApiKeys({ title: "Default Publishable API Key" })
+  for (const key of keys) {
+    await apiKeyModule.revoke({ id: key.id }, { revoked_by: "test" })
+    await apiKeyModule.deleteApiKeys([key.id])
+  }
 }
 
 const publishableToken = async (container: MedusaContainer, title: string) => {
@@ -97,7 +125,44 @@ const statusOf = async (p: Promise<{ status: number }>) =>
 medusaIntegrationTestRunner({
   testSuite: ({ api, getContainer }) => {
     beforeAll(async () => {
+      await removeBootDefaults(getContainer())
       await runAllSeeds(getContainer())
+    })
+
+    describe("migration scripts", () => {
+      it("discovers every drn-* script", () => {
+        expect(migrationScriptFiles.filter((f) => f.startsWith("drn-")).length).toBeGreaterThanOrEqual(4)
+        expect(migrationScriptFiles).toEqual(migrationScriptFiles.filter((f) => f.startsWith("drn-")))
+      })
+
+      it("fresh-DB path: drn-0001 created the only store (TWD, Official Store default)", async () => {
+        const container = getContainer()
+        const stores = await container
+          .resolve(Modules.STORE)
+          .listStores({}, { relations: ["supported_currencies"] })
+        expect(stores).toHaveLength(1)
+        expect(stores[0].name).toEqual("Dr.Nature")
+        expect(stores[0].supported_currencies?.map((c) => c.currency_code)).toEqual(["twd"])
+        const [official] = await container
+          .resolve(Modules.SALES_CHANNEL)
+          .listSalesChannels({ name: SALES_CHANNELS.official.name })
+        expect(stores[0].default_sales_channel_id).toEqual(official.id)
+        const defaults = await container
+          .resolve(Modules.SALES_CHANNEL)
+          .listSalesChannels({ name: "Default Sales Channel" })
+        expect(defaults).toHaveLength(0)
+      })
+
+      it("drn-0003 refuses to finish when an existing catalog product is incomplete", async () => {
+        const container = getContainer()
+        const productModule = container.resolve(Modules.PRODUCT)
+        const [product] = await productModule.listProducts(
+          { handle: catalog.products[1].handle },
+          { relations: ["variants"] }
+        )
+        await productModule.deleteProductVariants(product.variants.map((v) => v.id))
+        await expect(drnCatalog({ container })).rejects.toThrow(/incomplete/)
+      })
     })
 
     describe("P3-03 Taiwan store, TWD, 5% tax-inclusive", () => {
@@ -350,6 +415,39 @@ medusaIntegrationTestRunner({
       it("a staff user with no role is denied on admin product routes", async () => {
         const headers = await adminHeadersFor(getContainer(), "norole@drn.test")
         expect(await statusOf(api.get("/admin/products", { headers }))).toEqual(403)
+      })
+
+      it("hardened routes: only roles with update policies can edit products", async () => {
+        const container = getContainer()
+        const [product] = await container
+          .resolve(Modules.PRODUCT)
+          .listProducts({ handle: catalog.products[0].handle }, { relations: ["variants"] })
+        const support = await adminHeadersFor(container, "support2@drn.test", "support")
+        const editor = await adminHeadersFor(container, "editor2@drn.test", "content_editor")
+        const boss = await adminHeadersFor(container, "boss2@drn.test", "Super Admin")
+        const update = (headers: Record<string, string>) =>
+          statusOf(api.post(`/admin/products/${product.id}`, { subtitle: "x" }, { headers }))
+        expect(await update(support)).toEqual(403)
+        expect(await update(editor)).toEqual(200)
+        expect(await update(boss)).toEqual(200)
+
+        const variantUrl = `/admin/products/${product.id}/variants/${product.variants[0].id}`
+        expect(await statusOf(api.post(variantUrl, { title: "x" }, { headers: editor }))).toEqual(403)
+        expect(await statusOf(api.post(variantUrl, { title: "x" }, { headers: boss }))).toEqual(200)
+      })
+
+      it("support cannot cancel orders (cancel refunds captured payments)", async () => {
+        const headers = await adminHeadersFor(getContainer(), "support3@drn.test", "support")
+        const status = await statusOf(api.post("/admin/orders/order_does_not_matter/cancel", {}, { headers }))
+        expect(status).toEqual(403)
+      })
+
+      it("staff roles cannot run workflows or create roles", async () => {
+        const headers = await adminHeadersFor(getContainer(), "ops2@drn.test", "operations")
+        expect(
+          await statusOf(api.post("/admin/workflows-executions/create-products/run", { input: {} }, { headers }))
+        ).toEqual(403)
+        expect(await statusOf(api.post("/admin/rbac/roles", { name: "x" }, { headers }))).toEqual(403)
       })
 
       it("Super Admin can delete a product", async () => {
