@@ -27,3 +27,11 @@ coverage/
 playwright-report/
 test-results/
 !.env.example
+
+# From create-medusa-app 2.21.2 template
+.turbo/
+.vercel/
+**/.env
+**/.env.local
+**/uploads/
+*.tsbuildinfo

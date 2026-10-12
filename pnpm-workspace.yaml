@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "!apps/backend/.medusa/**"
+
+# pnpm 10.x / 9.x: allow Medusa's telemetry postinstall (from the create-medusa-app 2.21.2 template)
+onlyBuiltDependencies:
+  - "@medusajs/telemetry"
