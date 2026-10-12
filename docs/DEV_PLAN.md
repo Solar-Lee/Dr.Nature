@@ -25,6 +25,7 @@
 | A3 | 部署：**混合式**——前台 Vercel；Medusa server＋worker＋Redis 在 VPS（映像在 Mac 建好再傳）；Postgres＋檔案儲存在**新建的專屬 Supabase 專案** | VPS 磁碟 97%、CPU 近滿載；前台需要 CDN 承載影片與 3D |
 | A4 | 設計交接走 GitHub repo：DESIGN 產出放 `design/` | 單一真實來源、可版控 |
 | A5 | **不重造既有系統**：團購招商／寄樣／結算 → tuangou-admin（新增品牌 `drnature`）；全通路客服 → OmniCS（站內嵌 widget）；廣告 → DigiAds；站外 SEO → Dr.Grey | 這些系統已在正式環境運作（盤點見 §4） |
+| A6 | 物流：**綠界 C2C 店到店**（7-ELEVEN／全家／萊爾富）；**全館免運**（運費 NT$0） | 起步免月租、門市覆蓋廣；免運降低結帳摩擦 |
 
 ## 3. 系統架構
 
@@ -108,6 +109,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-10 | 定義或核准會員等級門檻（CODE 會先提案） | P5 |
 | U-11 | Meta Business：Pixel 與 CAPI token；GA4、GTM、Search Console 權限 | P8 |
 | U-12 | 研發長肖像與名義使用的書面同意（官網、廣告、包裝） | P7 信任區塊 |
+| U-13 | 綠界物流寄件人：**個人姓名**（2-5 個中文字；C2C 未取件退回寄件門市須出示身分證領取，綠界規定勿填公司名，developers.ecpay.com.tw/8809/）＋手機；並向綠界確認 C2C 合約是否含黑貓宅配 | P4-05 正式切換、宅配上架 |
 
 ## 7. 任務清單（最小執行單位）
 
@@ -174,7 +176,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P4-02 | CheckMacValue 純函式＋單元測試（用官方文件範例向量） | C | P4-01 | 官方範例輸入 → 官方範例輸出，完全相同 | `git revert` | ✅ |
 | P4-03 | Payment provider `ecpay`：建立付款（導轉表單）、`getWebhookActionAndData`（驗章失敗一律 failed）、退款 | C | P4-02 | 測試環境：信用卡測試卡付款 → 訂單狀態 captured；竄改 CheckMacValue 的回呼 → 拒絕且不改訂單 | 停用 provider | ✅ 本機驗證＋審查修正（簽章通知即付款證明、零 QueryTradeInfo 熱路徑；16 支整合＋90 支單元，含反向測試）；**實際 ECPay 測試環境回呼待 P4-04 公開網址**；退款暫以 manual_pending＋SOP（docs/ops/ecpay-manual-refund.md）直到 P4-08 |
 | P4-04 | 付款方式：信用卡、ATM、超商代碼、Apple Pay（依 ECPay 測試環境實際支援為準） | C | P4-03 | 每種方式在測試環境走完一次，截圖存 `e2e/evidence/` | 停用該方式 | 🟡 程式完成（ATM／超商代碼／條碼＋PaymentInfoURL，22 支整合＋121 支單元，含反向測試）；**真實綠界測試環境已接受四種簽章表單、QueryTradeInfo 格式與簽章已驗證**（docs/research/ecpay-stage-probe-2026-10-13.md）；剩餘：公開網址後的完整回呼與付款截圖（stage 需開 `ECPAY_ACCEPT_SIMULATED_PAYMENTS`） |
-| P4-05 | Fulfillment provider `ecpay-logistics`：7-11／全家／萊爾富超商取貨（電子地圖選店）、宅配 | C | P4-01 | 測試環境：選店 → 建物流單 → 取得托運單號 | 停用 provider | ⬜ |
+| P4-05 | Fulfillment provider `ecpay-logistics`：7-11／全家／萊爾富超商取貨（電子地圖選店）、宅配 | C | P4-01 | 測試環境：選店 → 建物流單 → 取得托運單號 | 停用 provider | 🟡 程式完成（電子地圖表單、出貨、簽章狀態通知 → 出貨／送達，15 支整合＋49 支單元，含反向測試）；**真實綠界測試環境：三家 C2C 建單成功且回應簽章驗證通過；經我方 provider＋Medusa 出貨流程取得托運單號 D8844528-4456**（docs/research/ecpay-logistics-stage-probe-2026-10-13.md）；剩餘：公開網址後的狀態通知與選店回傳（stage 不推送狀態）、正式寄件人（U-13）；宅配選項已建立但未上架 |
 | P4-06 | 電子發票：付款成功後開立（載具：手機條碼／自然人憑證／會員；捐贈碼；統編） | C | P4-03 | 測試環境開立 → 回傳發票號碼寫入訂單 metadata；作廢流程測一次 | 停用訂閱者 | ⬜ |
 | P4-07 | 冪等與對帳：同一回呼重送兩次只入帳一次；每日對帳腳本 | C | P4-03 | 測試：同一 payload 重送 → 第二次 no-op | `git revert` | 🟡 重送冪等已測（duplicate notice → 同一筆付款）；對帳排程未做 |
 | P4-08 | 信用卡退款自動化：CreditDetail/DoAction（**僅正式環境有此 API，測試環境無法驗證**）＋先查卡片明細決定 R／N／E；完成前退款一律在綠界廠商後台手動處理 | C＋U | P4-03、U-02 | 以第一筆真實小額交易做一次退款並對帳；之前 `refundPayment` 一律拒絕並提示後台退款（已有測試） | 改回拒絕 | ⬜ |
