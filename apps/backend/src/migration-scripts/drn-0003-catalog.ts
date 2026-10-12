@@ -59,6 +59,40 @@ export default async function drnCatalog({
   const existingHandles = new Set(existing.map((p) => p.handle))
   const toCreate = catalog.products.filter((p) => !existingHandles.has(p.handle))
 
+  // createProductsWorkflow commits in separate steps (product, channel links, then
+  // variants/prices/inventory). If a previous run was killed mid-way, an existing handle
+  // may be a half-built product. Refuse to continue rather than skip it silently: the
+  // script stays pending and the product must be repaired or deleted by hand.
+  if (existing.length) {
+    const { data: built } = await query.graph({
+      entity: "product",
+      fields: ["handle", "variants.sku", "variants.prices.amount", "variants.prices.currency_code", "sales_channels.id"],
+      filters: { handle: [...existingHandles] },
+    })
+    const channelIds = channels.map((c) => c.id)
+    const incomplete = catalog.products
+      .filter((p) => existingHandles.has(p.handle))
+      .filter((p) => {
+        // `variants.prices` resolves through a module link, which query.graph's
+        // generated types do not include.
+        const product: any = built.find((b) => b.handle === p.handle)
+        const variant = (product?.variants ?? []).find((v: any) => v?.sku === p.sku)
+        const hasPrice = (variant?.prices ?? []).some(
+          (pr: any) => pr?.currency_code === CURRENCY_CODE && Number(pr?.amount) === p.price
+        )
+        const linked = (product?.sales_channels ?? []).map((sc: any) => sc?.id)
+        return !variant || !hasPrice || !channelIds.every((id) => linked.includes(id))
+      })
+    if (incomplete.length) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        `[drn-0003] existing product(s) incomplete (missing SKU variant, TWD price or sales channel): ${incomplete
+          .map((p) => p.handle)
+          .join(", ")}. Repair or delete them, then re-run db:migrate:scripts.`
+      )
+    }
+  }
+
   if (toCreate.length) {
     await createProductsWorkflow(container).run({
       input: {

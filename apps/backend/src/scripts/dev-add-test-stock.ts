@@ -1,5 +1,5 @@
 // Dev/test only: sets 100 units on hand for every catalog SKU at the TW warehouse.
-// Refuses to run when NODE_ENV=production. Usage (from apps/backend):
+// Runs only with NODE_ENV=development|test against a local database (fails closed). Usage (from apps/backend):
 //   ../../infra/dev-env.sh pnpm exec medusa exec ./src/scripts/dev-add-test-stock.ts
 import type { ExecArgs } from "@medusajs/framework/types"
 import {
@@ -14,8 +14,19 @@ import { STOCK_LOCATION_NAME } from "../lib/drn-setup"
 export const DEV_STOCK_QUANTITY = 100
 
 export default async function devAddTestStock({ container }: ExecArgs) {
-  if (process.env.NODE_ENV === "production") {
-    throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "dev-add-test-stock refuses to run with NODE_ENV=production")
+  // Fail closed: `medusa exec` does not default NODE_ENV, so require an explicit dev/test
+  // environment AND a local database before touching stock.
+  const env = process.env.NODE_ENV
+  const dbUrl = process.env.DATABASE_URL ?? ""
+  const localDb =
+    env === "test"
+      ? process.env.DB_HOST === "localhost"
+      : /@(localhost|127\.0\.0\.1)(:\d+)?\//.test(dbUrl)
+  if ((env !== "development" && env !== "test") || !localDb) {
+    throw new MedusaError(
+      MedusaError.Types.NOT_ALLOWED,
+      "dev-add-test-stock runs only with NODE_ENV=development|test against a local database"
+    )
   }
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
   const query = container.resolve(ContainerRegistrationKeys.QUERY)
