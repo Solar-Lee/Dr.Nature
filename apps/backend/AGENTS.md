@@ -19,13 +19,13 @@ Medusa DTC Starter — a Turborepo workspace monorepo containing a Medusa backen
 │   │       ├── api/              # API routes: api/store/*, api/admin/* (file-based)
 │   │       ├── jobs/             # Scheduled jobs
 │   │       ├── links/            # Module links between modules
-│   │       ├── migration-scripts/# Data migration scripts (e.g. initial-data-seed.ts)
+│   │       ├── migration-scripts/# Data migration scripts (drn-0001..; run once per DB, never rename)
 │   │       ├── modules/          # Custom modules (service + models + migrations)
 │   │       ├── subscribers/      # Event subscribers
 │   │       └── workflows/        # Workflows and workflow steps
 │   └── storefront/               # OPTIONAL storefront
 ├── eslint.config.ts              # Root ESLint: @medusajs/eslint-plugin recommended
-├── turbo.json                    # Task graph: build, dev, start, lint, test, seed
+├── turbo.json                    # Task graph: build, dev, start, lint, test
 ```
 
 **`apps/storefront` is optional and may not exist.** It is skipped when the user chooses not to install it. Before running any storefront command, referencing storefront files, or assuming a full-stack change is possible, check that `apps/storefront/` exists. If it doesn't, the project is backend-only — do not scaffold it or suggest it was deleted by mistake.
@@ -94,9 +94,9 @@ cd apps/backend && <pm> run test:unit -- -t "returns the cart"
 ```bash
 cd apps/backend
 <pm> exec medusa db:generate <module-name>   # generate migrations for a custom module
-<pm> exec medusa db:migrate                  # run migrations
+<pm> exec medusa db:migrate --skip-scripts   # schema migrations only (use `<pm> run migrate` for the full two-step run)
 <pm> exec medusa user -e admin@test.com -p supersecret
-<pm> run backend:seed                        # from root; seeds initial data
+<pm> run migrate                             # schema migrations, then drn-* data scripts (two steps: db:migrate exits 0 even when a script fails in 2.21.2)
 ```
 
 ## Medusa Skills & MCP Server

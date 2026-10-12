@@ -13,8 +13,7 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "backend:dev": "turbo dev --filter=@drn/backend",
-    "backend:seed": "turbo seed --filter=@drn/backend"
+    "backend:dev": "turbo dev --filter=@drn/backend"
   },
   "pnpm": {
     "overrides": {
