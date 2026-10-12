@@ -141,8 +141,10 @@ medusaIntegrationTestRunner({
       const a = await startLine()
       expect((await lineCallback({ code: `code-U2002-${a.nonce}`, state: a.state })).status).toEqual(200)
       expect((await lineCallback({ code: `code-U2002-${a.nonce}`, state: a.state })).status).toEqual(401) // state is single use
-      expect((await lineCallback({ code: `code-U2002-${a.nonce}`, state: "f".repeat(64) })).status).toEqual(401)
-      expect((await lineCallback({ code: `code-U2002-${a.nonce}` })).status).toEqual(401)
+      for (const state of ["f".repeat(64), undefined]) {
+        const r = await lineCallback({ code: `code-U2002-${a.nonce}`, ...(state ? { state } : {}) })
+        expect({ status: r.status, message: r.data.message }).toEqual({ status: 401, message: "No state provided, or session expired" })
+      }
 
       const b = await startLine()
       const foreign = await lineCallback({ code: `code-U2002-${"0".repeat(32)}`, state: b.state }) // token minted for another login
