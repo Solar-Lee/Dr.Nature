@@ -44,10 +44,31 @@ if [ -f pnpm-workspace.yaml ]; then
   done
 fi
 
+# 2b. Backend (Medusa): typecheck, Medusa lint rules, and HTTP integration tests.
+#     Integration tests need the dev Postgres (infra/docker-compose.dev.yml). If it is not
+#     reachable the suite FAILS rather than being skipped, so a green run always means the
+#     tests actually executed.
+if [ -f apps/backend/package.json ]; then
+  run_suite "backend:typecheck" pnpm --dir apps/backend exec tsc --noEmit -p tsconfig.json
+  run_suite "backend:lint" pnpm --dir apps/backend run lint
+  if compgen -G "apps/backend/integration-tests/http/*.spec.ts" >/dev/null; then
+    if nc -z localhost 55432 >/dev/null 2>&1; then
+      run_suite "backend:integration:http" bash -c 'cd apps/backend && ../../infra/test-env.sh pnpm run test:integration:http'
+    else
+      failed+=("backend:integration:http")
+      echo "✖ backend:integration:http — dev Postgres not reachable on localhost:55432."
+      echo "  Start it: docker compose -f infra/docker-compose.dev.yml up -d"
+    fi
+  fi
+fi
+
 # 3. Compliance scan of customer-facing copy.
 run_suite "claims-lint" node scripts/claims-lint.mjs
 
-# 4. Env var names must come from the docs/ENV.md whitelist.
+# 4. Backend copy of the product master data must match content/products/catalog.json.
+run_suite "catalog-sync" node scripts/sync-catalog.mjs --check
+
+# 5. Env var names must come from the docs/ENV.md whitelist.
 run_suite "env-names" node scripts/check-env-names.mjs
 
 if [ "${#failed[@]}" -gt 0 ]; then

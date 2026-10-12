@@ -65,3 +65,7 @@
 |---|---|
 | `E2E_BASE_URL` | Playwright 目標站（本機／staging／正式） |
 | `E2E_ALLOW_WRITES` | `1` 才允許 e2e 建立訂單；正式站一律不設 |
+| `DB_HOST` | 後端整合測試的 Postgres 主機（@medusajs/test-utils 2.21.2 只讀這組，不讀 DATABASE_URL；須含 `localhost`） |
+| `DB_PORT` | 同上 |
+| `DB_USERNAME` | 同上 |
+| `DB_PASSWORD` | 同上（本機開發容器的非機密密碼） |
