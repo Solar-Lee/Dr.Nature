@@ -1,0 +1,14 @@
+{
+  "name": "dr-nature",
+  "private": true,
+  "description": "Dr.Nature brand site — Medusa v2 backend + Next.js storefront (see docs/DEV_PLAN.md)",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "test": "bash scripts/test-all.sh",
+    "lint:claims": "node scripts/claims-lint.mjs",
+    "check:env": "node scripts/check-env-names.mjs"
+  }
+}
