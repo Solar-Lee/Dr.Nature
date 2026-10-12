@@ -26,6 +26,8 @@
 | `ECPAY_MERCHANT_ID` 🔒 | 綠界金流特店編號 | ECPay 文件 |
 | `ECPAY_HASH_KEY` 🔒 | 綠界金流 HashKey | ECPay 文件 |
 | `ECPAY_HASH_IV` 🔒 | 綠界金流 HashIV | ECPay 文件 |
+| `ECPAY_AUTO_REFUND` | `true` 才啟用信用卡自動退款（CreditDetail，僅正式環境；預設關閉，須先以一筆真實小額交易驗證，DEV_PLAN P4-08）；開啟時信用卡建單帶 `NeedExtraPaidInfo=Y` | 本專案定義（P4-08） |
+| `ECPAY_CREDIT_CHECK_CODE` 🔒 | 信用卡明細查詢的商家檢查碼（廠商後台 信用卡收單 > 信用卡授權資訊）；`ECPAY_AUTO_REFUND=true` 時必填 | developers.ecpay.com.tw/2894/ |
 | `ECPAY_UNPAID_CANCEL_MINUTES` | 信用卡訂單未付款幾分鐘後自動取消（預設 180、最小 60；待 Aki 決定，DEV_PLAN P4-09） | 本專案定義（P4-09） |
 | `ECPAY_LOGISTICS_MERCHANT_ID` 🔒 | 綠界物流 | TODO(需查證：物流與金流是否共用同組金鑰) |
 | `ECPAY_LOGISTICS_HASH_KEY` 🔒 | 綠界物流 | 同上 |

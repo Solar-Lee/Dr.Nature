@@ -66,6 +66,14 @@ import {
   type PaymentInfoNotice,
   type TradeInfo,
 } from "../../lib/ecpay/aio"
+import {
+  buildDoActionRequest,
+  buildQueryCreditTradeRequest,
+  inAutoCloseWindow,
+  parseDoActionResponse,
+  parseQueryCreditTrade,
+  planCreditRefund,
+} from "../../lib/ecpay/credit-refund"
 import type { EcpayProviderOptions } from "../../lib/ecpay/config"
 
 type InjectedDependencies = { logger: Logger }
@@ -99,7 +107,9 @@ export type PaymentInstructions = {
   expires_at: string | null
 }
 
-type ProofOfPayment = { tradeNo: string; paymentType: string }
+// gwsr / installmentOrBonus come only from a verified notice of a NeedExtraPaidInfo=Y trade
+// (P4-08 automatic refunds).
+type ProofOfPayment = { tradeNo: string; paymentType: string; gwsr?: string; installmentOrBonus?: boolean }
 
 const QUERY_TIMEOUT_MS = 10_000
 
@@ -226,6 +236,7 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       choosePayment,
       customField1: sessionId,
       paymentInfoUrl: this.options_.paymentInfoUrl,
+      needExtraPaidInfo: this.options_.autoRefund,
     })
     checkoutForm.action = this.options_.checkoutUrl
     return {
@@ -264,7 +275,13 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       this.options_.acceptSimulatedPayments
     )
     if (notice) {
-      return { tradeNo: notice.tradeNo, paymentType: notice.paymentType }
+      const raw = notice.raw ?? {}
+      return {
+        tradeNo: notice.tradeNo,
+        paymentType: notice.paymentType,
+        ...(raw.gwsr ? { gwsr: raw.gwsr } : {}),
+        installmentOrBonus: Number(raw.stage ?? 0) > 0 || Number(raw.red_dan ?? 0) > 0,
+      }
     }
     const info = verifiedTradeInfoFor(session.ecpay_trade_info, binding, this.credentials)
     if (info) {
@@ -410,7 +427,12 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
     }
     return {
       status: PaymentSessionStatus.CAPTURED,
-      data: { ...session, ecpay_trade_no: proof.tradeNo, ecpay_payment_type: proof.paymentType },
+      data: {
+        ...session,
+        ecpay_trade_no: proof.tradeNo,
+        ecpay_payment_type: proof.paymentType,
+        ...(proof.gwsr ? { ecpay_gwsr: proof.gwsr, ecpay_installment_or_bonus: !!proof.installmentOrBonus } : {}),
+      },
     }
   }
 
@@ -419,27 +441,102 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
     return { data: input.data }
   }
 
-  // ECPay's refund API (CreditDetail/DoAction) exists only in production and cannot be
-  // tested in stage. Until it is implemented and verified with a real transaction
-  // (DEV_PLAN P4-08), a refund issued in Medusa (Super Admin only, RBAC) is recorded as
-  // "manual_pending" and must be executed in the ECPay vendor back office the same day
-  // (docs/ops/ecpay-manual-refund.md). The alert line is the hand-off to finance.
+  // Refunds (P4-08). Automatic only when ECPAY_AUTO_REFUND=true, the payment is a credit card
+  // with a gwsr (NeedExtraPaidInfo=Y trade) and it is not ECPay's 20:15-20:30 auto-close
+  // window: QueryTrade/V2 -> /2883/ decision table -> DoAction step(s). The CreditDetail APIs
+  // exist in production only and are NOT verified yet (DEV_PLAN P4-08 needs one real small
+  // transaction first). Anything else — offline payments (no refund API), unclear trade state,
+  // a failed call — is recorded "manual_pending" with [ECPAY-ALERT]: staff refund in the
+  // ECPay back office the same day (docs/ops/ecpay-manual-refund.md).
   async refundPayment(input: RefundPaymentInput): Promise<RefundPaymentOutput> {
     const amount = MathBN.convert(input.amount)
     if (!amount.isInteger() || amount.lte(0)) {
       throw new MedusaError(MedusaError.Types.INVALID_DATA, `refund must be a positive whole TWD amount, got ${amount.toString()}`)
     }
     const data = (input.data ?? {}) as Record<string, unknown>
-    const previous = Array.isArray(data.ecpay_manual_refunds) ? data.ecpay_manual_refunds : []
-    const record = {
-      amount: amount.toNumber(),
-      status: "manual_pending",
-      requested_at: new Date().toISOString(),
+    const refund = amount.toNumber()
+    let manualReason = "automatic refunds are off"
+    if (this.options_.autoRefund) {
+      const auto = await this.tryAutomaticRefund(data, refund)
+      if (auto.ok) {
+        const done = Array.isArray(data.ecpay_refunds) ? data.ecpay_refunds : []
+        this.logger_.info(`ECPay refund NT$${refund} for ${String(data.merchant_trade_no)} done automatically (${auto.steps.map((x) => x.action).join("+")})`)
+        return { data: { ...data, ecpay_refunds: [...done, { amount: refund, status: "refunded", steps: auto.steps, at: new Date().toISOString() }] } }
+      }
+      manualReason = auto.reason
     }
+    const previous = Array.isArray(data.ecpay_manual_refunds) ? data.ecpay_manual_refunds : []
+    const record = { amount: refund, status: "manual_pending", requested_at: new Date().toISOString(), reason: manualReason }
     this.logger_.error(
-      `[ECPAY-ALERT] manual refund required: NT$${record.amount} for MerchantTradeNo ${String(data.merchant_trade_no)} / TradeNo ${String(data.ecpay_trade_no)}; also settle the order's e-invoice (void with the buyer's consent, or an allowance)`
+      `[ECPAY-ALERT] manual refund required: NT$${record.amount} for MerchantTradeNo ${String(data.merchant_trade_no)} / TradeNo ${String(data.ecpay_trade_no)} (${manualReason}); also settle the order's e-invoice (void with the buyer's consent, or an allowance)`
     )
     return { data: { ...data, ecpay_manual_refunds: [...previous, record] } }
+  }
+
+  protected async tryAutomaticRefund(
+    data: Record<string, unknown>,
+    refund: number
+  ): Promise<{ ok: true; steps: { action: string; amount: number }[] } | { ok: false; reason: string }> {
+    const paymentType = String(data.ecpay_payment_type ?? "")
+    if (!paymentType.startsWith("Credit")) {
+      return { ok: false, reason: `${paymentType || "this payment"} has no refund API` }
+    }
+    if (!data.ecpay_gwsr || !this.options_.creditCheckCode) {
+      return { ok: false, reason: "no gwsr for this trade (paid before NeedExtraPaidInfo, or recovered by query)" }
+    }
+    if (inAutoCloseWindow(new Date())) {
+      return { ok: false, reason: "ECPay auto-close window 20:15-20:30; refund manually or later" }
+    }
+    const authorised = Number(data.amount)
+    let trade
+    try {
+      const res = await fetch(this.options_.queryCreditTradeUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(
+          buildQueryCreditTradeRequest(this.credentials, { gwsr: String(data.ecpay_gwsr), amount: authorised, checkCode: this.options_.creditCheckCode })
+        ),
+        signal: AbortSignal.timeout(QUERY_TIMEOUT_MS),
+      })
+      trade = parseQueryCreditTrade(JSON.parse(await res.text()))
+    } catch (e) {
+      return { ok: false, reason: `QueryTrade/V2 failed: ${(e as Error).message}` }
+    }
+    if (!trade) {
+      return { ok: false, reason: "QueryTrade/V2 answered an error" }
+    }
+    const plan = planCreditRefund(trade, { authorised, refund, installmentOrBonus: data.ecpay_installment_or_bonus === true })
+    if (!plan.ok) {
+      return { ok: false, reason: plan.reason }
+    }
+    const done: { action: string; amount: number }[] = []
+    for (const step of plan.steps) {
+      let result
+      try {
+        const res = await fetch(this.options_.doActionUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams(
+            buildDoActionRequest(this.credentials, {
+              merchantTradeNo: String(data.merchant_trade_no),
+              tradeNo: String(data.ecpay_trade_no),
+              action: step.action,
+              amount: step.amount,
+            })
+          ),
+          signal: AbortSignal.timeout(QUERY_TIMEOUT_MS),
+        })
+        result = parseDoActionResponse(await res.text(), { merchantId: this.credentials.merchantId, merchantTradeNo: String(data.merchant_trade_no) })
+      } catch (e) {
+        result = { ok: false, rtnCode: "", rtnMsg: (e as Error).message }
+      }
+      if (!result.ok) {
+        const already = done.length ? ` after ${done.map((x) => x.action).join("+")} succeeded — check the trade state in the back office` : ""
+        return { ok: false, reason: `DoAction ${step.action} failed (${result.rtnCode} ${result.rtnMsg})${already}` }
+      }
+      done.push(step)
+    }
+    return { ok: true, steps: done }
   }
 
   // Unpaid ECPay trades simply expire; paid ones must be refunded, not cancelled here.

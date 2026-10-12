@@ -87,6 +87,10 @@ export type CheckoutFormInput = {
   // Required for ATM / CVS / BARCODE: where ECPay posts the issued payment code.
   paymentInfoUrl?: string
   deadlines?: typeof PAYMENT_DEADLINES
+  // Credit only: ask ECPay for the extra paid info (gwsr = CreditRefundId for refunds, P4-08;
+  // developers.ecpay.com.tw/5675/). Off unless automatic refunds are on: it also returns the
+  // card's first 6 / last 4 digits, which then sit in the stored notice.
+  needExtraPaidInfo?: boolean
 }
 
 export type CheckoutForm = { action: string; fields: Record<string, string> }
@@ -122,6 +126,9 @@ export function buildCheckoutForm(input: CheckoutFormInput): CheckoutForm {
   }
   if (input.clientBackUrl) {
     fields.ClientBackURL = input.clientBackUrl
+  }
+  if (input.needExtraPaidInfo && input.choosePayment === "Credit") {
+    fields.NeedExtraPaidInfo = "Y"
   }
   if (OFFLINE_CHOOSE_PAYMENT.includes(input.choosePayment)) {
     if (!input.paymentInfoUrl) {

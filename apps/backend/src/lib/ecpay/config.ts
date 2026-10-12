@@ -25,9 +25,18 @@ export type EcpayProviderOptions = {
   queryTradeInfoUrl: string
   // Daily reconciliation file (P4-07, vendor host); the test stub shares ECPAY_API_BASE_URL.
   tradeNoAioUrl: string
+  // P4-08 automatic credit refunds (CreditDetail APIs exist in production only). Off unless
+  // ECPAY_AUTO_REFUND=true; needs ECPAY_CREDIT_CHECK_CODE (vendor back office).
+  autoRefund: boolean
+  creditCheckCode?: string
+  doActionUrl: string
+  queryCreditTradeUrl: string
 }
 
 export const ECPAY_PROVIDER_ID = "pp_ecpay_ecpay"
+// CreditDetail APIs (refund, query) live on the payment host; production only per
+// developers.ecpay.com.tw/2885/ and /2894/ (stage "因無法提供實際授權，故無法使用此API").
+const PAYMENT_HOSTS = { stage: "https://payment-stage.ecpay.com.tw", prod: "https://payment.ecpay.com.tw" } as const
 export const ECPAY_RETURN_PATH = "/hooks/ecpay/payment"
 export const ECPAY_PAYMENT_INFO_PATH = "/hooks/ecpay/payment-info"
 
@@ -53,6 +62,7 @@ export function ecpayOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Ecpay
     throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_API_BASE_URL must not be set when ECPAY_ENV=prod")
   }
 
+  const autoRefund = env.ECPAY_AUTO_REFUND === "true"
   const acceptSimulatedPayments = env.ECPAY_ACCEPT_SIMULATED_PAYMENTS === "true"
   if (acceptSimulatedPayments && environment === "prod") {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_ACCEPT_SIMULATED_PAYMENTS must not be set when ECPAY_ENV=prod")
@@ -73,6 +83,10 @@ export function ecpayOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Ecpay
       ? `${apiBase}/Cashier/QueryTradeInfo/V5`
       : AIO_ENDPOINTS[environment].queryTradeInfo,
     tradeNoAioUrl: apiBase ? `${apiBase}/PaymentMedia/TradeNoAio` : TRADENOAIO_HOSTS[environment],
+    autoRefund,
+    ...(autoRefund ? { creditCheckCode: required(env, "ECPAY_CREDIT_CHECK_CODE") } : {}),
+    doActionUrl: apiBase ? `${apiBase}/CreditDetail/DoAction` : `${PAYMENT_HOSTS[environment]}/CreditDetail/DoAction`,
+    queryCreditTradeUrl: apiBase ? `${apiBase}/CreditDetail/QueryTrade/V2` : `${PAYMENT_HOSTS[environment]}/CreditDetail/QueryTrade/V2`,
   }
 }
 

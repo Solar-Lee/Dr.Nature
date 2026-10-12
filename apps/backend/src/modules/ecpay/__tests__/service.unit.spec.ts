@@ -15,6 +15,9 @@ const options: EcpayProviderOptions = {
   checkoutUrl: "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5",
   queryTradeInfoUrl: "http://stub.invalid/Cashier/QueryTradeInfo/V5",
   tradeNoAioUrl: "http://127.0.0.1:1/PaymentMedia/TradeNoAio",
+  autoRefund: false,
+  doActionUrl: "http://stub.invalid/CreditDetail/DoAction",
+  queryCreditTradeUrl: "http://stub.invalid/CreditDetail/QueryTrade/V2",
   paymentInfoUrl: "https://api.example.com/hooks/ecpay/payment-info",
   acceptSimulatedPayments: false,
 }

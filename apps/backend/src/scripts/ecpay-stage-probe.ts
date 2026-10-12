@@ -59,6 +59,8 @@ export default async function ecpayStageProbe({ args }: ExecArgs) {
     location: checkout.headers.get("location"),
     title: /<title>([^<]*)<\/title>/i.exec(html)?.[1]?.trim() ?? null,
     error_markers: found,
+    // Where each marker sits, to tell a real refusal from generic page text.
+    marker_context: found.map((m) => text.slice(Math.max(0, text.indexOf(m) - 40), text.indexOf(m) + 30)),
     text_sample: text.slice(0, 400),
   }))
 
