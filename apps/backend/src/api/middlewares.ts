@@ -62,6 +62,15 @@ const rbacHardening: MiddlewareRoute[] = ([
     policies: [{ resource: "workflow_execution", operation: "create" }],
   })),
   { methods: ["POST"], matcher: "/admin/rbac/roles", policies: [{ resource: "rbac_role", operation: "create" }] },
+  // [P5-05] Promotion templates create a promotion and possibly its campaign.
+  {
+    methods: ["POST"],
+    matcher: "/admin/promotion-templates",
+    policies: [
+      { resource: "promotion", operation: "create" },
+      { resource: "campaign", operation: "create" },
+    ],
+  },
   // [P4-11] C2C shipment actions.
   { methods: ["POST"], matcher: "/admin/orders/:id/ecpay-logistics/return-store", policies: [{ resource: "order", operation: "update" }] },
   { methods: ["GET"], matcher: "/admin/orders/:id/ecpay-logistics/print", policies: [{ resource: "order", operation: "read" }] },
