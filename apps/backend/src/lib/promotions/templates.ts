@@ -57,7 +57,7 @@ export const TEMPLATE_SCHEMA = z.discriminatedUnion("template", [
     .refine((t) => (t.amount_off_twd === undefined) !== (t.percent_off === undefined), "give exactly one of amount_off_twd / percent_off")
     .refine((t) => t.amount_off_twd === undefined || t.amount_off_twd < t.min_total_twd, "amount_off_twd must be below min_total_twd"),
   // 第二件折: for every N bought of the listed products, the next one is percent_off.
-  // Same-product quantity discounts are not gifts (公平會 105.05.12 令).
+  // Same-product quantity discounts are not gifts (贈品贈獎額度辦法 §3 ③; 公平會 105.05.12 令).
   z.object({
     template: z.literal("nth_item"),
     ...COMMON,
@@ -67,7 +67,8 @@ export const TEMPLATE_SCHEMA = z.discriminatedUnion("template", [
     max_discounted_units: z.number().int().min(1).max(50).default(5),
   }),
   // 買 X 送 Y: buy buy_quantity of buy_product_ids, get gift_quantity of gift_product_ids free.
-  // A different product as gift is a 贈品: value cap checked by the route (giftValueProblem).
+  // A different product as gift is a 贈品: value cap checked by the route (giftValueProblem);
+  // at checkout R3/R4 (src/lib/pricing/price-floor.ts) also apply.
   z.object({
     template: z.literal("buy_x_get_y"),
     ...COMMON,
@@ -183,10 +184,11 @@ export function buildPromotion(t: Template): CreatePromotionDTO {
   }
 }
 
-// 贈品贈獎額度辦法 §3 (research §5): a gift that is a DIFFERENT product may be worth at most half
-// of the purchase when the purchase is NT$100 or more, else NT$50. Uses the lowest price the
-// shopper could pay for the buy side and the highest gift price. Gifting the same product
-// is a quantity discount (not a gift) and is left to the price floor (price-floor.ts).
+// 事業提供贈品贈獎額度辦法 §4 (docs/research/gift-rules-2026-10-13.md): a gift that is a DIFFERENT
+// product may be worth at most half of the purchase when the purchase is NT$100 or more, else
+// NT$50 (at exactly NT$100 both give NT$50). Uses the lowest price the shopper could pay for
+// the buy side and the highest gift price. Gifting the same product is a quantity discount
+// (§3 ③, not a gift) and is left to the price rules at checkout (price-floor.ts).
 export type PriceRange = { min: number; max: number }
 
 export function giftValueProblem(
@@ -203,5 +205,5 @@ export function giftValueProblem(
   const purchase = Math.min(...t.buy_product_ids.map((id) => unitPrices.get(id)!.min)) * t.buy_quantity
   const gift = Math.max(...t.gift_product_ids.map((id) => unitPrices.get(id)!.max)) * t.gift_quantity
   const cap = purchase >= 100 ? purchase / 2 : 50
-  return gift > cap ? `gift worth NT$${gift} exceeds the legal cap NT$${cap} for a NT$${purchase} purchase (贈品贈獎額度辦法 §3)` : null
+  return gift > cap ? `gift worth NT$${gift} exceeds the legal cap NT$${cap} for a NT$${purchase} purchase (事業提供贈品贈獎額度辦法 §4)` : null
 }

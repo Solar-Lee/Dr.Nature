@@ -104,7 +104,7 @@ describe("built promotions", () => {
   })
 })
 
-describe("gift value cap (贈品贈獎額度辦法 §3)", () => {
+describe("gift value cap (事業提供贈品贈獎額度辦法 §4)", () => {
   const t = (over: Partial<Extract<Template, { template: "buy_x_get_y" }>> = {}) =>
     ({ ...parse({ template: "buy_x_get_y", code: "GIFT1", name: "x", buy_product_ids: ["a"], buy_quantity: 1, gift_product_ids: ["g"] }), ...over }) as Extract<
       Template,
@@ -119,9 +119,10 @@ describe("gift value cap (贈品贈獎額度辦法 §3)", () => {
     expect(giftValueProblem(t({ gift_quantity: 2 }), prices(1150, 300))).toMatch(/NT\$600/)
   })
 
-  it("under NT$100 the cap is NT$50", () => {
+  it("at or under NT$100 the cap is NT$50", () => {
     expect(giftValueProblem(t(), prices(99, 50))).toBeNull()
     expect(giftValueProblem(t(), prices(99, 51))).toMatch(/cap NT\$50/)
+    expect(giftValueProblem(t(), prices(100, 51))).toMatch(/cap NT\$50/)
   })
 
   it("uses the cheapest buy variant and the dearest gift variant", () => {

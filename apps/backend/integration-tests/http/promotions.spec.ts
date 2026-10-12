@@ -60,7 +60,9 @@ medusaIntegrationTestRunner({
         sales_channels: [{ id: official.id }],
       })
       await createProductsWorkflow(container).run({
-        input: { products: [gift("test-gift", "GIFT-TEST-01", 300), gift("test-gift-big", "GIFT-TEST-02", 900)] },
+        input: {
+          products: [gift("test-gift", "GIFT-TEST-01", 300), gift("test-gift-big", "GIFT-TEST-02", 900), gift("test-gift-half", "GIFT-TEST-03", 575)],
+        },
       })
     })
 
@@ -227,6 +229,27 @@ medusaIntegrationTestRunner({
       const res = await complete(cart)
       expect(res.status).toEqual(400)
       expect(res.data.message).toContain("折扣上限")
+    })
+
+    it("R3: a legal gift (half a bottle) still breaks the 75% value floor; R4: two free gifts are refused", async () => {
+      const b = await bottle()
+      const half = await product("test-gift-half")
+      const g = await product("test-gift")
+      expect((await createTemplate({ template: "buy_x_get_y", code: "BUY1HALF", name: "買一送半瓶價贈品", buy_product_ids: [b.id], buy_quantity: 1, gift_product_ids: [half.id] })).status).toEqual(201)
+      const r3 = await makeCart([[b.variantId, 1], [half.variantId, 1]])
+      await applyCode(r3, "BUY1HALF")
+      expect(await totals(r3)).toEqual({ total: 1150, discount: 575 }) // 1,150 / 1.5 = 766.7 per bottle-equivalent
+      const refused = await complete(r3)
+      expect(refused.status).toEqual(400)
+      expect(refused.data.message).toContain("折扣上限")
+
+      expect((await createTemplate({ template: "buy_x_get_y", code: "BUY3TWO", name: "買三送二", buy_product_ids: [b.id], buy_quantity: 3, gift_product_ids: [g.id], gift_quantity: 2 })).status).toEqual(201)
+      const r4 = await makeCart([[b.variantId, 3], [g.variantId, 2]])
+      await applyCode(r4, "BUY3TWO")
+      expect(await totals(r4)).toEqual({ total: 3450, discount: 600 })
+      const two = await complete(r4)
+      expect(two.status).toEqual(400)
+      expect(two.data.message).toContain("最多一份贈品")
     })
 
     it("only roles with promotion+campaign create may use templates; bad forms and unknown products are refused", async () => {
