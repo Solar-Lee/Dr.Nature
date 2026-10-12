@@ -28,7 +28,9 @@ export type RoleDefinition = {
 export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     name: "operations",
-    description: "營運：訂單、退貨、出貨、庫存、促銷活動",
+    // Includes order:update, which also allows cancelling an order (auto-refunds captured
+    // payments). Accepted for operations; Aki to confirm (docs/DEV_PLAN.md P3-07).
+    description: "營運：訂單（含取消）、退貨、出貨、庫存、促銷活動",
     policyKeys: [
       ...BASE_READ,
       ...keys(
@@ -48,25 +50,29 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   },
   {
     name: "support",
-    description: "客服：會員、訂單查詢、退換貨",
+    // No order:update: in 2.21.2 that policy unlocks POST /admin/orders/:id/cancel, whose
+    // workflow refunds every captured payment. Cancellations go through operations.
+    description: "客服：會員、訂單查詢、退換貨申請（不可取消訂單、不可退款）",
     policyKeys: [
       ...BASE_READ,
       ...keys(["customer", "customer_address"], ["read", "create", "update"]),
       ...keys(["customer_group"], ["read"]),
-      ...keys(["order", "order_change"], ["read", "update"]),
+      ...keys(["order", "order_change"], ["read"]),
       ...keys(["order_item", "return_reason", "product", "product_variant", "payment"], ["read"]),
       ...keys(["return", "order_claim", "order_claim_item", "order_exchange"], ["read", "create", "update"]),
     ],
   },
   {
     name: "content_editor",
-    description: "內容編輯：商品內容、圖片、翻譯（Blog 權限於 P6 加入）",
+    // No create grants: POST /admin/products also needs price:create and
+    // inventory_item:create, so product creation stays with Super Admin. No variant
+    // update either: the hardened variant route requires price:update.
+    description: "內容編輯：商品文字與圖片、翻譯（不可建立商品、不可改價；Blog 權限於 P6 加入）",
     policyKeys: [
       ...BASE_READ,
       ...keys(
         [
           "product",
-          "product_variant",
           "product_option",
           "product_option_value",
           "product_tag",
@@ -74,8 +80,10 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
           "product_category",
           "product_collection",
         ],
-        ["read", "create", "update"]
+        ["read", "update"]
       ),
+      // Variants carry prices; variant batch routes may not check price:update.
+      ...keys(["product_variant"], ["read"]),
       ...keys(["file"], ["read", "create", "delete"]),
       ...keys(["translation"], ["read", "create", "update"]),
       ...keys(["inventory_item"], ["read"]),
@@ -83,7 +91,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   },
   {
     name: "finance",
-    description: "財務：付款、退款、價格（可讀訂單與促銷）",
+    // Refund and capture routes require refund:create / capture:create, which 2.21.2 does
+    // not register as policies, so only Super Admin (*:*) can refund or capture.
+    description: "財務：付款紀錄、價格與價格表（可讀訂單與促銷；退款／請款限 Super Admin）",
     policyKeys: [
       ...BASE_READ,
       ...keys(["payment", "payment_collection"], ["read", "create", "update"]),
