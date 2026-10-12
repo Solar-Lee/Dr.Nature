@@ -18,17 +18,19 @@ export const flagPaidAfterCancelStep = createStep(
   async (input: Input, { container }) => {
     const orderModule = container.resolve(Modules.ORDER)
     const order = await orderModule.retrieveOrder(input.order_id, { select: ["id", "metadata"] })
-    const previous = order.metadata ?? null
-    await orderModule.updateOrders([
-      { id: order.id, metadata: { ...(previous ?? {}), ecpay_paid_after_cancel: input.payment } },
-    ])
-    return new StepResponse({ id: order.id }, { id: order.id, metadata: previous })
+    const previous = order.metadata?.ecpay_paid_after_cancel ?? null
+    await orderModule.updateOrders([{ id: order.id, metadata: { ecpay_paid_after_cancel: input.payment } }])
+    return new StepResponse({ id: order.id }, { id: order.id, previous })
   },
+  // metadata merges at the top level (Medusa 2.21.2 mergeMetadata): restoring an old
+  // snapshot would leave the added key behind, so restore the key itself ("" deletes it).
   async (prev, { container }) => {
     if (!prev) {
       return
     }
-    await container.resolve(Modules.ORDER).updateOrders([{ id: prev.id, metadata: prev.metadata }])
+    await container
+      .resolve(Modules.ORDER)
+      .updateOrders([{ id: prev.id, metadata: { ecpay_paid_after_cancel: prev.previous ?? "" } }])
   }
 )
 
