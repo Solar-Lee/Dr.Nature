@@ -4,7 +4,7 @@
 import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 import { ecpayLogisticsOptionsFromEnv } from "../../../../../../lib/ecpay/config"
-import { buildUpdateStoreInfoRequest } from "../../../../../../lib/ecpay/logistics"
+import { C2C_CVS_SUBTYPES, buildUpdateStoreInfoRequest } from "../../../../../../lib/ecpay/logistics"
 import { postLogistics } from "../../../../../../lib/ecpay/logistics-client"
 import { orderWithShipments } from "../../../../../../lib/ecpay/order-shipments"
 import { updateEcpayShipmentWorkflow } from "../../../../../../workflows/ecpay/update-ecpay-shipment"
@@ -16,8 +16,14 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   if (!order || !f) {
     throw new MedusaError(MedusaError.Types.NOT_FOUND, "ECPay shipment not found on this order")
   }
-  const storeId = typeof body.store_id === "string" ? body.store_id.trim() : ""
   const d = f.data ?? {}
+  if (!(C2C_CVS_SUBTYPES as readonly string[]).includes(String(d.logistics_subtype))) {
+    throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "Only C2C convenience-store shipments have a return store")
+  }
+  const storeId = typeof body.store_id === "string" ? body.store_id.trim() : ""
+  if (!/^[0-9A-Za-z]{1,10}$/.test(storeId)) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, "store_id is required (the store code from the ECPay e-map)")
+  }
   const options = ecpayLogisticsOptionsFromEnv()
   const r = await postLogistics(
     options,

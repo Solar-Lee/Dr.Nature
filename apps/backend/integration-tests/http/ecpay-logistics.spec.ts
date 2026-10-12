@@ -521,6 +521,8 @@ medusaIntegrationTestRunner({
       const support = await superAdminHeaders(`rs-s-${order.id}@drn.test`, "support")
       expect((await api.post(url, { fulfillment_id: f.id, store_id: "991182" }, { headers: support, validateStatus: () => true })).status).toEqual(403)
       const ops = await superAdminHeaders(`rs-o-${order.id}@drn.test`, "operations")
+      expect((await api.post(url, { fulfillment_id: f.id, store_id: " " }, { headers: ops, validateStatus: () => true })).status).toEqual(400)
+      expect(afterSaleRequests).toEqual([]) // a blank store never reaches ECPay
       const res = await api.post(url, { fulfillment_id: f.id, store_id: "991182" }, { headers: ops, validateStatus: () => true })
       expect(res.status).toEqual(200)
       expect(afterSaleRequests.map((r) => r.params)).toEqual([expect.objectContaining({ StoreType: "02", ReturnStoreID: "991182" })])

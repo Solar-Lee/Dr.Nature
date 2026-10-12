@@ -12,7 +12,8 @@
 //    The returned data/labels are stored on the fulfillment and may be visible to the
 //    shopper: never put credentials there.
 //  - cancelFulfillment: also the compensation step of order fulfillment, so it must not throw.
-//    ECPay voiding is done in the back office for now (alert).
+//    7-ELEVEN C2C: CancelC2COrder (P4-11; refused once the driver collected the parcel -> alert).
+//    FamilyMart / Hi-Life have no cancel API: alert, void in the ECPay back office.
 import crypto from "crypto"
 import { AbstractFulfillmentProviderService, MathBN, MedusaError } from "@medusajs/framework/utils"
 import type {
