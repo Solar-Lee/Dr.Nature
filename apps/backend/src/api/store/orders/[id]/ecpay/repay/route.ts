@@ -17,6 +17,7 @@ import { ECPAY_PROVIDER_ID, ecpayOptionsFromEnv } from "../../../../../../lib/ec
 import { recordVerifiedPayment } from "../../../../../../lib/ecpay/record-payment"
 import { queryTrade } from "../../../../../../lib/ecpay/trade-query"
 import { liveOfflineCode } from "../../../../../../lib/ecpay/unpaid"
+import { assertOrderOwner } from "../../../../../../lib/order-owner"
 
 const UNPAID_COLLECTION = ["awaiting", "not_paid"]
 
@@ -48,12 +49,7 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   })
   const order = data[0] as unknown as OrderView | undefined
   const actor = req.auth_context?.actor_id
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : ""
-  const owner = !!order && ((!!actor && actor === order.customer_id) || (!!email && email === (order.email ?? "").toLowerCase()))
-  if (!order || !owner) {
-    // Same answer whether the order is missing or not theirs.
-    throw new MedusaError(MedusaError.Types.NOT_FOUND, "找不到訂單")
-  }
+  assertOrderOwner(order, actor, body.email)
   const pc = (order.payment_collections ?? [])[0]
   if (order.status !== "pending" || !pc || !UNPAID_COLLECTION.includes(pc.status) || (pc.payments ?? []).some((p) => !!p.captured_at)) {
     throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "此訂單無法重新付款")

@@ -42,6 +42,9 @@ const trades = new Map<string, Record<string, string>>()
 // ok: signed success | refuse: "0|..." | drop: shipment created, connection dropped before the
 // answer | lost: connection dropped and nothing created
 let createMode: "ok" | "refuse" | "drop" | "lost" = "ok"
+// P4-11: UpdateStoreInfo / CancelC2COrder calls, answered "1|OK" unless afterSaleRefuse is set.
+const afterSaleRequests: { path: string; params: Record<string, string> }[] = []
+let afterSaleRefuse = ""
 let logisticsId = 3690131
 const signed = (f: Record<string, string>) => new URLSearchParams({ ...f, CheckMacValue: computeCheckMacValue(f, LOG_MAC) }).toString()
 const stub = http.createServer((req, res) => {
@@ -61,6 +64,11 @@ const stub = http.createServer((req, res) => {
       }
       const { RtnCode, RtnMsg, ...rest } = t
       res.writeHead(200, { "content-type": "text/html" }).end(signed({ ...rest, LogisticsStatus: RtnCode }))
+      return
+    }
+    if (req.url === "/Express/UpdateStoreInfo" || req.url === "/Express/CancelC2COrder") {
+      afterSaleRequests.push({ path: String(req.url), params })
+      res.writeHead(200, { "content-type": "text/html" }).end(afterSaleRefuse ? `0|${afterSaleRefuse}` : "1|OK")
       return
     }
     if (req.url !== "/Express/Create") {
@@ -113,6 +121,8 @@ medusaIntegrationTestRunner({
     beforeEach(() => {
       createRequests.length = 0
       createMode = "ok"
+      afterSaleRequests.length = 0
+      afterSaleRefuse = ""
     })
 
     const { storeHeaders, superAdminHeaders } = makeCheckoutHelpers({ api, getContainer })
@@ -455,6 +465,80 @@ medusaIntegrationTestRunner({
       expect(res.status).toEqual(400)
       const after = await fulfillmentOf(order.id)
       expect([after.shipped_at, after.delivered_at, after.metadata?.ecpay_status]).toEqual([null, null, undefined])
+    })
+
+    // ---- P4-11 --------------------------------------------------------------------------
+    const NEW_711 = { LogisticsSubType: "UNIMARTC2C", CVSStoreID: "131386", CVSStoreName: "新門市", CVSAddress: "台北市信義區市府路1號", CVSOutSide: "0" }
+    const reselect = async (orderId: string, body: Record<string, unknown>) =>
+      api.post(`/store/orders/${orderId}/ecpay/cvs-store`, body, { headers: await storeHeaders(), validateStatus: () => true })
+
+    it("canceling a 7-ELEVEN shipment cancels it at ECPay (CancelC2COrder)", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      const admin = await superAdminHeaders(`c711-${order.id}@drn.test`)
+      expect((await api.post(`/admin/orders/${order.id}/fulfillments/${f.id}/cancel`, {}, { headers: admin, validateStatus: () => true })).status).toEqual(200)
+      expect(afterSaleRequests).toEqual([
+        { path: "/Express/CancelC2COrder", params: expect.objectContaining({ AllPayLogisticsID: f.data.ecpay_all_pay_logistics_id, CVSPaymentNo: "D8844527", CVSValidationNo: "4471" }) },
+      ])
+    })
+
+    it("closed pickup store: the shopper picks a new one, ECPay is told, the shipment records it", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      expect((await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })).status).toEqual(400) // nothing closed yet
+      expect((await postStatus(notice(f, "2104", "門市關轉，請重選門市"))).data).toEqual("1|OK")
+      expect((await reselect(order.id, { email: "other@drn.test", store: NEW_711 })).status).toEqual(404)
+      expect((await reselect(order.id, { email: "buyer@drn.test", store: { ...NEW_711, LogisticsSubType: "FAMIC2C" } })).status).toEqual(400)
+      const ok = await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })
+      expect({ status: ok.status, store: ok.data?.store?.store_id }).toEqual({ status: 200, store: "131386" })
+      expect(afterSaleRequests.map((r) => r.params)).toEqual([
+        expect.objectContaining({ StoreType: "01", ReceiverStoreID: "131386", AllPayLogisticsID: f.data.ecpay_all_pay_logistics_id, CVSValidationNo: "4471" }),
+      ])
+      const after = await fulfillmentOf(order.id)
+      expect(after.data.store).toMatchObject({ store_id: "131386", store_name: "新門市" })
+      expect(after.metadata.ecpay_store_updates).toEqual([expect.objectContaining({ store_type: "01", store_id: "131386", by: "shopper" })])
+    })
+
+    it("ECPay refusing the new store changes nothing", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      await postStatus(notice(f, "2104", "門市關轉，請重選門市"))
+      afterSaleRefuse = "新取貨門市代碼與舊取貨門市代碼相同。"
+      const res = await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })
+      expect(res.status).toEqual(422)
+      expect(JSON.stringify(res.data)).toContain("新取貨門市代碼與舊取貨門市代碼相同")
+      expect((await fulfillmentOf(order.id)).data.store.store_id).toEqual("238669")
+    })
+
+    it("staff change our return store (StoreType 02); support may not", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      const url = `/admin/orders/${order.id}/ecpay-logistics/return-store`
+      const support = await superAdminHeaders(`rs-s-${order.id}@drn.test`, "support")
+      expect((await api.post(url, { fulfillment_id: f.id, store_id: "991182" }, { headers: support, validateStatus: () => true })).status).toEqual(403)
+      const ops = await superAdminHeaders(`rs-o-${order.id}@drn.test`, "operations")
+      const res = await api.post(url, { fulfillment_id: f.id, store_id: "991182" }, { headers: ops, validateStatus: () => true })
+      expect(res.status).toEqual(200)
+      expect(afterSaleRequests.map((r) => r.params)).toEqual([expect.objectContaining({ StoreType: "02", ReturnStoreID: "991182" })])
+    })
+
+    it("the slip page auto-submits ECPay's signed print form (browser POST, no HashKey)", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      const admin = await superAdminHeaders(`pr-${order.id}@drn.test`)
+      const res = await api.get(`/admin/orders/${order.id}/ecpay-logistics/print?mode=2`, { headers: admin, validateStatus: () => true })
+      expect(res.status).toEqual(200)
+      const html = String(res.data)
+      expect(html).toContain('action="https://logistics-stage.ecpay.com.tw/Express/PrintUniMartC2COrderInfo"')
+      const fields = Object.fromEntries([...html.matchAll(/name="([^"]+)" value="([^"]*)"/g)].map((m) => [m[1], m[2]]))
+      expect(fields).toMatchObject({ AllPayLogisticsID: f.data.ecpay_all_pay_logistics_id, CVSPaymentNo: "D8844527", CVSValidationNo: "4471", PrintMode: "2" })
+      expect(verifyCheckMacValue(fields, LOG_MAC)).toBe(true)
+      expect(html).not.toContain(LOG_MAC.hashKey)
     })
   },
 })

@@ -4,6 +4,7 @@
 //      the store fields ECPay would post back.
 //   2. Creates a C2C shipment (Express/Create) to that store and parses the "1|..." answer.
 //   3. Queries that trade and an unknown one (QueryLogisticsTradeInfo/V5) and checks signatures.
+//   4. UpdateStoreInfo (pickup store, same store id) and, for 7-ELEVEN, CancelC2COrder (P4-11).
 // Only test data; no logins. Usage (from apps/backend):
 //   ../../infra/dev-env.sh pnpm exec medusa exec ./src/scripts/ecpay-logistics-stage-probe.ts [UNIMARTC2C|FAMIC2C|HILIFEC2C] [storeId]
 import crypto from "crypto"
@@ -11,8 +12,10 @@ import type { ExecArgs } from "@medusajs/framework/types"
 import { MedusaError } from "@medusajs/framework/utils"
 import {
   LOGISTICS_HOSTS,
+  buildCancelC2COrderRequest,
   buildCreateShipmentRequest,
   buildQueryLogisticsTradeInfoRequest,
+  buildUpdateStoreInfoRequest,
   buildMapForm,
   newLogisticsTradeNo,
   parseCreateShipmentResponse,
@@ -122,5 +125,28 @@ export default async function ecpayLogisticsStageProbe({ args }: ExecArgs) {
       same_shipment: info ? info.AllPayLogisticsID === loose.AllPayLogisticsID : null,
       raw_sample: label === "unknown" ? qBody.slice(0, 160) : null,
     }))
+  }
+
+  if (loose.AllPayLogisticsID) {
+    const post = async (path: string, fields: Record<string, string>) => {
+      const res = await fetch(`${LOGISTICS_HOSTS.stage}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(fields),
+      })
+      return { http: res.status, body: (await res.text()).slice(0, 200) }
+    }
+    const ids = { allPayLogisticsId: loose.AllPayLogisticsID, cvsPaymentNo: loose.CVSPaymentNo, ...(loose.CVSValidationNo ? { cvsValidationNo: loose.CVSValidationNo } : {}) }
+    console.log(JSON.stringify({
+      step: "update_store_info",
+      subtype,
+      ...(await post("/Express/UpdateStoreInfo", buildUpdateStoreInfoRequest(C2C_SANDBOX, { ...ids, storeType: "01", storeId })))
+    }))
+    if (subtype === "UNIMARTC2C") {
+      console.log(JSON.stringify({
+        step: "cancel_c2c_order",
+        ...(await post("/Express/CancelC2COrder", buildCancelC2COrderRequest(C2C_SANDBOX, { allPayLogisticsId: ids.allPayLogisticsId, cvsPaymentNo: ids.cvsPaymentNo, cvsValidationNo: loose.CVSValidationNo })))
+      }))
+    }
   }
 }

@@ -425,3 +425,83 @@ export function newLogisticsTradeNo(now: Date, randomBytes: Uint8Array): string 
   const stamp = formatTaipeiDate(now).replace(/[/: ]/g, "").slice(2)
   return `DL${stamp}${Array.from(randomBytes.slice(0, 6), (b) => BASE36[b % 36]).join("")}`
 }
+
+// ---- C2C after shipment (P4-11; docs/research/p4-p5-2026-10-13.md §2) ---------------------
+
+// Change the pickup store (StoreType 01, after a 「門市關轉，請重選門市」 status) or our own
+// return/sender store (02). developers.ecpay.com.tw/8907/: success is exactly "1|OK".
+export function buildUpdateStoreInfoRequest(
+  credentials: MerchantCredentials,
+  u: { allPayLogisticsId: string; cvsPaymentNo: string; cvsValidationNo?: string; storeType: "01" | "02"; storeId: string }
+): Record<string, string> {
+  if (!/^[0-9A-Za-z]{1,6}$/.test(u.storeId)) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, "store id must be at most 6 letters/digits")
+  }
+  const fields: Record<string, string> = {
+    MerchantID: credentials.merchantId,
+    AllPayLogisticsID: u.allPayLogisticsId,
+    CVSPaymentNo: u.cvsPaymentNo,
+    ...(u.cvsValidationNo ? { CVSValidationNo: u.cvsValidationNo } : {}),
+    StoreType: u.storeType,
+    ...(u.storeType === "01" ? { ReceiverStoreID: u.storeId } : { ReturnStoreID: u.storeId }),
+  }
+  fields.CheckMacValue = computeCheckMacValue(fields, mac(credentials))
+  return fields
+}
+
+// 7-ELEVEN C2C only (developers.ecpay.com.tw/7412/); not possible once the driver collected it.
+export function buildCancelC2COrderRequest(
+  credentials: MerchantCredentials,
+  c: { allPayLogisticsId: string; cvsPaymentNo: string; cvsValidationNo: string }
+): Record<string, string> {
+  const fields: Record<string, string> = {
+    MerchantID: credentials.merchantId,
+    AllPayLogisticsID: c.allPayLogisticsId,
+    CVSPaymentNo: c.cvsPaymentNo,
+    CVSValidationNo: c.cvsValidationNo,
+  }
+  fields.CheckMacValue = computeCheckMacValue(fields, mac(credentials))
+  return fields
+}
+
+export const isOkReply = (body: string) => body.trim() === "1|OK"
+
+const PRINT_PATHS: Partial<Record<CvsSubtype, string>> = {
+  UNIMARTC2C: "/Express/PrintUniMartC2COrderInfo",
+  FAMIC2C: "/Express/PrintFAMIC2COrderInfo",
+  HILIFEC2C: "/Express/PrintHILIFEC2COrderInfo",
+}
+
+// Shipping slip: ECPay requires a BROWSER form post in a top-level window (no iframe; a server
+// POST stalls) — developers.ecpay.com.tw/7406/, /8848/, /8858/, FAQ /62208/. Signed here so
+// the HashKey never reaches the browser. Batch = comma-joined, same subtype.
+export function buildPrintForm(
+  credentials: MerchantCredentials,
+  environment: LogisticsEnvironment,
+  subtype: CvsSubtype,
+  shipments: { allPayLogisticsId: string; cvsPaymentNo: string; cvsValidationNo?: string }[],
+  printMode?: "1" | "2"
+): { action: string; fields: Record<string, string> } {
+  const path = PRINT_PATHS[subtype]
+  if (!path || !shipments.length) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, `no C2C slip printing for ${subtype}`)
+  }
+  const fields: Record<string, string> = {
+    MerchantID: credentials.merchantId,
+    AllPayLogisticsID: shipments.map((s) => s.allPayLogisticsId).join(","),
+    CVSPaymentNo: shipments.map((s) => s.cvsPaymentNo).join(","),
+  }
+  if (subtype === "UNIMARTC2C") {
+    fields.CVSValidationNo = shipments.map((s) => s.cvsValidationNo ?? "").join(",")
+    if (printMode) fields.PrintMode = printMode
+  }
+  fields.CheckMacValue = computeCheckMacValue(fields, mac(credentials))
+  return { action: `${LOGISTICS_HOSTS[environment]}${path}`, fields }
+}
+
+// Auto-submitting top-level page for the slip (values HTML-escaped).
+export function autoSubmitHtml(form: { action: string; fields: Record<string, string> }): string {
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  const inputs = Object.entries(form.fields).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")
+  return `<!doctype html><meta charset="utf-8"><title>列印託運單</title><form id="f" method="post" action="${esc(form.action)}">${inputs}<noscript><button>列印託運單</button></noscript></form><script>document.getElementById("f").submit()</script>`
+}

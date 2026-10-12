@@ -28,6 +28,7 @@ import type {
 import {
   B2C_CVS_SUBTYPES,
   C2C_CVS_SUBTYPES,
+  buildCancelC2COrderRequest,
   buildCreateShipmentRequest,
   buildQueryLogisticsTradeInfoRequest,
   nameProblem,
@@ -43,6 +44,7 @@ import {
   type CvsSubtype,
 } from "../../lib/ecpay/logistics"
 import type { EcpayLogisticsOptions } from "../../lib/ecpay/config"
+import { postLogistics } from "../../lib/ecpay/logistics-client"
 
 type InjectedDependencies = { logger: Logger }
 
@@ -330,14 +332,35 @@ class EcpayLogisticsProviderService extends AbstractFulfillmentProviderService {
     }
   }
 
-  // Must not throw (it is also the compensation of order fulfillment). Voiding an ECPay
-  // shipment is done in the ECPay back office until the cancel APIs are verified.
+  // Must not throw (it is also the compensation of order fulfillment). 7-ELEVEN C2C is
+  // canceled at ECPay (CancelC2COrder, "1|OK" verified on stage 2026-10-13; impossible once
+  // the driver collected the parcel); FamilyMart / Hi-Life C2C have no cancel API, and any
+  // failure is left to staff in the ECPay back office.
   async cancelFulfillment(data: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (str(data?.ecpay_all_pay_logistics_id)) {
-      this.logger_.error(
-        `[ECPAY-ALERT] void ECPay shipment ${str(data.ecpay_all_pay_logistics_id)} (${str(data.ecpay_merchant_trade_no)}) in the ECPay back office`
-      )
+    const id = str(data?.ecpay_all_pay_logistics_id)
+    if (!id) {
+      return {}
     }
+    if (data.logistics_subtype === "UNIMARTC2C" && str(data.ecpay_cvs_payment_no) && str(data.ecpay_cvs_validation_no)) {
+      const r = await postLogistics(
+        this.options_,
+        "/Express/CancelC2COrder",
+        buildCancelC2COrderRequest(this.credentials, {
+          allPayLogisticsId: id,
+          cvsPaymentNo: str(data.ecpay_cvs_payment_no),
+          cvsValidationNo: str(data.ecpay_cvs_validation_no),
+        })
+      )
+      if (r.ok) {
+        this.logger_.info(`[ecpay-logistics] shipment ${id} (${str(data.ecpay_merchant_trade_no)}) canceled at ECPay`)
+        return { ecpay_canceled_at_ecpay: true }
+      }
+      this.logger_.error(`[ECPAY-ALERT] ECPay refused to cancel shipment ${id} (${r.message}); void it in the ECPay back office`)
+      return {}
+    }
+    this.logger_.error(
+      `[ECPAY-ALERT] void ECPay shipment ${id} (${str(data.ecpay_merchant_trade_no)}) in the ECPay back office (no cancel API for ${str(data.logistics_subtype)})`
+    )
     return {}
   }
 
