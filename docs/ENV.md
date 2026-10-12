@@ -19,7 +19,9 @@
 | `MEDUSA_BACKEND_URL` | 後端對外網址（`https://api.dr.nature.smilelife.tw`，待 DNS） | medusa-config |
 | `MEDUSA_WORKER_MODE` | `server`／`worker` | Medusa worker mode docs |
 | `DISABLE_MEDUSA_ADMIN` | worker 容器設 `true` | Medusa worker mode docs |
-| `ECPAY_ENV` | `stage`／`prod` | 本專案定義 |
+| `ECPAY_ENV` | `stage`／`prod`；未設定時不註冊 ECPay（正式環境 drn-0005 會因此失敗，不會靜默） | 本專案定義 |
+| `ECPAY_API_BASE_URL` | 僅測試／開發：QueryTradeInfo 改打本機替身；`ECPAY_ENV=prod` 時設定會啟動失敗 | 本專案定義（P4-03） |
+| `STOREFRONT_URL` | 前台網址（後端產生 ECPay OrderResultURL／ClientBackURL 用） | 本專案定義（P4-03） |
 | `ECPAY_MERCHANT_ID` 🔒 | 綠界金流特店編號 | ECPay 文件 |
 | `ECPAY_HASH_KEY` 🔒 | 綠界金流 HashKey | ECPay 文件 |
 | `ECPAY_HASH_IV` 🔒 | 綠界金流 HashIV | ECPay 文件 |

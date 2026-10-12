@@ -13,6 +13,16 @@ export REDIS_URL=
 export JWT_SECRET="test-jwt-not-secret"
 export COOKIE_SECRET="test-cookie-not-secret"
 
+export MEDUSA_BACKEND_URL="http://localhost:9000"
+export STOREFRONT_URL="http://localhost:8000"
+# ECPay PUBLIC sandbox merchant published by ECPay (developers.ecpay.com.tw/2856/); not a secret.
+# QueryTradeInfo is answered by a local stub started in the ECPay integration spec.
+export ECPAY_ENV="stage"
+export ECPAY_MERCHANT_ID="3002607"
+export ECPAY_HASH_KEY="pwFHCqoQZGmho4w6"
+export ECPAY_HASH_IV="EkRm7iFT261dpevs"
+export ECPAY_API_BASE_URL="http://127.0.0.1:56390"
+
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "$#" -gt 0 ]; then
   exec "$@"
 fi

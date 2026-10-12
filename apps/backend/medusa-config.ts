@@ -1,5 +1,6 @@
 import { readFileSync } from "fs"
 import { MedusaError, loadEnv, defineConfig } from "@medusajs/framework/utils"
+import { ecpayOptionsFromEnv } from "./src/lib/ecpay/config"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
@@ -73,6 +74,22 @@ const redisModules = redisUrl
   ]
   : []
 
+// ECPay payment provider (pp_ecpay_ecpay). Registered only when ECPAY_ENV is set, so
+// image builds need no credentials. Production cannot silently run without it: the
+// drn-0005 migration script fails if the provider is missing.
+const paymentModules = process.env.ECPAY_ENV
+  ? [
+    {
+      resolve: "@medusajs/medusa/payment",
+      options: {
+        providers: [
+          { resolve: "./src/modules/ecpay", id: "ecpay", options: ecpayOptionsFromEnv() },
+        ],
+      },
+    },
+  ]
+  : []
+
 module.exports = defineConfig({
   projectConfig: {
     databaseUrl,
@@ -96,5 +113,5 @@ module.exports = defineConfig({
   // registered, so the flag alone leaves the module disabled; the explicit module entry
   // below replaces the default (disabled) one. Verified in @medusajs/framework 2.21.2.
   featureFlags: { rbac: true },
-  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }],
+  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, ...paymentModules],
 })

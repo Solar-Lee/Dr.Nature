@@ -14,6 +14,13 @@ export AUTH_CORS="http://localhost:8000,http://localhost:9000"
 export MEDUSA_BACKEND_URL="http://localhost:9000"
 export MEDUSA_WORKER_MODE="shared"
 
+export STOREFRONT_URL="http://localhost:8000"
+# ECPay PUBLIC sandbox merchant published by ECPay (developers.ecpay.com.tw/2856/); not a secret.
+export ECPAY_ENV="stage"
+export ECPAY_MERCHANT_ID="3002607"
+export ECPAY_HASH_KEY="pwFHCqoQZGmho4w6"
+export ECPAY_HASH_IV="EkRm7iFT261dpevs"
+
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "$#" -gt 0 ]; then
   exec "$@"
 fi
