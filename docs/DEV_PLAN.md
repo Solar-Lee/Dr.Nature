@@ -100,7 +100,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-01 | **輪替已外露的憑證**：LINE OA Channel secret／Access token（曾寫在 Pages 檔）；`3. Key/key.md` 內與本專案無關的金鑰另存他處 | 安全 |
 | U-02 | 申請綠界特店（金流＋物流＋電子發票），取得正式金鑰後親手寫入主機 `.env` | P4 正式切換 |
 | U-03 | 選定簡訊商（建議三竹 Mitake 或 Every8d）並開通帳號 | P8 簡訊 |
-| U-04 | Vercel：建立或指定團隊（商用需 Pro）；Supabase：核准建立新專案 `drn-prod`（Pro，避免閒置暫停） | P0-08、P0-09 |
+| U-04 | Vercel：建立或指定團隊（商用需 Pro）；Supabase：核准建立新專案 `drn-prod`（Pro，避免閒置暫停）。**2026-10-13 查：Supabase 組織「Alex-Lee's Org」是 Free 方案，已有 2 個運作中的專案（kol-groupbuy-system、natrees-line-oa），再建一個會碰到免費方案的上限，且免費專案閒置會暫停 → 需要 Aki 把組織升級 Pro，或另開一個 Pro 組織給 drn-prod** | P0-08、P0-09、P12-06 |
 | U-05 | DNS：`dr.nature.smilelife.tw` 改 CNAME 到 Vercel；新增 `api.dr.nature.smilelife.tw` A 記錄 → 151.145.69.134（DNS only，不走代理） | P12 |
 | U-06 | GS1 Taiwan 申請商品條碼（EAN-13），三個 SKU 各一 | P2 包裝定稿 |
 | U-07 | 食品業者登錄字號（非登）、產品責任險、委託製造廠資料（廠名、地址、許可） | 標示定稿 |
@@ -111,6 +111,9 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-12 | 研發長肖像與名義使用的書面同意（官網、廣告、包裝） | P7 信任區塊 |
 | U-13 | 綠界物流寄件人：**個人姓名**（2-5 個中文字；C2C 未取件退回寄件門市須出示身分證領取，綠界規定勿填公司名，developers.ecpay.com.tw/8809/）＋手機；並向綠界確認 C2C 合約是否含黑貓宅配 | P4-05 正式切換、宅配上架 |
 | U-14 | 綠界**正式**發票後台：【發票通知方式設定】開啟開立、作廢、中獎通知（Email）給買受人（測試環境不寄，無法替你驗證）；確認是否開通超商 kiosk 列印中獎發票 | 發票上線（要點第二十四點中獎通知義務） |
+| U-15 | 每瓶貨本（COGS）、首批產量、贈品成本（GTM 與會員制的毛利 50% 閘門、R5 都要用） | P1-07、P5-02、P5-07 定案 |
+| U-16 | 綠界廠商後台：把正式主機對外 IP 加入 TradeNoAio（對帳檔下載）的 IP 白名單 | P4-07 正式對帳 |
+| U-17 | LINE Developers：Login channel 的 Callback URL、連結官方帳號（加好友提示）、（選擇性）申請 Email 權限；Google Cloud：OAuth 重新導向 URI。網址見 [ops/customer-login.md](ops/customer-login.md) §4 | P5-01 正式登入 |
 
 ## 7. 任務清單（最小執行單位）
 
@@ -129,7 +132,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P0-07 | 可信的測試入口 `scripts/test-all.sh`：萬用字元找測試、判離場碼、併 stderr、任一失敗即失敗 | C | P0-06 | 故意放一支斷言失敗、一支載入期崩潰的測試 → 兩次都離場碼 ≠ 0；移除後 = 0 | `git revert` | ✅ |
 | P0-08 | 建 Supabase 專案 `drn-prod`（區域：東京或新加坡）；記錄連線方式到 ENV（值由 Aki 填） | C＋U | U-04 | Supabase MCP `get_project` 回傳狀態 ACTIVE_HEALTHY | 刪專案（Aki） | ⛔ |
 | P0-09 | Vercel 專案 `drn-storefront` 連 GitHub repo（root `apps/storefront`） | C＋U | U-04、P7-01 | Preview 部署成功、URL 回 200 | 刪專案 | ⛔ |
-| P0-10 | GitHub Actions CI：install → lint → typecheck → `scripts/test-all.sh` → build | C | P0-07 | 開一個故意壞掉的 PR → CI 紅；修好 → 綠 | 刪 workflow | ⬜ |
+| P0-10 | GitHub Actions CI：install → lint → typecheck → `scripts/test-all.sh` → build | C | P0-07 | 開一個故意壞掉的 PR → CI 紅；修好 → 綠 | 刪 workflow | 🟡 workflow 已提交（f488cf4；Postgres 16 service、actions 釘選 2 週以上的 release SHA）；同一流程在本機 `scripts/test-all.sh` 全綠。**驗收要 Aki**：push 後開一個故意壞掉的 PR → CI 紅，修好 → 綠 |
 
 ### P1 品牌策略與文字（C）／視覺識別（D）
 
@@ -137,11 +140,11 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 |---|---|---|---|---|---|---|
 | P1-01 | 法規研究：一般食品允許例句、禁用詞、健康食品路徑、標示、代言規範 → `docs/research/regulatory.md`（每條附官方來源） | C | — | 每條規則都有來源網址；無來源者標「未驗證」 | 刪檔 | ✅ |
 | P1-02 | 合規用詞表 `docs/compliance/claims.md` ＋ 自動掃描腳本 `scripts/claims-lint.mjs`（掃 `content/` 與前台字串） | C | P1-01 | 放一句「改善便秘」到測試檔 → 腳本離場碼 ≠ 0 | `git revert` | ✅ |
-| P1-03 | 品牌故事／精神／語調 3 版 → 迭代 → 推薦 1 版 `content/brand/story.md` | C | P1-02 | 三版並列＋評分表；全文過 claims-lint | `git revert` | ⬜ |
-| P1-04 | Slogan 3 版 → 推薦 1 版 `content/brand/slogan.md` | C | P1-02 | 同上；中英各一 | `git revert` | ⬜ |
+| P1-03 | 品牌故事／精神／語調 3 版 → 迭代 → 推薦 1 版 `content/brand/story.md` | C | P1-02 | 三版並列＋評分表；全文過 claims-lint | `git revert` | ✅ 三版並列＋三位評審（A 45.83／C 44.17／B 36.33）＋推薦版，claims-lint 0（45a6953）。**G5 待 Aki 選定**；提到研發長的句子標〔需 U-12 同意〕 |
+| P1-04 | Slogan 3 版 → 推薦 1 版 `content/brand/slogan.md` | C | P1-02 | 同上；中英各一 | `git revert` | ✅ 三版＋推薦「少說一點，說準一點。／Say less. Say it exactly.」（e205ee1）。G5 待 Aki 選定 |
 | P1-05 | 研發長查證頁 `docs/research/cro.md`：只收錄來源網頁實際寫到的經歷 | C | — | 每一句有來源；論文、專利未查證者標「未驗證」 | 刪檔 | ✅ |
 | P1-06 | 市場與競品研究 `docs/research/market.md` | C | — | 價格、通路數字都有來源 | 刪檔 | ✅ |
-| P1-07 | 通路與行銷策略 `docs/strategy/go-to-market.md`（官網、團購、平台、LINE、廣告；價格帶與團購價政策；90 天節奏） | C | P1-06、G2 | 每個數字可追溯到 market.md；策略項目標明「分析」而非事實 | `git revert` | ⬜ |
+| P1-07 | 通路與行銷策略 `docs/strategy/go-to-market.md`（官網、團購、平台、LINE、廣告；價格帶與團購價政策；90 天節奏） | C | P1-06、G2 | 每個數字可追溯到 market.md；策略項目標明「分析」而非事實 | `git revert` | 🟡 提案已出（75ba40e）：三份草案、三位評審，混合節奏 C 勝出；每個數字可追溯到 market.md，策略標「分析」。**待 Aki 核准**（另需 G2、U-15 貨本） |
 | D-01～D-03 | 視覺方向、Monogram、Design tokens | D | — | 見 DESIGN_BRIEF §5 | — | ⬜ |
 | P1-08 | 驗收 D-03：tokens.json → `packages/tokens` 產生 CSS 變數與 Tailwind 主題（Style Dictionary） | C | D-03 | `pnpm --filter tokens build` 零錯誤；對比檢查腳本全部 AA | `git revert` | ⛔ |
 
@@ -179,21 +182,23 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P4-04 | 付款方式：信用卡、ATM、超商代碼、Apple Pay（依 ECPay 測試環境實際支援為準） | C | P4-03 | 每種方式在測試環境走完一次，截圖存 `e2e/evidence/` | 停用該方式 | 🟡 程式完成（ATM／超商代碼／條碼＋PaymentInfoURL，22 支整合＋121 支單元，含反向測試）；**真實綠界測試環境已接受四種簽章表單、QueryTradeInfo 格式與簽章已驗證**（docs/research/ecpay-stage-probe-2026-10-13.md）；剩餘：公開網址後的完整回呼與付款截圖（stage 需開 `ECPAY_ACCEPT_SIMULATED_PAYMENTS`） |
 | P4-05 | Fulfillment provider `ecpay-logistics`：7-11／全家／萊爾富超商取貨（電子地圖選店）、宅配 | C | P4-01 | 測試環境：選店 → 建物流單 → 取得托運單號 | 停用 provider | 🟡 程式完成＋審查修正（docs/reviews/2026-10-13-p4-05-ecpay-logistics.md；23 支整合＋75 支單元，10 個反向測試皆轉紅）；**真實綠界測試環境：三家 C2C 建單成功且回應簽章驗證通過；經我方 provider＋Medusa 出貨流程取得托運單號 D8844528-4456**（docs/research/ecpay-logistics-stage-probe-2026-10-13.md；QueryLogisticsTradeInfo 亦已實測）；剩餘：公開網址後的狀態通知與選店回傳（stage 不推送狀態）、正式寄件人（U-13）；宅配選項已建立但未上架 |
 | P4-06 | 電子發票：付款成功後開立（載具：手機條碼／自然人憑證／會員；捐贈碼；統編） | C | P4-03 | 測試環境開立 → 回傳發票號碼寫入訂單 metadata；作廢流程測一次 | 停用訂閱者 | 🟡 程式完成＋審查修正（docs/reviews/2026-10-13-p4-06-ecpay-invoice.md；27 支整合＋55 支單元，反向測試 23 個皆轉紅）；**真實綠界 stage：經我方訂閱者開立 LO22068054 並以我方作廢流程作廢，GetIssue 確認**（docs/research/ecpay-invoice-p4-06.md）；作廢需買受人同意（要點第九點）、有效訂單只能作廢＋重開；剩餘：正式商店與通知設定（U-02、U-14）、前台發票選項與告知事項（P7-05） |
-| P4-07 | 冪等與對帳：同一回呼重送兩次只入帳一次；每日對帳腳本 | C | P4-03 | 測試：同一 payload 重送 → 第二次 no-op | `git revert` | 🟡 重送冪等已測（duplicate notice → 同一筆付款）；對帳排程未做 |
-| P4-08 | 信用卡退款自動化：CreditDetail/DoAction（**僅正式環境有此 API，測試環境無法驗證**）＋先查卡片明細決定 R／N／E；完成前退款一律在綠界廠商後台手動處理 | C＋U | P4-03、U-02 | 以第一筆真實小額交易做一次退款並對帳；之前 `refundPayment` 一律拒絕並提示後台退款（已有測試） | 改回拒絕 | ⬜ |
-| P4-09 | 未付款訂單：信用卡 N 分鐘未付自動取消並釋放庫存；訂單頁「重新付款」產生新 MerchantTradeNo（舊編號不可重用） | C | P4-03、G-付款時限（Aki 決定 N） | 整合測試：逾時訂單被取消、庫存回補；重新付款可成功 | 停用排程 | ⬜ |
-| P4-10 | 對帳排程：定期以 QueryTradeInfo 查詢待付款訂單（遵守頻率限制，過快會被擋 30 分鐘），補抓漏掉的 ReturnURL | C | P4-03 | 替身測試：回呼遺失 → 排程補登為已付款 | 停用排程 | ⬜ |
-| P4-11 | C2C 出貨後續：門市關轉時讓顧客重選門市（UpdateStoreInfo）、7-ELEVEN C2C 取消（CancelC2COrder）、後台列印託運單、寄件期限 SOP（7-11 5 日／全家 6 日／萊爾富 7 日） | C＋U | P4-05、P7-05 | 替身測試：關轉通知 → 顧客重選 → 呼叫 UpdateStoreInfo；7-11 取消出貨 → 呼叫 CancelC2COrder | 停用功能（回到告警＋後台處理） | ⬜ |
+| P4-07 | 冪等與對帳：同一回呼重送兩次只入帳一次；每日對帳腳本 | C | P4-03 | 測試：同一 payload 重送 → 第二次 no-op | `git revert` | ✅ 重送冪等（同一通知只入帳一次）＋每日對帳 TradeNoAio（cd4b44e）：只算 DN 開頭的交易；漏登 → 嚴格查詢後補登；金額不符、找不到 session、已收款卻不在清單 → 告警（7 支整合＋5 支單元，反向測試 D1–D5 皆轉紅）。**正式環境需 U-16** |
+| P4-08 | 信用卡退款自動化：CreditDetail/DoAction（**僅正式環境有此 API，測試環境無法驗證**）＋先查卡片明細決定 R／N／E；完成前退款一律在綠界廠商後台手動處理 | C＋U | P4-03、U-02 | 以第一筆真實小額交易做一次退款並對帳；之前 `refundPayment` 一律拒絕並提示後台退款（已有測試） | 改回拒絕 | 🟡 程式完成、預設關閉（`ECPAY_AUTO_REFUND`，6831739）：先查卡片明細決定 N／C+R／E+N／R，判斷不了就轉人工；25 支單元，反向測試 R1–R5 皆轉紅。**這個 API 只有正式環境有**：第一筆真實小額交易退款驗證後才開（U-02） |
+| P4-09 | 未付款訂單：信用卡 N 分鐘未付自動取消並釋放庫存；訂單頁「重新付款」產生新 MerchantTradeNo（舊編號不可重用） | C | P4-03 | 整合測試：逾時訂單被取消、庫存回補；重新付款可成功 | 停用排程 | ✅ 取消前先嚴格查詢綠界（已付 → 補登；查不到 → 保留）；ATM／超商代碼依繳費期限加寬限；重新付款（擁有者檢查、鎖、代碼仍有效時 409）（088bd5c；9 支整合，反向測試 U1–U6 皆轉紅）。**信用卡逾時預設 180 分鐘（`ECPAY_UNPAID_CANCEL_MINUTES`），待 Aki 決定**；自動取消不回補促銷使用次數（Medusa 2.21.2 限制，SOP 已註明） |
+| P4-10 | 對帳排程：定期以 QueryTradeInfo 查詢待付款訂單（遵守頻率限制，過快會被擋 30 分鐘），補抓漏掉的 ReturnURL | C | P4-03 | 替身測試：回呼遺失 → 排程補登為已付款 | 停用排程 | ✅ 信用卡付款在 40／120／1440 分鐘補查 QueryTradeInfo；403 時全域暫停 30 分鐘；離線付款不輪詢（a20bf60；8 支整合） |
+| P4-11 | C2C 出貨後續：門市關轉時讓顧客重選門市（UpdateStoreInfo）、7-ELEVEN C2C 取消（CancelC2COrder）、後台列印託運單、寄件期限 SOP（7-11 5 日／全家 6 日／萊爾富 7 日） | C＋U | P4-05、P7-05 | 替身測試：關轉通知 → 顧客重選 → 呼叫 UpdateStoreInfo；7-11 取消出貨 → 呼叫 CancelC2COrder | 停用功能（回到告警＋後台處理） | ✅ 顧客重選門市（UpdateStoreInfo 01）、我方退件門市（02，營運權限）、7-11 取消（CancelC2COrder）、後台列印託運單、SOP [ops/ecpay-logistics-c2c.md](ops/ecpay-logistics-c2c.md)（a718011、0205cd1、721367f）。**真實綠界 stage：UpdateStoreInfo 簽章與回覆格式、CancelC2COrder「1\|OK」已驗證**；反向測試整合 9／10 轉紅（1 個為等價變異）、單元 4／4。剩餘：公開網址後實測關轉通知 |
 
 ### P5 會員、等級、促銷
 
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
-| P5-01 | 會員登入：Email＋密碼、Google、LINE Login | C | P3-01 | e2e：三種方式各登入成功 | 停用 provider | ⬜ |
-| P5-02 | 會員等級提案 `docs/strategy/membership.md`（門檻、權益、降級規則） | C | P1-07 | Aki 核准（U-10） | — | ⬜ |
-| P5-03 | 等級引擎：訂單完成／退款訂閱者 → 重算近 12 個月消費 → 移動客群（customer group） | C | P5-02 | 整合測試：跨門檻訂單 → 升級；退款跌破 → 降級 | 停用訂閱者 | ⛔ |
-| P5-04 | 等級專屬促銷：以 `customer.group.id` 規則建立促銷 | C | P5-03 | 整合測試：非該等級的購物車套用 → 不折抵 | 停用促銷 | ⛔ |
-| P5-05 | 活動促銷範本：滿額折、第二件折、買 X 送 Y、免運、限時、預算上限的 campaign | C | P3-04 | 每種範本一支整合測試 | 停用促銷 | ⬜ |
+| P5-01 | 會員登入：Email＋密碼、Google、LINE Login | C | P3-01 | e2e：三種方式各登入成功 | 停用 provider | ✅ Email＋密碼、Google（Medusa 內建）、LINE Login（自訂 provider）（835e040）：LINE 以替身走完登入、建立會員、再次登入；state 重用／未知／缺少、nonce 不符、其他 channel、其他發行者、錯誤 code、取消同意皆 401；Google 驗到導轉與偽造 state（整合 5、單元 5，反向測試 A1–A8 皆轉紅）。SOP [ops/customer-login.md](ops/customer-login.md)。**真實同意畫面與 Google token 交換：U-17 之後在 P11 e2e 驗** |
+| P5-02 | 會員等級提案 `docs/strategy/membership.md`（門檻、權益、降級規則） | C | P1-07 | Aki 核准（U-10） | — | 🟡 提案已出（3721b2c）：三個等級（會員／回購會員 ≥1,035／長期會員 ≥9,315，近 12 個月已確認淨消費）、確認期、升降級時點、疊加規則 R1–R5、成本模型、個資；CFO＋合規審查 17 項已修。**待 Aki 核准（U-10）** |
+| P5-03 | 等級引擎：每日排程＋退款／取消訂閱者 → 重算近 12 個月已確認淨消費 → 移動客群（customer group） | C | P5-02 | 整合測試：收貨 9 天不升級、11 天升級；退款跌破 → 立即降級；滾出視窗 → 每月 1 日才降級；同時在兩個客群 → 修正為一個；訪客不評估 | 停用訂閱者 | ✅ 等級引擎（7314e87）：每日 03:00 排程＋退款／取消訂閱者；收貨滿 10 天才計入、無物流紀錄則付款後 30 天；到期降級只在每月 1 日；一位會員只在一個等級客群；設定與 membership.md 不一致或不合法 → 拒絕執行；**提案狀態的設定不會在正式環境執行**（整合 6、單元 15） |
+| P5-04 | 等級專屬促銷：以 `customer.groups.id`（運算子 `in`）規則建立會員價；團主碼／首購禮／會員價三擇一 | C | P5-03 | 整合測試：非該等級的購物車套用 → 不折抵 | 停用促銷 | ✅ 會員價範本 `member_price`（a7346b1）：規則 `customer.groups.id`＋`in`（原文 `customer.group.id` 有誤，已更正）；**用代碼而非自動套用**，讓會員能改選團主優惠（R2）；折扣不得超過等級設定；R2 三擇一在結帳時擋（整合：訪客、非等級會員、1 瓶皆不折；2／3／4 瓶每瓶 1,035；會員價＋團主碼被拒） |
+| P5-05 | 活動促銷範本：滿額折、第二件折、買 X 送 Y、免運、限時、預算上限的 campaign | C | P3-04 | 每種範本一支整合測試 | 停用促銷 | ✅ 範本：滿額折、第二件折、買 X 送 Y、免運，可加限時窗口與預算上限（f1b7828）；建立時檢查贈品上限（事業提供贈品贈獎額度辦法 §4，[查證](research/gift-rules-2026-10-13.md)）與商品存在；結帳時 R1 每瓶 ≥1,035（`-X{n}` 組合依瓶數）、R3 含贈品每瓶等值 ≥862.5、R4 每單最多一份贈品（1f1e145）；SOP [ops/promotions.md](ops/promotions.md)。數字為提案，隨 P5-02 核准 |
+| P5-06 | 會員權益其餘部分：生日禮客群（每日同步、每個生日週期一次）、人工調整等級與異動紀錄（操作者、理由、保存期限）、退款原因分類（退貨／善意折讓） | C | P5-02 核准、P5-01（生日月份欄位） | 整合測試：月中升級的壽星當天可領、退款降級後立即失去資格；客服角色不能調整等級 | 停用功能 | ⛔ |
+| P5-07 | 3 入組／6 入組 variant（`-X3`／`-X6`）與會員價（客群 price list，不以「原價減折扣」呈現）；R5 毛利閘門（需貨本） | C | P5-02 核准、U-15 | 整合測試：會員 2 組 X3 → 6,210；非會員看不到 X6 價；把 R5 關掉 → 反向測試轉紅 | 停用 variant | ⛔ |
 
 ### P6 內容：Blog 與 SEO
 
@@ -285,6 +290,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P12-09 | 部署後檢查：既有容器清單、nginx 站台、排程與部署前完全一致（除新增 drn 資源） | C | P12-07 | diff 腳本輸出僅 drn 相關新增 | 依各任務回滾 | ⬜ |
 | P12-10 | 正式站 smoke（只讀）＋一筆真實訂單（Aki 付款後退款） | C＋U | P12-09、U-02 | P11-02 對正式站全綠；真實訂單走完並退款成功 | — | ⬜ |
 | P12-11 | 回滾演練一次（Vercel 回上一版；後端換回上一個映像 tag） | C | P12-10 | 演練紀錄 | — | ⬜ |
+| P12-12 | 暫時頁：`dr.nature.smilelife.tw`（DNS 已指向主機）由主機 nginx 提供靜態「官網準備中」頁＋TLS，取代目前誤顯示的 JADEDROP 站；前台上線（P12-07）時移除（Aki 2026-10-13 選定） | C | P12-01 | `curl -I https://dr.nature.smilelife.tw` → 200、憑證 CN＝dr.nature.smilelife.tw；`nginx -t` 成功；其他 65 個站台設定檔與 nginx.conf 的 md5 前後一致；容器仍 58 個 | 刪 symlink＋`nginx -t`＋`reload`；`certbot delete --cert-name dr.nature.smilelife.tw`；刪 `/var/www/drn` | ⬜ |
 
 ### P13 上市營運
 
