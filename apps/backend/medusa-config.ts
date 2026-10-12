@@ -62,5 +62,10 @@ module.exports = defineConfig({
     disable: process.env.DISABLE_MEDUSA_ADMIN === "true",
     backendUrl: process.env.MEDUSA_BACKEND_URL,
   },
-  modules: [...redisModules],
+  // Admin RBAC (roles per staff function, P3-07) is behind the `rbac` feature flag in
+  // 2.21.2. defineConfig() decides whether to load the RBAC module before core flags are
+  // registered, so the flag alone leaves the module disabled; the explicit module entry
+  // below replaces the default (disabled) one. Verified in @medusajs/framework 2.21.2.
+  featureFlags: { rbac: true },
+  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }],
 })
