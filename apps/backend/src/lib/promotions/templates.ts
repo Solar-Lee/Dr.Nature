@@ -11,6 +11,7 @@
 //  - buyget = buy rules (min quantity) + target rules (apply_to_quantity, max_quantity);
 //  - all our prices are tax inclusive, so fixed amounts are created with is_tax_inclusive
 //    (otherwise NT$200 off would be applied before the 5% tax, i.e. NT$210 off).
+import { MedusaError } from "@medusajs/framework/utils"
 import { z } from "@medusajs/framework/zod"
 import type { CreateCampaignDTO, CreatePromotionDTO, CreatePromotionRuleDTO } from "@medusajs/framework/types"
 
@@ -32,6 +33,10 @@ const WINDOW = z
 // Campaign budget: "usage" = number of orders, "spend" = NT$ of discount given.
 const BUDGET = z.object({ type: z.enum(["usage", "spend"]), limit: TWD })
 
+// What kind of offer this is. 團主碼, 首購禮 and 會員價 are mutually exclusive in one order
+// (membership.md §6.1 R2; checked at checkout, src/lib/pricing/offer-rules.ts).
+export const OFFERS = ["campaign", "kol_code", "first_order_gift", "member_price"] as const
+
 const COMMON = {
   code: CODE,
   name: z.string().trim().min(1).max(80),
@@ -42,6 +47,7 @@ const COMMON = {
   automatic: z.boolean().default(false),
   // Per-promotion cap on uses (orders), on top of any campaign budget.
   limit: z.number().int().positive().optional(),
+  offer: z.enum(["campaign", "kol_code", "first_order_gift"]).default("campaign"),
 }
 
 export const TEMPLATE_SCHEMA = z.discriminatedUnion("template", [
@@ -85,6 +91,20 @@ export const TEMPLATE_SCHEMA = z.discriminatedUnion("template", [
     ...COMMON,
     min_total_twd: TWD.optional(),
   }),
+  // [P5-04] 會員價: percent off the listed products for members of the given tiers (customer
+  // groups, rule customer.groups.id in [...]), optionally from a cart total. A CODE, not
+  // automatic: Medusa re-adds automatic promotions on every cart refresh, so a member could
+  // never choose a group-leader offer instead (R2). The storefront applies the code for
+  // eligible members (P7). The route caps percent_off at the tiers' configured discount.
+  z.object({
+    template: z.literal("member_price"),
+    ...COMMON,
+    automatic: z.literal(false).default(false),
+    tiers: z.array(z.string().min(1)).min(1),
+    product_ids: IDS,
+    percent_off: PERCENT,
+    min_total_twd: TWD.optional(),
+  }),
 ])
 
 export type TemplateInput = z.input<typeof TEMPLATE_SCHEMA>
@@ -108,7 +128,8 @@ function campaignFor(t: Template): CreateCampaignDTO | undefined {
   }
 }
 
-export function buildPromotion(t: Template): CreatePromotionDTO {
+// tierGroups: tier code -> customer group id (member_price only; see lib/membership/engine.ts).
+export function buildPromotion(t: Template, tierGroups: Map<string, string> = new Map()): CreatePromotionDTO {
   const campaign = campaignFor(t)
   const base = {
     code: t.code,
@@ -117,7 +138,7 @@ export function buildPromotion(t: Template): CreatePromotionDTO {
     is_tax_inclusive: true,
     ...(t.limit ? { limit: t.limit } : {}),
     ...(campaign ? { campaign } : {}),
-    metadata: { drn_template: t.template, drn_name: t.name },
+    metadata: { drn_template: t.template, drn_name: t.name, drn_offer: t.template === "member_price" ? "member_price" : t.offer },
   }
   switch (t.template) {
     case "spend_threshold":
@@ -168,6 +189,28 @@ export function buildPromotion(t: Template): CreatePromotionDTO {
           target_rules: [productRule(t.gift_product_ids)],
         },
       }
+    case "member_price": {
+      const groups = t.tiers.map((code) => tierGroups.get(code))
+      if (groups.some((g) => !g)) {
+        throw new MedusaError(MedusaError.Types.INVALID_DATA, `member_price: no customer group for tier(s) ${t.tiers.filter((c, i) => !groups[i]).join(", ")}`)
+      }
+      return {
+        ...base,
+        type: "standard",
+        rules: [
+          { attribute: "customer.groups.id", operator: "in", values: groups as string[] },
+          ...(t.min_total_twd ? [minTotalRule(t.min_total_twd)] : []),
+        ],
+        application_method: {
+          type: "percentage",
+          target_type: "items",
+          allocation: "across",
+          value: t.percent_off,
+          currency_code: "twd",
+          target_rules: [productRule(t.product_ids)],
+        },
+      }
+    }
     case "free_shipping":
       return {
         ...base,

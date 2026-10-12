@@ -1,15 +1,21 @@
 // [P5-05] Create a campaign promotion from a template (src/lib/promotions/templates.ts).
 // RBAC: promotion:create + campaign:create (middlewares.ts; operations and Super Admin).
-// Body: { template: "spend_threshold" | "nth_item" | "buy_x_get_y" | "free_shipping", code,
+// Body: { template: "spend_threshold" | "nth_item" | "buy_x_get_y" | "free_shipping" | "member_price", code,
 // name, window?, budget?, automatic?, limit?, ...template fields }. SOP: docs/ops/promotions.md.
 import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { createPromotionsWorkflow } from "@medusajs/medusa/core-flows"
+import { loadTierConfig } from "../../../lib/membership/config"
+import { tierGroupIds } from "../../../lib/membership/engine"
 import { TEMPLATE_SCHEMA, buildPromotion, giftValueProblem, type PriceRange, type Template } from "../../../lib/promotions/templates"
 
 const productIdsOf = (t: Template): string[] =>
-  t.template === "nth_item" ? t.product_ids : t.template === "buy_x_get_y" ? [...t.buy_product_ids, ...t.gift_product_ids] : []
+  t.template === "nth_item" || t.template === "member_price"
+    ? t.product_ids
+    : t.template === "buy_x_get_y"
+      ? [...t.buy_product_ids, ...t.gift_product_ids]
+      : []
 
 // TWD price range of each product (over its variants), for the gift cap; unknown ids are absent.
 async function productPrices(container: MedusaContainer, ids: string[]): Promise<Map<string, PriceRange>> {
@@ -50,6 +56,21 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
       }
     }
   }
-  const { result } = await createPromotionsWorkflow(req.scope).run({ input: { promotionsData: [buildPromotion(t)] } })
+  let tierGroups = new Map<string, string>()
+  if (t.template === "member_price") {
+    // The tier config is the authority on member discounts (membership.md §10).
+    const c = loadTierConfig()
+    const tiers = t.tiers.map((code) => c.tiers.find((x) => x.code === code))
+    const unknown = t.tiers.filter((code, i) => !tiers[i] || !c.customer_groups[code])
+    if (unknown.length) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `tiers without a customer group: ${unknown.join(", ")}`)
+    }
+    const cap = Math.min(...tiers.map((x) => x!.discount_percent))
+    if (t.percent_off > cap) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `percent_off ${t.percent_off} exceeds the tier discount ${cap}% (membership config)`)
+    }
+    tierGroups = await tierGroupIds(req.scope, c)
+  }
+  const { result } = await createPromotionsWorkflow(req.scope).run({ input: { promotionsData: [buildPromotion(t, tierGroups)] } })
   res.status(201).json({ promotion: result[0] })
 }

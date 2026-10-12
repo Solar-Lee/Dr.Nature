@@ -1,5 +1,5 @@
 // [P5-05] Promotion templates (one test per template), 限時 window, campaign budget, price
-// floor, RBAC. Promotions are created through POST /admin/promotion-templates by an
+// floor, RBAC. [P5-04] Member price for tier customer groups; one-offer rule (R2). Promotions are created through POST /admin/promotion-templates by an
 // "operations" user and used through the Store API exactly as the storefront will.
 //
 // What these tests cannot prove: how the storefront words a promotion (原價, 限時 period),
@@ -9,11 +9,13 @@
 //   NODE_OPTIONS=--experimental-vm-modules pnpm exec jest --runInBand --forceExit integration-tests/http/promotions.spec.ts
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
 import { Modules } from "@medusajs/framework/utils"
-import { createProductsWorkflow, createShippingOptionsWorkflow } from "@medusajs/medusa/core-flows"
+import { createProductsWorkflow, createShippingOptionsWorkflow, linkCustomerGroupsToCustomerWorkflow } from "@medusajs/medusa/core-flows"
 import devAddTestStock from "../../src/scripts/dev-add-test-stock"
 import catalog from "../../src/data/catalog.json"
 import { ECPAY_PROVIDER_ID } from "../../src/lib/ecpay/config"
 import { FULFILLMENT_SET_NAME, SALES_CHANNELS } from "../../src/lib/drn-setup"
+import { loadTierConfig } from "../../src/lib/membership/config"
+import { tierGroupIds } from "../../src/lib/membership/engine"
 import { addTestShipping, makeCheckoutHelpers, runAllSeeds } from "../helpers/ecpay-checkout"
 
 jest.setTimeout(180 * 1000)
@@ -22,7 +24,7 @@ const HOUR = 3600 * 1000
 
 medusaIntegrationTestRunner({
   testSuite: ({ api, getContainer }) => {
-    const { storeHeaders, superAdminHeaders } = makeCheckoutHelpers({ api, getContainer })
+    const { storeHeaders, superAdminHeaders, registerCustomer } = makeCheckoutHelpers({ api, getContainer })
 
     beforeAll(async () => {
       const container = getContainer()
@@ -78,9 +80,9 @@ medusaIntegrationTestRunner({
       return api.post("/admin/promotion-templates", body, { headers, validateStatus: () => true })
     }
 
-    // A cart with lines [variantId, quantity], optional shipping option (by name).
-    const makeCart = async (lines: [string, number][], shipping = "Test home delivery") => {
-      const headers = await storeHeaders()
+    // A cart with lines [variantId, quantity], optional shipping option (by name) and shopper.
+    const makeCart = async (lines: [string, number][], shipping = "Test home delivery", shopper?: Record<string, string>) => {
+      const headers = shopper ?? (await storeHeaders())
       const { data: r } = await api.get("/store/regions", { headers })
       const { data: c } = await api.post(
         "/store/carts",
@@ -108,14 +110,14 @@ medusaIntegrationTestRunner({
       await api.post(`/store/carts/${cartId}/shipping-methods`, { option_id: option.id }, { headers })
       return cartId
     }
-    const applyCode = async (cartId: string, code: string) =>
-      api.post(`/store/carts/${cartId}/promotions`, { promo_codes: [code] }, { headers: await storeHeaders(), validateStatus: () => true })
-    const totals = async (cartId: string) => {
-      const { data } = await api.get(`/store/carts/${cartId}`, { headers: await storeHeaders() })
+    const applyCode = async (cartId: string, code: string, shopper?: Record<string, string>) =>
+      api.post(`/store/carts/${cartId}/promotions`, { promo_codes: [code] }, { headers: shopper ?? (await storeHeaders()), validateStatus: () => true })
+    const totals = async (cartId: string, shopper?: Record<string, string>) => {
+      const { data } = await api.get(`/store/carts/${cartId}`, { headers: shopper ?? (await storeHeaders()) })
       return { total: Number(data.cart.total), discount: Number(data.cart.discount_total) }
     }
-    const complete = async (cartId: string) => {
-      const headers = await storeHeaders()
+    const complete = async (cartId: string, shopper?: Record<string, string>) => {
+      const headers = shopper ?? (await storeHeaders())
       const { data: pc } = await api.post("/store/payment-collections", { cart_id: cartId }, { headers })
       await api.post(
         `/store/payment-collections/${pc.payment_collection.id}/payment-sessions`,
@@ -229,6 +231,79 @@ medusaIntegrationTestRunner({
       const res = await complete(cart)
       expect(res.status).toEqual(400)
       expect(res.data.message).toContain("折扣上限")
+    })
+
+    // ---- P5-04 -------------------------------------------------------------------------
+    const memberIn = async (email: string, tier?: string) => {
+      const m = await registerCustomer(email)
+      if (tier) {
+        const groups = await tierGroupIds(getContainer(), loadTierConfig())
+        await linkCustomerGroupsToCustomerWorkflow(getContainer()).run({ input: { id: m.customerId, add: [groups.get(tier)!] } })
+      }
+      return m
+    }
+    const memberPrice = async (code = "MEMBER-PRICE") => {
+      const ids = await Promise.all(catalog.products.map((p) => product(p.handle)))
+      return createTemplate({ template: "member_price", code, name: "會員回購價", tiers: ["repeat", "loyal"], product_ids: ids.map((p) => p.id), percent_off: 10, min_total_twd: 2300 })
+    }
+
+    it("會員價: tier members with 2+ bottles pay NT$1,035 each; other shoppers and single bottles do not", async () => {
+      const b = await bottle()
+      expect((await memberPrice()).status).toEqual(201)
+      const guestCart = await makeCart([[b.variantId, 2]])
+      await applyCode(guestCart, "MEMBER-PRICE")
+      expect(await totals(guestCart)).toEqual({ total: 2300, discount: 0 })
+
+      const plain = await memberIn("plain-member@drn.test")
+      const plainCart = await makeCart([[b.variantId, 2]], undefined, plain.headers)
+      await applyCode(plainCart, "MEMBER-PRICE", plain.headers)
+      expect(await totals(plainCart, plain.headers)).toEqual({ total: 2300, discount: 0 })
+
+      const repeat = await memberIn("repeat-member@drn.test", "repeat")
+      const one = await makeCart([[b.variantId, 1]], undefined, repeat.headers)
+      await applyCode(one, "MEMBER-PRICE", repeat.headers)
+      expect(await totals(one, repeat.headers)).toEqual({ total: 1150, discount: 0 })
+      const two = await makeCart([[b.variantId, 2]], undefined, repeat.headers)
+      await applyCode(two, "MEMBER-PRICE", repeat.headers)
+      expect(await totals(two, repeat.headers)).toEqual({ total: 2070, discount: 230 })
+      expect((await complete(two, repeat.headers)).data.type).toEqual("order") // exactly the floor
+
+      const loyal = await memberIn("loyal-member@drn.test", "loyal")
+      const three = await makeCart([[b.variantId, 3]], undefined, loyal.headers)
+      await applyCode(three, "MEMBER-PRICE", loyal.headers)
+      expect(await totals(three, loyal.headers)).toEqual({ total: 3105, discount: 345 })
+      const four = await makeCart([[b.variantId, 4]], undefined, loyal.headers)
+      await applyCode(four, "MEMBER-PRICE", loyal.headers)
+      expect(await totals(four, loyal.headers)).toEqual({ total: 4140, discount: 460 }) // every bottle, not just one
+    })
+
+    it("會員價 cannot exceed the tiers' configured discount or name a tier without a group", async () => {
+      const b = await bottle()
+      const over = await createTemplate({ template: "member_price", code: "MEMBER-15", name: "x", tiers: ["repeat"], product_ids: [b.id], percent_off: 15 })
+      expect(over.status).toEqual(400)
+      expect(over.data.message).toContain("exceeds the tier discount 10%")
+      const entry = await createTemplate({ template: "member_price", code: "MEMBER-ALL", name: "x", tiers: ["member"], product_ids: [b.id], percent_off: 5 })
+      expect(entry.status).toEqual(400)
+      expect(entry.data.message).toContain("member")
+    })
+
+    it("R2: a group-leader code and the member price cannot share one order", async () => {
+      const b = await bottle()
+      const g = await product("test-gift")
+      expect((await memberPrice("MEMBER-R2")).status).toEqual(201)
+      expect((await createTemplate({ template: "buy_x_get_y", code: "GL-AMY-W1", name: "團主 Amy 第一檔", offer: "kol_code", buy_product_ids: [b.id], buy_quantity: 2, gift_product_ids: [g.id] })).status).toEqual(201)
+      const m = await memberIn("r2-member@drn.test", "repeat")
+      const cart = await makeCart([[b.variantId, 2], [g.variantId, 1]], undefined, m.headers)
+      await applyCode(cart, "MEMBER-R2", m.headers)
+      await applyCode(cart, "GL-AMY-W1", m.headers)
+      expect((await totals(cart, m.headers)).discount).toEqual(530) // 230 member price + 300 gift
+      const res = await complete(cart, m.headers)
+      expect(res.status).toEqual(400)
+      expect(res.data.message).toContain("只能擇一")
+      // The same leader code alone is fine for this member.
+      const alone = await makeCart([[b.variantId, 2], [g.variantId, 1]], undefined, m.headers)
+      await applyCode(alone, "GL-AMY-W1", m.headers)
+      expect((await complete(alone, m.headers)).data.type).toEqual("order")
     })
 
     it("R3: a legal gift (half a bottle) still breaks the 75% value floor; R4: two free gifts are refused", async () => {

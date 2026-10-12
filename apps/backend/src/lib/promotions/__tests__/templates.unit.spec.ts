@@ -135,3 +135,37 @@ describe("gift value cap (事業提供贈品贈獎額度辦法 §4)", () => {
     expect(giftValueProblem(t(), new Map([["a", { min: 1150, max: 1150 }]]))).toMatch(/no TWD price for product\(s\) g/)
   })
 })
+
+describe("member price (P5-04)", () => {
+  const groups = new Map([["repeat", "cusgroup_r"], ["loyal", "cusgroup_l"]])
+
+  it("is a code limited to the tier groups (customer.groups.id in), tax-inclusive percent across the bottles", () => {
+    const p = buildPromotion(
+      parse({ template: "member_price", code: "MEMBER-PRICE", name: "會員回購價", tiers: ["repeat", "loyal"], product_ids: ["prod_a"], percent_off: 10, min_total_twd: 2300 }),
+      groups
+    )
+    expect(p).toMatchObject({
+      code: "MEMBER-PRICE",
+      type: "standard",
+      is_automatic: false,
+      is_tax_inclusive: true,
+      rules: [
+        { attribute: "customer.groups.id", operator: "in", values: ["cusgroup_r", "cusgroup_l"] },
+        { attribute: "original_item_total", operator: "gte", values: "2300" },
+      ],
+      application_method: { type: "percentage", value: 10, target_type: "items", allocation: "across", target_rules: [{ attribute: "items.product.id", operator: "in", values: ["prod_a"] }] },
+      metadata: { drn_offer: "member_price" },
+    })
+  })
+
+  it("cannot be automatic, and needs a group for every tier", () => {
+    expect(TEMPLATE_SCHEMA.safeParse({ template: "member_price", code: "MP1", name: "x", tiers: ["repeat"], product_ids: ["a"], percent_off: 10, automatic: true }).success).toBe(false)
+    expect(() => buildPromotion(parse({ template: "member_price", code: "MP2", name: "x", tiers: ["member"], product_ids: ["a"], percent_off: 5 }), groups)).toThrow(/no customer group for tier\(s\) member/)
+  })
+
+  it("other templates carry their offer kind (campaign by default)", () => {
+    expect(buildPromotion(parse({ template: "free_shipping", code: "SHIP1", name: "x" })).metadata).toMatchObject({ drn_offer: "campaign" })
+    expect(buildPromotion(parse({ template: "free_shipping", code: "GL-1", name: "x", offer: "kol_code" })).metadata).toMatchObject({ drn_offer: "kol_code" })
+    expect(TEMPLATE_SCHEMA.safeParse({ template: "free_shipping", code: "SHIP2", name: "x", offer: "member_price" }).success).toBe(false)
+  })
+})
