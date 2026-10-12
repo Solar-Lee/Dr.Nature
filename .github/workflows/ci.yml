@@ -1,0 +1,58 @@
+# [P0-10] CI: same entry point as local runs (scripts/test-all.sh) + backend build.
+# Actions are pinned to full commit SHAs of releases at least two weeks old (supply chain):
+#   actions/checkout v7.0.1 (2026-07-20), pnpm/action-setup v6.1.0 (2026-09-05),
+#   actions/setup-node v7.0.0 (2026-07-14). Verified with the GitHub API on 2026-10-13.
+# No secrets are used: tests run against local stubs and ECPay's PUBLIC sandbox values
+# (infra/test-env.sh). The Postgres credentials are the throwaway local-dev ones.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        # Same image as infra/docker-compose.dev.yml; port 55432 as infra/test-env.sh expects.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: drn
+          POSTGRES_PASSWORD: drn-local-dev
+          POSTGRES_DB: drn_dev
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U drn"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false # design reference videos are not needed for tests
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from package.json packageManager)
+        with:
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: netcat (test-all.sh probes Postgres with nc)
+        run: command -v nc || (sudo apt-get update && sudo apt-get install -y netcat-openbsd)
+      - name: Tests (scripts/test-all.sh judges every suite by exit code)
+        run: bash scripts/test-all.sh
+      - name: Build backend
+        run: pnpm --dir apps/backend run build
