@@ -1,0 +1,42 @@
+{
+  "$comment": "Single source of truth for product master data. Seeded into Medusa by apps/backend/src/migration-scripts. Titles are placeholders until gate G2 (docs/product/naming-proposal.md). Rules: docs/product/sku-coding.md.",
+  "currency": "twd",
+  "series": {
+    "PB": { "name_zh": "益生菌系列", "name_en": "Probiotic Series" }
+  },
+  "products": [
+    {
+      "sku": "DN-PB-01-060C",
+      "handle": "probiotic-a",
+      "title": "Dr.Nature 益生菌 A",
+      "subtitle": "名稱待定（G2）",
+      "series": "PB",
+      "capsules": 60,
+      "shelf_life_months": 24,
+      "price": 1150,
+      "ean13": null
+    },
+    {
+      "sku": "DN-PB-02-060C",
+      "handle": "probiotic-b",
+      "title": "Dr.Nature 益生菌 B",
+      "subtitle": "名稱待定（G2）",
+      "series": "PB",
+      "capsules": 60,
+      "shelf_life_months": 24,
+      "price": 1150,
+      "ean13": null
+    },
+    {
+      "sku": "DN-PB-03-060C",
+      "handle": "probiotic-c",
+      "title": "Dr.Nature 益生菌 C",
+      "subtitle": "名稱待定（G2）",
+      "series": "PB",
+      "capsules": 60,
+      "shelf_life_months": 24,
+      "price": 1150,
+      "ean13": null
+    }
+  ]
+}
