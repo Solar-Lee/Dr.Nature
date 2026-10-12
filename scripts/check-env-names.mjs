@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 // Fails if any variable name in a committed .env.example is missing from docs/ENV.md.
-import { readFileSync } from "node:fs";
-import { globSync } from "node:fs";
+import { readFileSync, globSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Resolve paths from the repo root so the check works from any working directory.
+process.chdir(join(dirname(fileURLToPath(import.meta.url)), ".."));
 
 const whitelist = new Set(
   [...readFileSync("docs/ENV.md", "utf8").matchAll(/^\| `([A-Z0-9_]+)`/gm)].map((m) => m[1]),
