@@ -56,7 +56,9 @@ import {
   newMerchantTradeNo,
   parsePaymentNotice,
   parseTradeInfoResponse,
+  paymentDeadlineIso,
   verifiedNoticeFor,
+  verifiedPaymentInfoFor,
   verifiedTradeInfoFor,
   type ChoosePayment,
   type CheckoutForm,
@@ -80,6 +82,20 @@ export type EcpaySessionData = {
   // Signed payment proofs (raw ECPay fields incl. CheckMacValue); see verifiedNoticeFor.
   ecpay_notice?: Record<string, string>
   ecpay_trade_info?: Record<string, string>
+  // ATM / CVS / BARCODE: signed PaymentInfoURL notice (code issued, NOT paid) and the
+  // shopper-facing instructions derived from it (P4-04).
+  ecpay_payment_info?: Record<string, string>
+  ecpay_payment_instructions?: PaymentInstructions
+}
+
+export type PaymentInstructions = {
+  payment_type: string
+  bank_code?: string
+  v_account?: string
+  payment_no?: string
+  barcodes?: [string, string, string]
+  expire_date: string
+  expires_at: string | null
 }
 
 type ProofOfPayment = { tradeNo: string; paymentType: string }
@@ -103,13 +119,23 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       "clientBackUrl",
       "checkoutUrl",
       "queryTradeInfoUrl",
+      "paymentInfoUrl",
     ]) {
       if (typeof options?.[key] !== "string" || !options[key]) {
         throw new MedusaError(MedusaError.Types.INVALID_DATA, `ECPay option "${key}" is required`)
       }
     }
-    if (options.environment === "prod" && !String(options.returnUrl).startsWith("https://")) {
-      throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPay ReturnURL must be HTTPS in prod")
+    if (
+      options.environment === "prod" &&
+      (!String(options.returnUrl).startsWith("https://") || !String(options.paymentInfoUrl).startsWith("https://"))
+    ) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPay ReturnURL/PaymentInfoURL must be HTTPS in prod")
+    }
+    if (typeof options.acceptSimulatedPayments !== "boolean") {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `ECPay option "acceptSimulatedPayments" must be a boolean`)
+    }
+    if (options.environment === "prod" && options.acceptSimulatedPayments) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, "simulated payments can never be accepted in prod")
     }
   }
 
@@ -173,6 +199,7 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       clientBackUrl: this.options_.clientBackUrl,
       choosePayment,
       customField1: sessionId,
+      paymentInfoUrl: this.options_.paymentInfoUrl,
     })
     checkoutForm.action = this.options_.checkoutUrl
     return {
@@ -204,7 +231,12 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       sessionId: session.session_id,
       amount: session.amount,
     }
-    const notice = verifiedNoticeFor(session.ecpay_notice, binding, this.credentials)
+    const notice = verifiedNoticeFor(
+      session.ecpay_notice,
+      binding,
+      this.credentials,
+      this.options_.acceptSimulatedPayments
+    )
     if (notice) {
       return { tradeNo: notice.tradeNo, paymentType: notice.paymentType }
     }
@@ -227,6 +259,18 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       checkout_form: session.checkout_form,
       ...(session.ecpay_notice ? { ecpay_notice: session.ecpay_notice } : {}),
       ...(session.ecpay_trade_info ? { ecpay_trade_info: session.ecpay_trade_info } : {}),
+      ...(session.ecpay_payment_info ? { ecpay_payment_info: session.ecpay_payment_info } : {}),
+      ...(session.ecpay_payment_instructions
+        ? { ecpay_payment_instructions: session.ecpay_payment_instructions }
+        : {}),
+    }
+  }
+
+  protected binding(session: EcpaySessionData) {
+    return {
+      merchantTradeNo: session.merchant_trade_no,
+      sessionId: session.session_id,
+      amount: session.amount,
     }
   }
 
@@ -292,6 +336,27 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
     }
     const amount = this.toWholeTwd(input.amount, input.currency_code)
     const incoming = input.data ?? {}
+    // ATM / CVS / BARCODE code issued: keep the trade, store the signed notice and the
+    // instructions the storefront shows. This is NOT a payment.
+    if (incoming.ecpay_payment_info && !incoming.ecpay_notice && !incoming.ecpay_trade_info) {
+      const session = this.readSession(incoming)
+      if (session.amount !== amount) {
+        throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "an issued ECPay payment code cannot be re-priced")
+      }
+      const info = verifiedPaymentInfoFor(session.ecpay_payment_info, this.binding(session), this.credentials)
+      if (!info) {
+        throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPay payment code notice does not verify for this session")
+      }
+      const instructions: PaymentInstructions = {
+        payment_type: info.paymentType,
+        ...(info.bankCode ? { bank_code: info.bankCode, v_account: info.vAccount } : {}),
+        ...(info.paymentNo ? { payment_no: info.paymentNo } : {}),
+        ...(info.barcodes ? { barcodes: info.barcodes } : {}),
+        expire_date: info.expireDate,
+        expires_at: paymentDeadlineIso(info.expireDate),
+      }
+      return { data: { ...this.providerKeys(session), ecpay_payment_instructions: instructions } }
+    }
     if (incoming.ecpay_notice || incoming.ecpay_trade_info) {
       const session = this.readSession(incoming)
       if (session.amount !== amount) {
@@ -388,7 +453,7 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       return { action: PaymentActions.FAILED, data: none }
     }
     const data = { session_id: notice.sessionId, amount: new BigNumber(notice.tradeAmt) }
-    if (notice.simulatePaid) {
+    if (notice.simulatePaid && !this.options_.acceptSimulatedPayments) {
       return { action: PaymentActions.NOT_SUPPORTED, data }
     }
     if (notice.rtnCode !== "1") {

@@ -15,6 +15,8 @@ describe("ecpayOptionsFromEnv", () => {
     expect(o.returnUrl).toEqual("https://api.dr.nature.smilelife.tw/hooks/ecpay/payment")
     expect(o.orderResultUrl).toEqual("https://dr.nature.smilelife.tw/checkout/ecpay/result")
     expect(o.clientBackUrl).toEqual("https://dr.nature.smilelife.tw/account/orders")
+    expect(o.paymentInfoUrl).toEqual("https://api.dr.nature.smilelife.tw/hooks/ecpay/payment-info")
+    expect(o.acceptSimulatedPayments).toBe(false)
     expect(o.checkoutUrl).toEqual("https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5")
     expect(o.queryTradeInfoUrl).toEqual("https://payment-stage.ecpay.com.tw/Cashier/QueryTradeInfo/V5")
   })
@@ -40,6 +42,11 @@ describe("ecpayOptionsFromEnv", () => {
       expect(() => ecpayOptionsFromEnv(env)).toThrow(name)
     }
   )
+
+  it("accepts simulated payments in stage only when asked, never in prod", () => {
+    expect(ecpayOptionsFromEnv({ ...base, ECPAY_ACCEPT_SIMULATED_PAYMENTS: "true" }).acceptSimulatedPayments).toBe(true)
+    expect(() => ecpayOptionsFromEnv({ ...base, ECPAY_ENV: "prod", ECPAY_ACCEPT_SIMULATED_PAYMENTS: "true" })).toThrow()
+  })
 
   it("rejects an unknown ECPAY_ENV", () => {
     expect(() => ecpayOptionsFromEnv({ ...base, ECPAY_ENV: "production" })).toThrow()

@@ -73,7 +73,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return reply(res, 400, "0|Session mismatch")
   }
 
-  if (notice.simulatePaid) {
+  if (notice.simulatePaid && !options.acceptSimulatedPayments) {
     logger.warn(`${tag}: SimulatePaid=1 (vendor back-office simulation), ignored`)
     return reply(res, 200, ACK)
   }

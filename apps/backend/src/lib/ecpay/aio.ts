@@ -17,9 +17,17 @@ export const AIO_ENDPOINTS: Record<EcpayEnvironment, { checkout: string; queryTr
   },
 }
 
-// Methods enabled for P4-03. ATM / CVS / BARCODE need PaymentInfoURL handling (P4-04).
-export const SUPPORTED_CHOOSE_PAYMENT = ["Credit", "ApplePay"] as const
+// Credit / ApplePay pay on the ECPay page (P4-03). ATM / CVS / BARCODE first issue a
+// payment code (PaymentInfoURL notice) and are paid later (ReturnURL notice) (P4-04).
+export const SUPPORTED_CHOOSE_PAYMENT = ["Credit", "ApplePay", "ATM", "CVS", "BARCODE"] as const
 export type ChoosePayment = (typeof SUPPORTED_CHOOSE_PAYMENT)[number]
+export const OFFLINE_CHOOSE_PAYMENT: readonly ChoosePayment[] = ["ATM", "CVS", "BARCODE"]
+
+// Payment deadlines. ECPay units differ per method (developers.ecpay.com.tw/2872/, /2874/,
+// /2876/): ATM ExpireDate in days (1-60), CVS StoreExpireDate in MINUTES (max 43200),
+// BARCODE StoreExpireDate in days (1-30). Values below are ECPay's defaults.
+// TODO(需 Aki 決定): business payment deadline per method (also used by P4-09 cleanup).
+export const PAYMENT_DEADLINES = { atmDays: 3, cvsMinutes: 10080, barcodeDays: 7 }
 
 export type MerchantCredentials = {
   merchantId: string
@@ -76,6 +84,9 @@ export type CheckoutFormInput = {
   choosePayment: ChoosePayment
   // Echoed back by ECPay in the ReturnURL notice; carries the Medusa payment session id.
   customField1: string
+  // Required for ATM / CVS / BARCODE: where ECPay posts the issued payment code.
+  paymentInfoUrl?: string
+  deadlines?: typeof PAYMENT_DEADLINES
 }
 
 export type CheckoutForm = { action: string; fields: Record<string, string> }
@@ -110,6 +121,30 @@ export function buildCheckoutForm(input: CheckoutFormInput): CheckoutForm {
   }
   if (input.clientBackUrl) {
     fields.ClientBackURL = input.clientBackUrl
+  }
+  if (OFFLINE_CHOOSE_PAYMENT.includes(input.choosePayment)) {
+    if (!input.paymentInfoUrl) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `${input.choosePayment} requires a PaymentInfoURL`)
+    }
+    const d = input.deadlines ?? PAYMENT_DEADLINES
+    const inRange = (n: number, min: number, max: number) => Number.isInteger(n) && n >= min && n <= max
+    fields.PaymentInfoURL = input.paymentInfoUrl
+    if (input.choosePayment === "ATM") {
+      if (!inRange(d.atmDays, 1, 60)) {
+        throw new MedusaError(MedusaError.Types.INVALID_DATA, "ATM ExpireDate must be 1-60 days")
+      }
+      fields.ExpireDate = String(d.atmDays)
+    } else if (input.choosePayment === "CVS") {
+      if (!inRange(d.cvsMinutes, 1, 43200)) {
+        throw new MedusaError(MedusaError.Types.INVALID_DATA, "CVS StoreExpireDate must be 1-43200 minutes")
+      }
+      fields.StoreExpireDate = String(d.cvsMinutes)
+    } else {
+      if (!inRange(d.barcodeDays, 1, 30)) {
+        throw new MedusaError(MedusaError.Types.INVALID_DATA, "BARCODE StoreExpireDate must be 1-30 days")
+      }
+      fields.StoreExpireDate = String(d.barcodeDays)
+    }
   }
   fields.CheckMacValue = computeCheckMacValue(fields, {
     hashKey: input.credentials.hashKey,
@@ -171,11 +206,13 @@ export function parsePaymentNotice(
   }
 }
 
-// A notice is a real, completed payment only when every condition holds.
-export function isPaid(notice: PaymentNotice, expectedAmount: number): boolean {
+// A notice is a real, completed payment only when every condition holds. Simulated
+// payments (vendor back-office) count only when explicitly allowed, which config permits
+// in stage alone (ECPAY_ACCEPT_SIMULATED_PAYMENTS) so ATM/CVS can be tested end to end.
+export function isPaid(notice: PaymentNotice, expectedAmount: number, acceptSimulated = false): boolean {
   return (
     notice.rtnCode === "1" &&
-    !notice.simulatePaid &&
+    (!notice.simulatePaid || acceptSimulated) &&
     Number.isInteger(notice.tradeAmt) &&
     notice.tradeAmt === expectedAmount
   )
@@ -208,8 +245,9 @@ export function buildQueryTradeInfoRequest(
   return fields
 }
 
-// QueryTradeInfo answers with a key=value&... body (assumed; confirm in stage, see
-// docs/research/ecpay.md). Returns null unless the signature and merchant match.
+// QueryTradeInfo answers with a key=value&... body despite a text/html content type, and
+// its CheckMacValue verifies with this implementation (confirmed against real ECPay stage,
+// docs/research/ecpay-stage-probe-2026-10-13.md). Returns null unless signature and merchant match.
 export function parseTradeInfoResponse(
   body: string,
   credentials: MerchantCredentials
@@ -242,7 +280,8 @@ export type SessionBinding = { merchantTradeNo: string; sessionId: string; amoun
 export function verifiedNoticeFor(
   stored: unknown,
   binding: SessionBinding,
-  credentials: MerchantCredentials
+  credentials: MerchantCredentials,
+  acceptSimulated = false
 ): PaymentNotice | null {
   if (!stored || typeof stored !== "object") {
     return null
@@ -252,7 +291,7 @@ export function verifiedNoticeFor(
     !notice ||
     notice.merchantTradeNo !== binding.merchantTradeNo ||
     notice.sessionId !== binding.sessionId ||
-    !isPaid(notice, binding.amount)
+    !isPaid(notice, binding.amount, acceptSimulated)
   ) {
     return null
   }
@@ -276,6 +315,111 @@ export function verifiedTradeInfoFor(
     info.merchantTradeNo !== binding.merchantTradeNo ||
     info.tradeStatus !== "1" ||
     info.tradeAmt !== binding.amount
+  ) {
+    return null
+  }
+  return info
+}
+
+// ---- PaymentInfoURL (ATM / CVS / BARCODE code issued), developers.ecpay.com.tw/2881/ ----
+
+export type PaymentInfoNotice = {
+  merchantTradeNo: string
+  sessionId: string
+  rtnCode: string
+  tradeNo: string
+  tradeAmt: number
+  paymentType: string
+  // ATM
+  bankCode?: string
+  vAccount?: string
+  // CVS
+  paymentNo?: string
+  // BARCODE
+  barcodes?: [string, string, string]
+  // Raw ECPay text: "yyyy/MM/dd" for ATM, "yyyy/MM/dd HH:mm:ss" for CVS/BARCODE (Taipei time)
+  expireDate: string
+  raw: Record<string, string>
+}
+
+// Code issued successfully: ATM RtnCode=2, CVS/BARCODE RtnCode=10100073 (not 1).
+export function isCodeIssued(info: PaymentInfoNotice): boolean {
+  if (info.paymentType.startsWith("ATM")) {
+    return info.rtnCode === "2" && !!info.bankCode && !!info.vAccount
+  }
+  if (info.paymentType.startsWith("CVS")) {
+    return info.rtnCode === "10100073" && !!info.paymentNo
+  }
+  if (info.paymentType.startsWith("BARCODE")) {
+    return info.rtnCode === "10100073" && !!info.barcodes?.every((b) => b)
+  }
+  return false
+}
+
+export function parsePaymentInfoNotice(
+  body: Record<string, unknown>,
+  credentials: MerchantCredentials
+): PaymentInfoNotice | null {
+  const raw: Record<string, string> = {}
+  for (const [k, v] of Object.entries(body ?? {})) {
+    if (typeof v === "string" || typeof v === "number") {
+      raw[k] = String(v)
+    }
+  }
+  const ok = verifyCheckMacValue(raw, {
+    hashKey: credentials.hashKey,
+    hashIV: credentials.hashIV,
+    algorithm: "sha256",
+  })
+  if (!ok || raw.MerchantID !== credentials.merchantId) {
+    return null
+  }
+  return {
+    merchantTradeNo: raw.MerchantTradeNo ?? "",
+    sessionId: raw.CustomField1 ?? "",
+    rtnCode: raw.RtnCode ?? "",
+    tradeNo: raw.TradeNo ?? "",
+    tradeAmt: Number(raw.TradeAmt),
+    paymentType: raw.PaymentType ?? "",
+    bankCode: raw.BankCode || undefined,
+    vAccount: raw.vAccount || undefined,
+    paymentNo: raw.PaymentNo || undefined,
+    barcodes:
+      raw.Barcode1 || raw.Barcode2 || raw.Barcode3
+        ? [raw.Barcode1 ?? "", raw.Barcode2 ?? "", raw.Barcode3 ?? ""]
+        : undefined,
+    expireDate: raw.ExpireDate ?? "",
+    raw,
+  }
+}
+
+// ECPay deadline (Taipei local time) as an ISO instant. A date-only ATM deadline means the
+// end of that day (e.g. ordered 7/1 with 3 days -> 7/4 23:59:59). Null if unparseable.
+export function paymentDeadlineIso(expireDate: string): string | null {
+  const m = /^(\d{4})\/(\d{2})\/(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?$/.exec(expireDate.trim())
+  if (!m) {
+    return null
+  }
+  const [, y, mo, d, h = "23", mi = "59", s = "59"] = m
+  const utc = Date.UTC(+y, +mo - 1, +d, +h - 8, +mi, +s)
+  return Number.isNaN(utc) ? null : new Date(utc).toISOString()
+}
+
+export function verifiedPaymentInfoFor(
+  stored: unknown,
+  binding: SessionBinding,
+  credentials: MerchantCredentials
+): PaymentInfoNotice | null {
+  if (!stored || typeof stored !== "object") {
+    return null
+  }
+  const info = parsePaymentInfoNotice(stored as Record<string, unknown>, credentials)
+  if (
+    !info ||
+    info.merchantTradeNo !== binding.merchantTradeNo ||
+    info.sessionId !== binding.sessionId ||
+    info.tradeAmt !== binding.amount ||
+    !isCodeIssued(info)
   ) {
     return null
   }

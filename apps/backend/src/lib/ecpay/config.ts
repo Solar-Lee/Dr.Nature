@@ -15,12 +15,18 @@ export type EcpayProviderOptions = {
   orderResultUrl: string
   // "Back to store" button on the ECPay page.
   clientBackUrl: string
+  // Server-to-server notice when an ATM / CVS / BARCODE payment code is issued.
+  paymentInfoUrl: string
+  // Stage only: treat vendor back-office simulated payments (SimulatePaid=1) as paid, so
+  // ATM/CVS can be tested end to end. Refused in prod.
+  acceptSimulatedPayments: boolean
   checkoutUrl: string
   queryTradeInfoUrl: string
 }
 
 export const ECPAY_PROVIDER_ID = "pp_ecpay_ecpay"
 export const ECPAY_RETURN_PATH = "/hooks/ecpay/payment"
+export const ECPAY_PAYMENT_INFO_PATH = "/hooks/ecpay/payment-info"
 
 const required = (env: NodeJS.ProcessEnv, name: string): string => {
   const value = env[name]
@@ -44,6 +50,11 @@ export function ecpayOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Ecpay
     throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_API_BASE_URL must not be set when ECPAY_ENV=prod")
   }
 
+  const acceptSimulatedPayments = env.ECPAY_ACCEPT_SIMULATED_PAYMENTS === "true"
+  if (acceptSimulatedPayments && environment === "prod") {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_ACCEPT_SIMULATED_PAYMENTS must not be set when ECPAY_ENV=prod")
+  }
+
   return {
     environment,
     merchantId: required(env, "ECPAY_MERCHANT_ID"),
@@ -52,6 +63,8 @@ export function ecpayOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Ecpay
     returnUrl: `${backendUrl}${ECPAY_RETURN_PATH}`,
     orderResultUrl: `${storefrontUrl}/checkout/ecpay/result`,
     clientBackUrl: `${storefrontUrl}/account/orders`,
+    paymentInfoUrl: `${backendUrl}${ECPAY_PAYMENT_INFO_PATH}`,
+    acceptSimulatedPayments,
     checkoutUrl: AIO_ENDPOINTS[environment].checkout,
     queryTradeInfoUrl: apiBase
       ? `${apiBase}/Cashier/QueryTradeInfo/V5`

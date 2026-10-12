@@ -14,6 +14,8 @@ const options: EcpayProviderOptions = {
   clientBackUrl: "https://shop.example.com/account/orders",
   checkoutUrl: "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5",
   queryTradeInfoUrl: "http://stub.invalid/Cashier/QueryTradeInfo/V5",
+  paymentInfoUrl: "https://api.example.com/hooks/ecpay/payment-info",
+  acceptSimulatedPayments: false,
 }
 const mac = { hashKey: options.hashKey, hashIV: options.hashIV, algorithm: "sha256" as const }
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any
@@ -71,12 +73,24 @@ describe("initiatePayment", () => {
     ).rejects.toThrow()
   })
 
-  it("refuses payment methods not enabled yet (ATM/CVS come in P4-04)", async () => {
+  it.each(["ATM", "CVS", "BARCODE"])("builds a %s form that reports the code to PaymentInfoURL", async (method) => {
+    const out = await provider().initiatePayment({
+      amount: 1150,
+      currency_code: "twd",
+      data: { session_id: "payses_1", choose_payment: method },
+    })
+    const fields = (out.data as any).checkout_form.fields
+    expect(fields.ChoosePayment).toEqual(method)
+    expect(fields.PaymentInfoURL).toEqual(options.paymentInfoUrl)
+    expect(verifyCheckMacValue(fields, mac)).toBe(true)
+  })
+
+  it("refuses unknown payment methods", async () => {
     await expect(
       provider().initiatePayment({
         amount: 1150,
         currency_code: "twd",
-        data: { session_id: "payses_1", choose_payment: "ATM" },
+        data: { session_id: "payses_1", choose_payment: "WebATM" },
       })
     ).rejects.toThrow()
   })
@@ -195,6 +209,86 @@ describe("updatePayment", () => {
     const out = await provider().updatePayment({ amount: 2300, currency_code: "twd", data })
     expect((out.data as any).merchant_trade_no).not.toEqual((data as any).merchant_trade_no)
     expect((out.data as any).checkout_form.fields.TotalAmount).toEqual("2300")
+  })
+})
+
+describe("payment codes (ATM / CVS / BARCODE)", () => {
+  const atmInfoFor = (data: any, o: Record<string, string> = {}) =>
+    signNotice({
+      MerchantID: options.merchantId,
+      MerchantTradeNo: data.merchant_trade_no,
+      RtnCode: "2",
+      TradeNo: "2610130105091234",
+      TradeAmt: String(data.amount),
+      PaymentType: "ATM_FIRST",
+      BankCode: "007",
+      vAccount: "9103522175887271",
+      ExpireDate: "2026/10/16",
+      CustomField1: data.session_id,
+      ...o,
+    })
+
+  const atmSession = async () =>
+    (
+      await provider().initiatePayment({
+        amount: 1150,
+        currency_code: "twd",
+        data: { session_id: "payses_1", choose_payment: "ATM" },
+      })
+    ).data as any
+
+  it("stores verified payment instructions and keeps the trade", async () => {
+    const data = await atmSession()
+    const out = await provider().updatePayment({
+      amount: 1150,
+      currency_code: "twd",
+      data: { ...data, ecpay_payment_info: atmInfoFor(data) },
+    })
+    expect((out.data as any).merchant_trade_no).toEqual(data.merchant_trade_no)
+    expect((out.data as any).ecpay_payment_instructions).toEqual({
+      payment_type: "ATM_FIRST",
+      bank_code: "007",
+      v_account: "9103522175887271",
+      expire_date: "2026/10/16",
+      expires_at: "2026-10-16T15:59:59.000Z",
+    })
+  })
+
+  it("an issued code is not a payment", async () => {
+    const data = await atmSession()
+    const stored = (
+      await provider().updatePayment({ amount: 1150, currency_code: "twd", data: { ...data, ecpay_payment_info: atmInfoFor(data) } })
+    ).data
+    expect((await provider().authorizePayment({ data: stored })).status).toEqual(
+      PaymentSessionStatus.PENDING_AUTHORIZATION
+    )
+  })
+
+  it("refuses a code notice that does not verify for this session", async () => {
+    const data = await atmSession()
+    await expect(
+      provider().updatePayment({
+        amount: 1150,
+        currency_code: "twd",
+        data: { ...data, ecpay_payment_info: atmInfoFor(data, { CustomField1: "payses_x" }) },
+      })
+    ).rejects.toThrow(/does not verify/)
+  })
+
+  it("simulated paid notices count only with acceptSimulatedPayments (stage)", async () => {
+    const data = await atmSession()
+    const simulated = { ...data, ecpay_notice: paidNoticeFor(data, { SimulatePaid: "1" }) }
+    expect((await provider().authorizePayment({ data: simulated })).status).toEqual(
+      PaymentSessionStatus.PENDING_AUTHORIZATION
+    )
+    const stage = new EcpayPaymentProviderService({ logger }, { ...options, acceptSimulatedPayments: true })
+    expect((await stage.authorizePayment({ data: simulated })).status).toEqual(PaymentSessionStatus.CAPTURED)
+  })
+
+  it("validateOptions refuses simulated payments in prod", () => {
+    expect(() =>
+      EcpayPaymentProviderService.validateOptions({ ...options, environment: "prod", acceptSimulatedPayments: true } as any)
+    ).toThrow()
   })
 })
 

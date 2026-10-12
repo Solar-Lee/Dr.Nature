@@ -164,7 +164,10 @@ medusaIntegrationTestRunner({
     }
 
     // Store checkout up to an order awaiting payment (or stop before completing the cart).
-    const checkout = async ({ complete = true }: { complete?: boolean } = {}) => {
+    const checkout = async ({
+      complete = true,
+      choosePayment = "Credit",
+    }: { complete?: boolean; choosePayment?: string } = {}) => {
       const headers = await storeHeaders()
       const { data: r } = await api.get("/store/regions", { headers })
       const regionId = r.regions[0].id
@@ -193,7 +196,7 @@ medusaIntegrationTestRunner({
       const { data: pc } = await api.post("/store/payment-collections", { cart_id: cartId }, { headers })
       const { data: ps } = await api.post(
         `/store/payment-collections/${pc.payment_collection.id}/payment-sessions`,
-        { provider_id: ECPAY_PROVIDER_ID, data: { choose_payment: "Credit" } },
+        { provider_id: ECPAY_PROVIDER_ID, data: { choose_payment: choosePayment } },
         { headers }
       )
       const session = ps.payment_collection.payment_sessions[0]
@@ -210,6 +213,33 @@ medusaIntegrationTestRunner({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         validateStatus: () => true,
       })
+
+    const postPaymentInfo = (body: Record<string, string>) =>
+      api.post("/hooks/ecpay/payment-info", new URLSearchParams(body).toString(), {
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        validateStatus: () => true,
+      })
+
+    const codeIssuedNotice = (sessionData: any, session: any, method: "ATM" | "CVS", extra: Record<string, string> = {}) => {
+      const fields: Record<string, string> = {
+        MerchantID: MERCHANT_ID,
+        MerchantTradeNo: sessionData.merchant_trade_no,
+        TradeNo: "2610130105091234",
+        TradeAmt: String(sessionData.amount),
+        TradeDate: "2026/10/13 01:05:09",
+        CustomField1: session.id,
+        ...(method === "ATM"
+          ? { RtnCode: "2", RtnMsg: "Get VirtualAccount Succeeded", PaymentType: "ATM_FIRST", BankCode: "007", vAccount: "9103522175887271", ExpireDate: "2026/10/16" }
+          : { RtnCode: "10100073", RtnMsg: "Get CVS Code Succeeded.", PaymentType: "CVS_CVS", PaymentNo: "LLL22251222", ExpireDate: "2026/10/20 01:05:09" }),
+        ...extra,
+      }
+      return { ...fields, CheckMacValue: computeCheckMacValue(fields, MAC) }
+    }
+
+    const sessionData = async (sessionId: string) => {
+      const [s] = await getContainer().resolve(Modules.PAYMENT).listPaymentSessions({ id: [sessionId] })
+      return s?.data as any
+    }
 
     const capturedPayments = async (sessionId: string) => {
       const { data } = await getContainer()
@@ -395,6 +425,75 @@ medusaIntegrationTestRunner({
       expect(res.status).toEqual(400)
       expect(res.data).not.toEqual("1|OK")
       expect(await capturedPayments(first.session.id)).toHaveLength(0)
+    })
+
+    describe("ATM / convenience-store codes (P4-04)", () => {
+      it("ATM: form asks for a code -> code issued -> instructions stored -> paid notice captures", async () => {
+        const { session, sessionData: data, completion } = await checkout({ choosePayment: "ATM" })
+        expect(data.checkout_form.fields).toMatchObject({
+          ChoosePayment: "ATM",
+          ExpireDate: "3",
+          PaymentInfoURL: "http://localhost:9000/hooks/ecpay/payment-info",
+        })
+        expect(completion.type).toEqual("order")
+
+        const issued = await postPaymentInfo(codeIssuedNotice(data, session, "ATM"))
+        expect(issued.data).toEqual("1|OK")
+        expect((await sessionData(session.id)).ecpay_payment_instructions).toMatchObject({
+          payment_type: "ATM_FIRST",
+          bank_code: "007",
+          v_account: "9103522175887271",
+          expires_at: "2026-10-16T15:59:59.000Z",
+        })
+        expect(await capturedPayments(session.id)).toHaveLength(0)
+
+        const paid = await postNotice(paidNotice(data, session, { PaymentType: "ATM_FIRST" }))
+        expect(paid.data).toEqual("1|OK")
+        expect(await capturedPayments(session.id)).toHaveLength(1)
+        // The code stays visible on the paid session for the order history.
+        expect((await sessionData(session.id)).ecpay_payment_instructions?.v_account).toEqual("9103522175887271")
+      })
+
+      it("CVS: code issued (10100073) -> paid notice captures", async () => {
+        const { session, sessionData: data } = await checkout({ choosePayment: "CVS" })
+        expect(data.checkout_form.fields).toMatchObject({ ChoosePayment: "CVS", StoreExpireDate: "10080" })
+        expect((await postPaymentInfo(codeIssuedNotice(data, session, "CVS"))).data).toEqual("1|OK")
+        expect((await sessionData(session.id)).ecpay_payment_instructions).toMatchObject({ payment_no: "LLL22251222" })
+        expect((await postNotice(paidNotice(data, session, { PaymentType: "CVS_CVS" }))).data).toEqual("1|OK")
+        expect(await capturedPayments(session.id)).toHaveLength(1)
+      })
+
+      it("code issued before the cart was completed: the order is created, still unpaid", async () => {
+        const { session, sessionData: data, cartId } = await checkout({ complete: false, choosePayment: "ATM" })
+        expect((await postPaymentInfo(codeIssuedNotice(data, session, "ATM"))).data).toEqual("1|OK")
+        const { data: links } = await getContainer()
+          .resolve(ContainerRegistrationKeys.QUERY)
+          .graph({ entity: "order_cart", fields: ["cart_id"], filters: { cart_id: cartId } })
+        expect(links).toHaveLength(1)
+        expect(await capturedPayments(session.id)).toHaveLength(0)
+      })
+
+      it("tampered code notice -> 400, nothing stored", async () => {
+        const { session, sessionData: data } = await checkout({ choosePayment: "ATM" })
+        const res = await postPaymentInfo({ ...codeIssuedNotice(data, session, "ATM"), vAccount: "0000000000000000" })
+        expect(res.status).toEqual(400)
+        expect((await sessionData(session.id)).ecpay_payment_instructions).toBeUndefined()
+      })
+
+      it("failed code issue is acknowledged without storing anything", async () => {
+        const { session, sessionData: data } = await checkout({ choosePayment: "CVS" })
+        const res = await postPaymentInfo(codeIssuedNotice(data, session, "CVS", { RtnCode: "10100058", RtnMsg: "失敗" }))
+        expect(res.data).toEqual("1|OK")
+        expect((await sessionData(session.id)).ecpay_payment_instructions).toBeUndefined()
+      })
+
+      it("simulated payment of a code is ignored when ECPAY_ACCEPT_SIMULATED_PAYMENTS is off", async () => {
+        const { session, sessionData: data } = await checkout({ choosePayment: "ATM" })
+        await postPaymentInfo(codeIssuedNotice(data, session, "ATM"))
+        const res = await postNotice(paidNotice(data, session, { PaymentType: "ATM_FIRST", SimulatePaid: "1" }))
+        expect(res.data).toEqual("1|OK")
+        expect(await capturedPayments(session.id)).toHaveLength(0)
+      })
     })
   },
 })
