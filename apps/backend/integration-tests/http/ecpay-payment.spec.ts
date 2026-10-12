@@ -9,8 +9,8 @@ import http from "http"
 import { readdirSync } from "fs"
 import { join } from "path"
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
-import type { MedusaContainer } from "@medusajs/framework/types"
-import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import type { IRbacModuleService, MedusaContainer } from "@medusajs/framework/types"
+import { ContainerRegistrationKeys, Modules, generateJwtToken } from "@medusajs/framework/utils"
 import { createShippingOptionsWorkflow } from "@medusajs/medusa/core-flows"
 import { computeCheckMacValue, verifyCheckMacValue } from "../../src/lib/ecpay/check-mac-value"
 import { ECPAY_PROVIDER_ID } from "../../src/lib/ecpay/config"
@@ -143,8 +143,28 @@ medusaIntegrationTestRunner({
       return { "x-publishable-api-key": key.token }
     }
 
-    // Store checkout up to an order awaiting payment.
-    const checkout = async () => {
+    const superAdminHeaders = async (email: string) => {
+      const container = getContainer()
+      const user = await container.resolve(Modules.USER).createUsers({ email })
+      const identity = await container.resolve(Modules.AUTH).createAuthIdentities({
+        provider_identities: [{ provider: "emailpass", entity_id: email }],
+        app_metadata: { user_id: user.id },
+      })
+      const [role] = await container.resolve<IRbacModuleService>(Modules.RBAC).listRbacRoles({ name: "Super Admin" })
+      await container.resolve(ContainerRegistrationKeys.LINK).create({
+        [Modules.USER]: { user_id: user.id },
+        [Modules.RBAC]: { rbac_role_id: role.id },
+      })
+      const { http: httpConfig } = container.resolve(ContainerRegistrationKeys.CONFIG_MODULE).projectConfig
+      const token = generateJwtToken(
+        { actor_id: user.id, actor_type: "user", auth_identity_id: identity.id, app_metadata: { user_id: user.id, roles: [role.id] } },
+        { secret: httpConfig.jwtSecret as string, expiresIn: "1d" }
+      )
+      return { authorization: `Bearer ${token}` }
+    }
+
+    // Store checkout up to an order awaiting payment (or stop before completing the cart).
+    const checkout = async ({ complete = true }: { complete?: boolean } = {}) => {
       const headers = await storeHeaders()
       const { data: r } = await api.get("/store/regions", { headers })
       const regionId = r.regions[0].id
@@ -177,8 +197,12 @@ medusaIntegrationTestRunner({
         { headers }
       )
       const session = ps.payment_collection.payment_sessions[0]
+      const paymentCollectionId = pc.payment_collection.id
+      if (!complete) {
+        return { cartId, session, sessionData: session.data, completion: null as any, paymentCollectionId, headers }
+      }
       const { data: done } = await api.post(`/store/carts/${cartId}/complete`, {}, { headers })
-      return { cartId, session, sessionData: session.data, completion: done }
+      return { cartId, session, sessionData: session.data, completion: done, paymentCollectionId, headers }
     }
 
     const postNotice = (body: Record<string, string>) =>
@@ -228,13 +252,13 @@ medusaIntegrationTestRunner({
       const { completion, session } = await checkout()
       expect(completion.type).toEqual("order")
       expect(await capturedPayments(session.id)).toHaveLength(0)
-      expect(stubRequests).toBeGreaterThan(0) // authorizePayment asked ECPay; nothing paid yet
-      expect(stubBadSignatures).toEqual(0)
+      expect(stubRequests).toEqual(0) // no ECPay round-trip in the checkout hot path
     })
 
-    it("signed paid notice -> exactly '1|OK' and the order's payment is captured", async () => {
+    it("signed paid notice -> exactly '1|OK' and the order's payment is captured (no ECPay query)", async () => {
       const { session, sessionData, completion } = await checkout()
-      trades.set(sessionData.merchant_trade_no, { status: "1", amount: sessionData.amount })
+      // QueryTradeInfo would still say "unpaid" (ECPay documents a lag): the signed notice is the proof.
+      trades.set(sessionData.merchant_trade_no, { status: "0", amount: sessionData.amount })
       const res = await postNotice(paidNotice(sessionData, session))
       expect(res.status).toEqual(200)
       expect(res.data).toEqual("1|OK")
@@ -245,6 +269,7 @@ medusaIntegrationTestRunner({
         .resolve(ContainerRegistrationKeys.QUERY)
         .graph({ entity: "order", fields: ["id", "payment_collections.status"], filters: { id: completion.order.id } })
       expect(order[0].payment_collections?.[0]?.status).toEqual("completed")
+      expect(stubRequests).toEqual(0)
     })
 
     it("duplicate paid notice is acknowledged again without a second payment", async () => {
@@ -306,18 +331,70 @@ medusaIntegrationTestRunner({
       expect(await capturedPayments(session.id)).toHaveLength(0)
     })
 
-    it("paid notice before QueryTradeInfo reports paid -> non-ACK (ECPay retries); retry then captures", async () => {
-      const { session, sessionData } = await checkout()
-      trades.set(sessionData.merchant_trade_no, { status: "0", amount: sessionData.amount })
-      const first = await postNotice(paidNotice(sessionData, session))
-      expect(first.status).toEqual(500)
-      expect(first.data).not.toEqual("1|OK")
-      expect(await capturedPayments(session.id)).toHaveLength(0)
+    it("re-paying an already placed order through a new session is refused", async () => {
+      const { paymentCollectionId, headers } = await checkout()
+      const res = await api.post(
+        `/store/payment-collections/${paymentCollectionId}/payment-sessions`,
+        { provider_id: ECPAY_PROVIDER_ID, data: { choose_payment: "Credit" } },
+        { headers, validateStatus: () => true }
+      )
+      expect(res.status).toBeGreaterThanOrEqual(400)
+      expect(JSON.stringify(res.data)).toContain("already been placed")
+    })
 
-      trades.set(sessionData.merchant_trade_no, { status: "1", amount: sessionData.amount })
-      const retry = await postNotice(paidNotice(sessionData, session))
-      expect(retry.data).toEqual("1|OK")
+    it("paid notice before the cart was completed creates the order and captures it", async () => {
+      const { session, sessionData, cartId } = await checkout({ complete: false })
+      const res = await postNotice(paidNotice(sessionData, session))
+      expect(res.data).toEqual("1|OK")
       expect(await capturedPayments(session.id)).toHaveLength(1)
+      const { data: links } = await getContainer()
+        .resolve(ContainerRegistrationKeys.QUERY)
+        .graph({ entity: "order_cart", fields: ["cart_id"], filters: { cart_id: cartId } })
+      expect(links).toHaveLength(1)
+    })
+
+    it("payment arriving for a canceled order is recorded on the order, alerted and not captured", async () => {
+      const { session, sessionData, completion } = await checkout()
+      const admin = await superAdminHeaders("cancel@drn.test")
+      const cancel = await api.post(`/admin/orders/${completion.order.id}/cancel`, {}, { headers: admin, validateStatus: () => true })
+      expect(cancel.status).toEqual(200)
+      const res = await postNotice(paidNotice(sessionData, session))
+      expect(res.data).toEqual("1|OK")
+      expect(await capturedPayments(session.id)).toHaveLength(0)
+      const order = await getContainer().resolve(Modules.ORDER).retrieveOrder(completion.order.id)
+      expect(order.metadata?.ecpay_paid_after_cancel).toMatchObject({
+        merchant_trade_no: sessionData.merchant_trade_no,
+        amount: sessionData.amount,
+      })
+    })
+
+    it("a paid order can be canceled; the refund is recorded as manual_pending for the back office", async () => {
+      const { session, sessionData, completion } = await checkout()
+      expect((await postNotice(paidNotice(sessionData, session))).data).toEqual("1|OK")
+      const admin = await superAdminHeaders("refund@drn.test")
+      const cancel = await api.post(`/admin/orders/${completion.order.id}/cancel`, {}, { headers: admin, validateStatus: () => true })
+      expect(cancel.status).toEqual(200)
+      const { data: payments } = await getContainer()
+        .resolve(ContainerRegistrationKeys.QUERY)
+        .graph({ entity: "payment", fields: ["id", "data", "refunds.amount"], filters: { payment_session_id: session.id } })
+      expect(payments[0].refunds?.map((r: any) => Number(r.amount))).toEqual([sessionData.amount])
+      expect((payments[0].data as any).ecpay_manual_refunds).toEqual([
+        expect.objectContaining({ amount: sessionData.amount, status: "manual_pending" }),
+      ])
+    })
+
+    it("paid notice for a session that was replaced before checkout -> non-ACK so ECPay keeps retrying", async () => {
+      const first = await checkout({ complete: false })
+      // Replace the session (allowed while the cart is not completed): the first one is deleted.
+      await api.post(
+        `/store/payment-collections/${first.paymentCollectionId}/payment-sessions`,
+        { provider_id: ECPAY_PROVIDER_ID, data: { choose_payment: "Credit" } },
+        { headers: first.headers }
+      )
+      const res = await postNotice(paidNotice(first.sessionData, first.session))
+      expect(res.status).toEqual(400)
+      expect(res.data).not.toEqual("1|OK")
+      expect(await capturedPayments(first.session.id)).toHaveLength(0)
     })
   },
 })

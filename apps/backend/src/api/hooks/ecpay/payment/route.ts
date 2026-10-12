@@ -6,8 +6,12 @@
 //  1. verifies CheckMacValue and the merchant (never processes an unsigned body),
 //  2. binds the notice to its payment session (CustomField1 + MerchantTradeNo),
 //  3. acknowledges failed / simulated / mismatched notices without changing state,
-//  4. runs processPaymentWorkflow for a paid notice and replies "1|OK" only once the
-//     payment is captured and the cart has become an order; otherwise ECPay retries.
+//  4. never captures onto a canceled order: records the payment on the order and alerts,
+//  5. attaches the verified notice to its session (the provider re-verifies it; this signed
+//     notice is the proof of payment, no QueryTradeInfo round-trip), runs
+//     processPaymentWorkflow, and replies "1|OK" only once the payment is captured and the
+//     cart has become an order; otherwise ECPay retries.
+// Log lines tagged [ECPAY-ALERT] need a human (monitoring hooks them up, P11/P12).
 // /hooks/* has no publishable-key, auth or CORS middleware in Medusa 2.21.2.
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { IPaymentModuleService } from "@medusajs/framework/types"
@@ -20,6 +24,8 @@ import {
 import { processPaymentWorkflow } from "@medusajs/medusa/core-flows"
 import { parsePaymentNotice } from "../../../../lib/ecpay/aio"
 import { ECPAY_PROVIDER_ID, ecpayOptionsFromEnv } from "../../../../lib/ecpay/config"
+import { attachEcpayNoticeWorkflow } from "../../../../workflows/ecpay/attach-ecpay-notice"
+import { flagPaidAfterCancelWorkflow } from "../../../../workflows/ecpay/flag-paid-after-cancel"
 
 const ACK = "1|OK"
 
@@ -60,7 +66,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     session.provider_id !== ECPAY_PROVIDER_ID ||
     sessionData.merchant_trade_no !== notice.merchantTradeNo
   ) {
-    logger.error(`${tag}: no matching ECPay payment session (CustomField1=${notice.sessionId})`)
+    // Signed by ECPay but not attached to a live session (e.g. the session was replaced).
+    // Keep answering non-ACK so ECPay retries and the alert repeats until handled.
+    const level = notice.rtnCode === "1" && !notice.simulatePaid ? "[ECPAY-ALERT] paid notice" : "notice"
+    logger.error(`${tag}: ${level} without a matching ECPay payment session (CustomField1=${notice.sessionId})`)
     return reply(res, 400, "0|Session mismatch")
   }
 
@@ -74,11 +83,41 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
   if (notice.tradeAmt !== sessionData.amount) {
     // Signed by ECPay but for a different amount: never capture; needs manual review.
-    logger.error(`${tag}: amount mismatch (paid ${notice.tradeAmt}, expected ${String(sessionData.amount)})`)
+    logger.error(`${tag}: [ECPAY-ALERT] amount mismatch (paid ${notice.tradeAmt}, expected ${String(sessionData.amount)})`)
+    return reply(res, 200, ACK)
+  }
+
+  // Order (if the cart was already completed) for this payment collection.
+  const { data: collections } = await query.graph({
+    entity: "payment_collection",
+    fields: ["id", "order.id", "order.status", "order.metadata"],
+    filters: { id: session.payment_collection_id },
+  })
+  const order = (collections[0] as any)?.order as
+    | { id: string; status: string; metadata?: Record<string, unknown> | null }
+    | undefined
+  if (order?.status === "canceled") {
+    await flagPaidAfterCancelWorkflow(req.scope).run({
+      input: {
+        order_id: order.id,
+        payment: {
+          merchant_trade_no: notice.merchantTradeNo,
+          trade_no: notice.tradeNo,
+          amount: notice.tradeAmt,
+          payment_date: notice.paymentDate,
+        },
+      },
+    })
+    logger.error(`${tag}: [ECPAY-ALERT] paid after order ${order.id} was canceled; refund manually in the ECPay back office`)
     return reply(res, 200, ACK)
   }
 
   try {
+    // The provider's updatePayment re-verifies the notice against this session before
+    // storing it; authorizePayment then accepts it as proof of payment.
+    await attachEcpayNoticeWorkflow(req.scope).run({
+      input: { session_id: session.id, notice: notice.raw },
+    })
     const event = await paymentModule.getWebhookActionAndData({
       provider: "ecpay_ecpay",
       payload: { data: body, rawData: "", headers: req.headers as Record<string, unknown> },
@@ -94,7 +133,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       filters: { payment_session_id: session.id },
     })
     if (!payments.some((p) => p?.captured_at)) {
-      throw new MedusaError(MedusaError.Types.UNEXPECTED_STATE, "payment not captured (ECPay QueryTradeInfo not yet reporting paid?)")
+      throw new MedusaError(MedusaError.Types.UNEXPECTED_STATE, "payment not captured after processing")
     }
     const { data: cartLinks } = await query.graph({
       entity: "cart_payment_collection",

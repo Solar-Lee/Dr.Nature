@@ -3,17 +3,18 @@
 // Flow ("order first, then pay", the usual Taiwan checkout):
 //  1. Storefront creates a payment session (provider pp_ecpay_ecpay, data.choose_payment).
 //     initiatePayment signs the ECPay checkout form and returns it in session.data.
-//  2. Storefront completes the cart. authorizePayment asks ECPay (QueryTradeInfo); the trade
-//     is not paid yet, so it returns pending_authorization and Medusa creates the order
-//     without a payment.
+//  2. Storefront completes the cart. authorizePayment finds no proof of payment and returns
+//     pending_authorization, so Medusa creates the order without a payment (no ECPay call).
 //  3. Browser POSTs the form to ECPay; the shopper pays.
-//  4. ECPay POSTs the signed ReturnURL notice to /hooks/ecpay/payment. The route verifies it
-//     and runs processPaymentWorkflow, which calls authorizePayment again; QueryTradeInfo now
-//     reports TradeStatus=1, so the payment is recorded as captured (AIO settles itself).
+//  4. ECPay POSTs the signed ReturnURL notice to /hooks/ecpay/payment. The route verifies it,
+//     attaches it to the session (updatePayment re-verifies), and runs processPaymentWorkflow;
+//     authorizePayment now finds a verified notice and records the payment as captured
+//     (AIO settles itself).
 //
 // Trust: payment_session.data is readable by shoppers and partly writable by them at
-// creation, so this provider never decides "paid" from session.data. Only a QueryTradeInfo
-// response with a valid CheckMacValue and the expected amount counts as paid.
+// creation, so "paid" is never read from a plain field. Only a payment proof signed with
+// our merchant keys (ReturnURL notice, or QueryTradeInfo answer from reconciliation) and
+// bound to this session's MerchantTradeNo, session id and amount counts as paid.
 // Verified against Medusa 2.21.2 (docs/research/medusa-p3.md) and ECPay docs (docs/research/ecpay.md).
 import crypto from "crypto"
 import {
@@ -55,6 +56,8 @@ import {
   newMerchantTradeNo,
   parsePaymentNotice,
   parseTradeInfoResponse,
+  verifiedNoticeFor,
+  verifiedTradeInfoFor,
   type ChoosePayment,
   type CheckoutForm,
   type MerchantCredentials,
@@ -74,7 +77,12 @@ export type EcpaySessionData = {
   checkout_form: CheckoutForm
   ecpay_trade_no?: string
   ecpay_payment_type?: string
+  // Signed payment proofs (raw ECPay fields incl. CheckMacValue); see verifiedNoticeFor.
+  ecpay_notice?: Record<string, string>
+  ecpay_trade_info?: Record<string, string>
 }
+
+type ProofOfPayment = { tradeNo: string; paymentType: string }
 
 const QUERY_TIMEOUT_MS = 10_000
 
@@ -189,6 +197,39 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
     return d as unknown as EcpaySessionData
   }
 
+  // A verified, session-bound proof of payment, or null. No network access.
+  protected proofOfPayment(session: EcpaySessionData): ProofOfPayment | null {
+    const binding = {
+      merchantTradeNo: session.merchant_trade_no,
+      sessionId: session.session_id,
+      amount: session.amount,
+    }
+    const notice = verifiedNoticeFor(session.ecpay_notice, binding, this.credentials)
+    if (notice) {
+      return { tradeNo: notice.tradeNo, paymentType: notice.paymentType }
+    }
+    const info = verifiedTradeInfoFor(session.ecpay_trade_info, binding, this.credentials)
+    if (info) {
+      return { tradeNo: info.tradeNo, paymentType: info.paymentType }
+    }
+    return null
+  }
+
+  // Rebuilds session data from the provider's own keys, dropping anything else a client
+  // may have sent at session creation.
+  protected providerKeys(session: EcpaySessionData): EcpaySessionData {
+    return {
+      session_id: session.session_id,
+      merchant_trade_no: session.merchant_trade_no,
+      amount: session.amount,
+      currency_code: "twd",
+      choose_payment: session.choose_payment,
+      checkout_form: session.checkout_form,
+      ...(session.ecpay_notice ? { ecpay_notice: session.ecpay_notice } : {}),
+      ...(session.ecpay_trade_info ? { ecpay_trade_info: session.ecpay_trade_info } : {}),
+    }
+  }
+
   // Server-to-server QueryTradeInfo. Returns null when ECPay cannot be reached or the
   // answer is not signed by our merchant keys; callers treat null as "not paid (yet)".
   protected async queryTradeInfo(merchantTradeNo: string): Promise<TradeInfo | null> {
@@ -239,28 +280,43 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
     return { id: data.merchant_trade_no, data, status: PaymentSessionStatus.PENDING }
   }
 
-  // The module replaces session.data with what this returns. A changed amount needs a new
-  // MerchantTradeNo because ECPay never re-prices an issued trade number.
+  // The module replaces session.data with what this returns.
+  // - With a payment proof (ReturnURL route / reconciliation): keep the trade, attach the
+  //   proof only if it verifies for this exact session; a paid trade is never re-priced.
+  // - Otherwise (amount changed): issue a new MerchantTradeNo and form, because ECPay never
+  //   re-prices an issued trade number.
   async updatePayment(input: UpdatePaymentInput): Promise<UpdatePaymentOutput> {
     const sessionId = input.data?.session_id
     if (typeof sessionId !== "string") {
       throw new MedusaError(MedusaError.Types.INVALID_DATA, "session_id missing")
     }
     const amount = this.toWholeTwd(input.amount, input.currency_code)
-    const data = this.buildSession(sessionId, amount, this.choosePayment(input.data))
+    const incoming = input.data ?? {}
+    if (incoming.ecpay_notice || incoming.ecpay_trade_info) {
+      const session = this.readSession(incoming)
+      if (session.amount !== amount) {
+        throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "a paid ECPay trade cannot be re-priced")
+      }
+      if (!this.proofOfPayment(session)) {
+        throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPay payment proof does not verify for this session")
+      }
+      return { data: this.providerKeys(session) }
+    }
+    const data = this.buildSession(sessionId, amount, this.choosePayment(incoming))
     return { data, status: PaymentSessionStatus.PENDING }
   }
 
+  // No network call: called at cart completion (before the shopper has paid) and from
+  // processPaymentWorkflow after the ReturnURL route attached a verified notice.
   async authorizePayment(input: AuthorizePaymentInput): Promise<AuthorizePaymentOutput> {
-    const session = this.readSession(input.data)
-    const info = await this.queryTradeInfo(session.merchant_trade_no)
-    const status = this.statusFrom(info, session)
+    const session = this.providerKeys(this.readSession(input.data))
+    const proof = this.proofOfPayment(session)
+    if (!proof) {
+      return { status: PaymentSessionStatus.PENDING_AUTHORIZATION, data: session }
+    }
     return {
-      status,
-      data:
-        status === PaymentSessionStatus.CAPTURED && info
-          ? { ...session, ecpay_trade_no: info.tradeNo, ecpay_payment_type: info.paymentType }
-          : { ...session },
+      status: PaymentSessionStatus.CAPTURED,
+      data: { ...session, ecpay_trade_no: proof.tradeNo, ecpay_payment_type: proof.paymentType },
     }
   }
 
@@ -271,13 +327,25 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
 
   // ECPay's refund API (CreditDetail/DoAction) exists only in production and cannot be
   // tested in stage. Until it is implemented and verified with a real transaction
-  // (DEV_PLAN P4-08), refunds are made in the ECPay vendor back office.
+  // (DEV_PLAN P4-08), a refund issued in Medusa (Super Admin only, RBAC) is recorded as
+  // "manual_pending" and must be executed in the ECPay vendor back office the same day
+  // (docs/ops/ecpay-manual-refund.md). The alert line is the hand-off to finance.
   async refundPayment(input: RefundPaymentInput): Promise<RefundPaymentOutput> {
-    const amount = MathBN.convert(input.amount).toString()
-    throw new MedusaError(
-      MedusaError.Types.NOT_ALLOWED,
-      `ECPay refunds (NT$${amount}) are not automated yet: refund in the ECPay vendor back office (P4-08)`
+    const amount = MathBN.convert(input.amount)
+    if (!amount.isInteger() || amount.lte(0)) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `refund must be a positive whole TWD amount, got ${amount.toString()}`)
+    }
+    const data = (input.data ?? {}) as Record<string, unknown>
+    const previous = Array.isArray(data.ecpay_manual_refunds) ? data.ecpay_manual_refunds : []
+    const record = {
+      amount: amount.toNumber(),
+      status: "manual_pending",
+      requested_at: new Date().toISOString(),
+    }
+    this.logger_.error(
+      `[ECPAY-ALERT] manual refund required: NT$${record.amount} for MerchantTradeNo ${String(data.merchant_trade_no)} / TradeNo ${String(data.ecpay_trade_no)}`
     )
+    return { data: { ...data, ecpay_manual_refunds: [...previous, record] } }
   }
 
   // Unpaid ECPay trades simply expire; paid ones must be refunded, not cancelled here.
@@ -289,8 +357,12 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
     return { data: input.data }
   }
 
+  // Proof first (no network); otherwise ask ECPay (used by reconciliation, P4-10).
   async getPaymentStatus(input: GetPaymentStatusInput): Promise<GetPaymentStatusOutput> {
     const session = this.readSession(input.data)
+    if (this.proofOfPayment(session)) {
+      return { status: PaymentSessionStatus.CAPTURED, data: input.data }
+    }
     const info = await this.queryTradeInfo(session.merchant_trade_no)
     return { status: this.statusFrom(info, session), data: input.data }
   }

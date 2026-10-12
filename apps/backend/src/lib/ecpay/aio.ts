@@ -232,3 +232,52 @@ export function parseTradeInfoResponse(
     raw,
   }
 }
+
+// Proof of payment for one session: a CheckMacValue-verified ReturnURL notice (stored by
+// the route) or a verified QueryTradeInfo answer (stored by reconciliation, P4-10). Who
+// stored it does not matter: it must be signed with our merchant keys and bound to this
+// session's MerchantTradeNo, session id and amount, and report a real, completed payment.
+export type SessionBinding = { merchantTradeNo: string; sessionId: string; amount: number }
+
+export function verifiedNoticeFor(
+  stored: unknown,
+  binding: SessionBinding,
+  credentials: MerchantCredentials
+): PaymentNotice | null {
+  if (!stored || typeof stored !== "object") {
+    return null
+  }
+  const notice = parsePaymentNotice(stored as Record<string, unknown>, credentials)
+  if (
+    !notice ||
+    notice.merchantTradeNo !== binding.merchantTradeNo ||
+    notice.sessionId !== binding.sessionId ||
+    !isPaid(notice, binding.amount)
+  ) {
+    return null
+  }
+  return notice
+}
+
+export function verifiedTradeInfoFor(
+  stored: unknown,
+  binding: SessionBinding,
+  credentials: MerchantCredentials
+): TradeInfo | null {
+  if (!stored || typeof stored !== "object") {
+    return null
+  }
+  const info = parseTradeInfoResponse(
+    new URLSearchParams(stored as Record<string, string>).toString(),
+    credentials
+  )
+  if (
+    !info ||
+    info.merchantTradeNo !== binding.merchantTradeNo ||
+    info.tradeStatus !== "1" ||
+    info.tradeAmt !== binding.amount
+  ) {
+    return null
+  }
+  return info
+}

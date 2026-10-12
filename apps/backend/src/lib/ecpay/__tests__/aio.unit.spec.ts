@@ -76,6 +76,9 @@ describe("buildCheckoutForm", () => {
       ChoosePayment: "Credit",
       CustomField1: "payses_123",
       MerchantTradeDate: "2026/10/13 01:05:09",
+      ReturnURL: "https://api.example.com/hooks/ecpay/payment",
+      OrderResultURL: "https://shop.example.com/checkout/ecpay/result",
+      ClientBackURL: "https://shop.example.com/account/orders",
     })
     expect(verifyCheckMacValue(form.fields, mac)).toBe(true)
     const serialized = JSON.stringify(form)

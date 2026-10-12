@@ -1,4 +1,5 @@
 import { configureStoreSearch, defineMiddlewares } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
 import type {
   MedusaNextFunction,
   MedusaRequest,
@@ -69,6 +70,36 @@ const rbacHardening: MiddlewareRoute[] = ([
   { methods: ["POST", "DELETE"], matcher: "/admin/property-labels/:id", policies: SUPER_ADMIN_ONLY },
 ] as MiddlewareRoute[]).map((entry) => ({ ...entry, middlewares: [requirePolicies] }))
 
+// ECPay (P4-03 review): once a cart is completed into an order, Medusa 2.21.2 still lets the
+// storefront create a new payment session on its collection, which deletes the old session
+// while its ECPay form can still be paid. Block it until a deliberate re-pay flow (P4-09)
+// exists. The check runs before Medusa's own route handler.
+const blockSessionsOnPlacedOrders = async (
+  req: MedusaRequest,
+  _res: MedusaResponse,
+  next: MedusaNextFunction
+) => {
+  try {
+    const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+    const { data: links } = await query.graph({
+      entity: "cart_payment_collection",
+      fields: ["cart.completed_at"],
+      filters: { payment_collection_id: req.params.id },
+    })
+    if (links.some((l: any) => l?.cart?.completed_at)) {
+      return next(
+        new MedusaError(
+          MedusaError.Types.NOT_ALLOWED,
+          "This order has already been placed; payment can only be retried from the order page."
+        )
+      )
+    }
+    return next()
+  } catch (e) {
+    return next(e)
+  }
+}
+
 // The product index declares filterable `status` and `sales_channel_ids`, so
 // the route narrows it to published products in the key's sales channels.
 export default defineMiddlewares({
@@ -85,5 +116,10 @@ export default defineMiddlewares({
       ],
     },
     ...rbacHardening,
+    {
+      methods: ["POST"],
+      matcher: "/store/payment-collections/:id/payment-sessions",
+      middlewares: [blockSessionsOnPlacedOrders],
+    },
   ],
 })
