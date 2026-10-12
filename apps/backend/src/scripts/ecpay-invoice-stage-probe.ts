@@ -4,7 +4,9 @@
 //   1. Issue a member-carrier invoice, 2. Issue again with the same RelateNumber,
 //   3. GetIssue by RelateNumber, 4. Invalid (void), 5. GetIssue again,
 //   6. GetIssue / Invalid for an unknown invoice,
-//   7. CheckBarcode / CheckLoveCode / GetCompanyNameByTaxID.
+//   7. CheckBarcode / CheckLoveCode / GetCompanyNameByTaxID,
+//   8. a discounted line whose amount is not divisible by its quantity (3 x 1116.67 = 3350.01
+//      vs ItemAmount 3350), then void it.
 // No real e-mail or phone. Usage (from apps/backend):
 //   ../../infra/dev-env.sh pnpm exec medusa exec ./src/scripts/ecpay-invoice-stage-probe.ts
 import crypto from "crypto"
@@ -70,4 +72,14 @@ export default async function ecpayInvoiceStageProbe(_: ExecArgs) {
   await call("CheckLoveCode", { LoveCode: "168001" })
   await call("GetCompanyNameByTaxID", { UnifiedBusinessNo: "97025978" })
   await call("GetCompanyNameByTaxID", { UnifiedBusinessNo: "12345678" })
+  const uneven = await call("Issue", {
+    ...issue,
+    RelateNumber: `${relate}U`,
+    SalesAmount: 3350,
+    Items: [{ ItemSeq: 1, ItemName: "日日順益生菌 60顆", ItemCount: 3, ItemWord: "件", ItemPrice: 1116.67, ItemTaxType: "1", ItemAmount: 3350 }],
+  })
+  if (uneven?.InvoiceNo) {
+    const date = String(uneven.InvoiceDate ?? "").slice(0, 10).replace(/\//g, "-")
+    await call("Invalid", { InvoiceNo: uneven.InvoiceNo, InvoiceDate: date, Reason: "probe void" })
+  }
 }

@@ -442,6 +442,7 @@ describe("refundPayment", () => {
       expect.objectContaining({ amount: 1150, status: "manual_pending" }),
     ])
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("[ECPAY-ALERT] manual refund required"))
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("e-invoice"))
   })
 
   it("appends to earlier manual refunds and rejects non-integer amounts", async () => {

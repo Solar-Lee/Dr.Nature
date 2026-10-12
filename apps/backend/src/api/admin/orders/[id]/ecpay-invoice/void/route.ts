@@ -1,9 +1,14 @@
 // [P4-06] Staff: void the order's e-invoice with the buyer's recorded consent
 // (電子發票實施作業要點 第九點). RBAC: order:update (middlewares.ts).
-// Body: { reason: 1-20 chars, consent: { method: email|line|phone|web|in_person, note: 1-200 chars } }
+// Body: { reason: 1-20 chars,
+//         consent: { method: email|line|phone|web|in_person, note: 1-200 chars },
+//         reissue?: true  -- required while the order is active: void + re-issue,
+//         invoice_choice?: {...} -- optional new buyer choice for the re-issue }
 import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MedusaError } from "@medusajs/framework/utils"
 import { ecpayInvoiceConfigured } from "../../../../../../lib/ecpay/config"
+import { parseInvoiceChoice, type InvoiceChoice } from "../../../../../../lib/ecpay/invoice"
+import { issueEcpayInvoiceWorkflow } from "../../../../../../workflows/ecpay/issue-ecpay-invoice"
 import { voidEcpayInvoiceWorkflow } from "../../../../../../workflows/ecpay/void-ecpay-invoice"
 
 const CONSENT_METHODS = ["email", "line", "phone", "web", "in_person"]
@@ -12,7 +17,12 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   if (!ecpayInvoiceConfigured()) {
     throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "e-invoicing is not configured")
   }
-  const body = (req.body ?? {}) as { reason?: unknown; consent?: { method?: unknown; note?: unknown } }
+  const body = (req.body ?? {}) as {
+    reason?: unknown
+    consent?: { method?: unknown; note?: unknown }
+    reissue?: unknown
+    invoice_choice?: unknown
+  }
   const reason = typeof body.reason === "string" ? body.reason.trim() : ""
   const method = typeof body.consent?.method === "string" ? body.consent.method : ""
   const note = typeof body.consent?.note === "string" ? body.consent.note.trim() : ""
@@ -25,8 +35,33 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
       `the buyer's consent is required: consent.method (${CONSENT_METHODS.join("/")}) and consent.note (200 characters max)`
     )
   }
-  const { result } = await voidEcpayInvoiceWorkflow(req.scope).run({
-    input: { order_id: req.params.id, reason, consent: { method, note }, actor_id: req.auth_context.actor_id },
+  const reissue = body.reissue === true
+  let choice: InvoiceChoice | undefined
+  if (body.invoice_choice !== undefined) {
+    const parsed = parseInvoiceChoice(body.invoice_choice)
+    if (!parsed.ok) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, parsed.message)
+    }
+    if (!reissue) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, "invoice_choice is only used with reissue: true")
+    }
+    choice = parsed.choice
+  }
+  const { result: invoice } = await voidEcpayInvoiceWorkflow(req.scope).run({
+    input: {
+      order_id: req.params.id,
+      reason,
+      consent: { method, note },
+      actor_id: req.auth_context.actor_id,
+      reissue,
+      ...(choice ? { choice } : {}),
+    },
   })
-  res.json({ invoice: result })
+  if (!reissue) {
+    res.json({ invoice })
+    return
+  }
+  // Issue the replacement now; if ECPay fails, the record stays and the retry job continues.
+  const { result: reissued } = await issueEcpayInvoiceWorkflow(req.scope).run({ input: { order_id: req.params.id } })
+  res.json({ invoice, reissued })
 }

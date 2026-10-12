@@ -9,9 +9,11 @@ import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/frame
 import { ECPAY_LOGISTICS_PROVIDER_ID, ecpayInvoiceConfigured, ecpayInvoiceOptionsFromEnv } from "./config"
 import { parseInvoiceChoice } from "./invoice"
 import { invoiceCall } from "./invoice-client"
+import { cachedLookup, rememberLookup, takeLookupBudget } from "./lookup-guard"
 import { receiverProblem, type ReceiverAddress } from "./logistics"
 
 export type CartView = {
+  completed_at?: unknown
   metadata?: Record<string, unknown> | null
   shipping_address?: ReceiverAddress | null
   shipping_methods?: { shipping_option_id?: string | null; data?: Record<string, unknown> | null }[] | null
@@ -43,11 +45,13 @@ export async function checkEcpayLogisticsCart(cart: CartView, container: MedusaC
   }
 }
 
-// Live checks are bounded: one ECPay call per checkout, 5 s, and only a definite "invalid"
-// blocks (ECPay down -> accepted; a bad barcode is then caught when issuing). A public
-// lookup endpoint is deliberately NOT offered: ECPay blocks the merchant for ~30 minutes
-// when rate-limited (HTTP 403), which would stop all invoicing.
+// Live checks are bounded (lookup-guard.ts): at most one ECPay call per checkout, none for
+// a cart that is already completed, a per-process budget, a cache, 5 s timeout. Only a
+// definite "invalid" blocks; ECPay down, rate-limited or misconfigured -> accepted (a bad
+// value then surfaces when the invoice is issued). No public lookup endpoint is offered.
 const LIVE_CHECK_TIMEOUT_MS = 5_000
+
+const mask = (v: string) => `${v.slice(0, 3)}${"*".repeat(Math.max(0, v.length - 3))}`
 
 export async function checkEcpayInvoiceCart(cart: CartView, container: MedusaContainer) {
   const raw = cart.metadata?.ecpay_invoice_choice
@@ -58,30 +62,50 @@ export async function checkEcpayInvoiceCart(cart: CartView, container: MedusaCon
   if (!parsed.ok) {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, parsed.message)
   }
-  if (!ecpayInvoiceConfigured()) {
+  const c = parsed.choice
+  if (cart.completed_at || !ecpayInvoiceConfigured() || c.type === "member" || c.type === "citizen_cert") {
     return
   }
-  const c = parsed.choice
-  const options = ecpayInvoiceOptionsFromEnv()
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
-  if (c.type === "mobile_barcode") {
-    const r = await invoiceCall(options, "CheckBarcode", { BarCode: c.barcode }, LIVE_CHECK_TIMEOUT_MS)
-    if (r.ok && r.data.IsExist === "N") {
-      throw new MedusaError(MedusaError.Types.INVALID_DATA, "查無此手機條碼，請確認後再試")
-    }
-    if (!r.ok) logger.warn(`CheckBarcode unavailable, accepted ${c.barcode}: ${r.message}`)
-  } else if (c.type === "donation") {
-    const r = await invoiceCall(options, "CheckLoveCode", { LoveCode: c.love_code }, LIVE_CHECK_TIMEOUT_MS)
-    if (r.ok && r.data.IsExist === "N") {
-      throw new MedusaError(MedusaError.Types.INVALID_DATA, "查無此捐贈碼，請確認後再試")
-    }
-    if (!r.ok) logger.warn(`CheckLoveCode unavailable, accepted ${c.love_code}: ${r.message}`)
-  } else if (c.type === "company") {
-    const r = await invoiceCall(options, "GetCompanyNameByTaxID", { UnifiedBusinessNo: c.tax_id }, LIVE_CHECK_TIMEOUT_MS)
+  let options
+  try {
+    options = ecpayInvoiceOptionsFromEnv()
+  } catch (e) {
+    logger.error(`[ECPAY-ALERT] e-invoice config error, checkout lookups skipped: ${(e as Error).message}`)
+    return
+  }
+  const lookup =
+    c.type === "mobile_barcode"
+      ? { key: `barcode:${c.barcode}`, path: "CheckBarcode" as const, data: { BarCode: c.barcode }, shown: mask(c.barcode), message: "查無此手機條碼，請確認後再試" }
+      : c.type === "donation"
+        ? { key: `love:${c.love_code}`, path: "CheckLoveCode" as const, data: { LoveCode: c.love_code }, shown: c.love_code, message: "查無此捐贈碼，請確認後再試" }
+        : { key: `taxid:${c.tax_id}`, path: "GetCompanyNameByTaxID" as const, data: { UnifiedBusinessNo: c.tax_id }, shown: c.tax_id, message: "統一編號有誤，請確認後再試" }
+  const known = cachedLookup(lookup.key)
+  if (known === "invalid") {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, lookup.message)
+  }
+  if (known === "valid") {
+    return
+  }
+  if (!takeLookupBudget()) {
+    logger.warn(`e-invoice checkout lookup budget used up; accepted ${c.type} ${lookup.shown} unchecked`)
+    return
+  }
+  const r = await invoiceCall(options, lookup.path, lookup.data, LIVE_CHECK_TIMEOUT_MS)
+  let verdict: "valid" | "invalid" | undefined
+  if (lookup.path === "GetCompanyNameByTaxID") {
     // Only a failed check digit or a wrong length is definite (INV-13; 1200125 seen on stage).
-    if (!r.ok && !r.transport && /^RtnCode (1200125|2027000):/.test(r.message)) {
-      throw new MedusaError(MedusaError.Types.INVALID_DATA, "統一編號有誤，請確認後再試")
-    }
+    verdict = r.ok ? "valid" : !r.transport && /^RtnCode (1200125|2027000):/.test(r.message) ? "invalid" : undefined
+  } else if (r.ok) {
+    verdict = r.data.IsExist === "N" ? "invalid" : r.data.IsExist === "Y" ? "valid" : undefined
+  }
+  if (!verdict) {
+    logger.warn(`${lookup.path} unavailable; accepted ${c.type} ${lookup.shown}: ${r.ok ? "no IsExist" : r.message}`)
+    return
+  }
+  rememberLookup(lookup.key, verdict)
+  if (verdict === "invalid") {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, lookup.message)
   }
 }
 

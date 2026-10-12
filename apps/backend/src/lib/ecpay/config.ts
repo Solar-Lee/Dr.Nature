@@ -158,11 +158,17 @@ export function ecpayInvoiceOptionsFromEnv(env: NodeJS.ProcessEnv = process.env)
   if (apiBase && environment === "prod") {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_INVOICE_API_BASE_URL must not be set when ECPAY_ENV=prod")
   }
+  const hashKey = required(env, "ECPAY_INVOICE_HASH_KEY")
+  const hashIV = required(env, "ECPAY_INVOICE_HASH_IV")
+  // AES-128 key and IV are the raw 16 bytes of these strings (INV-03).
+  if (Buffer.byteLength(hashKey, "utf8") !== 16 || Buffer.byteLength(hashIV, "utf8") !== 16) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_INVOICE_HASH_KEY and ECPAY_INVOICE_HASH_IV must be 16 characters")
+  }
   return {
     environment,
     merchantId,
-    hashKey: required(env, "ECPAY_INVOICE_HASH_KEY"),
-    hashIV: required(env, "ECPAY_INVOICE_HASH_IV"),
+    hashKey,
+    hashIV,
     apiHost: apiBase ?? (environment === "prod" ? "https://einvoice.ecpay.com.tw" : "https://einvoice-stage.ecpay.com.tw"),
   }
 }

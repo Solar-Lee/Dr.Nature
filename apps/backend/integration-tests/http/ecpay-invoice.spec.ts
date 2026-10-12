@@ -17,9 +17,12 @@ Object.assign(process.env, INVOICE_ENV)
 
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { createShippingOptionsWorkflow } from "@medusajs/medusa/core-flows"
+import { FULFILLMENT_SET_NAME } from "../../src/lib/drn-setup"
+import { resetLookupGuard } from "../../src/lib/ecpay/lookup-guard"
 import devAddTestStock from "../../src/scripts/dev-add-test-stock"
 import catalog from "../../src/data/catalog.json"
-import { retryPendingInvoices } from "../../src/jobs/ecpay-invoice-retry"
+import { MAX_ATTEMPTS, retryPendingInvoices } from "../../src/jobs/ecpay-invoice-retry"
 import { issueEcpayInvoiceWorkflow } from "../../src/workflows/ecpay/issue-ecpay-invoice"
 import { addTestShipping, makeCheckoutHelpers, runAllSeeds } from "../helpers/ecpay-checkout"
 import { makeInvoiceStub } from "../helpers/ecpay-invoice-stub"
@@ -55,13 +58,35 @@ medusaIntegrationTestRunner({
       await runAllSeeds(container)
       await addTestShipping(container)
       await devAddTestStock({ container, args: [] } as any)
+      // A charged delivery option, so shipping shows up as its own invoice line.
+      const fulfillment = container.resolve(Modules.FULFILLMENT)
+      const [set] = await fulfillment.listFulfillmentSets({ name: FULFILLMENT_SET_NAME }, { relations: ["service_zones"] })
+      const [profile] = await fulfillment.listShippingProfiles({ type: "default" })
+      await createShippingOptionsWorkflow(container).run({
+        input: [
+          {
+            name: "Test paid delivery",
+            price_type: "flat",
+            provider_id: "manual_manual",
+            service_zone_id: set.service_zones[0].id,
+            shipping_profile_id: profile.id,
+            type: { label: "Paid", description: "test", code: "test-paid" },
+            prices: [{ currency_code: "twd", amount: 60 }],
+            rules: [
+              { attribute: "enabled_in_store", value: "true", operator: "eq" },
+              { attribute: "is_return", value: "false", operator: "eq" },
+            ],
+          },
+        ],
+      })
     })
     afterAll(async () => {
       await new Promise<void>((resolve) => stub.server.close(() => resolve()))
     })
     beforeEach(() => {
-      stub.requests.length = 0
-      stub.state.mode = "ok"
+      stub.reset()
+      resetLookupGuard()
+      jest.restoreAllMocks()
     })
 
     const h = makeCheckoutHelpers({ api, getContainer })
@@ -129,7 +154,8 @@ medusaIntegrationTestRunner({
       [{ type: "mobile_barcode", barcode: "/abc+123" }, { CarrierType: "3", CarrierNum: "/ABC+123", Donation: "0" }],
       [{ type: "citizen_cert", cert: "AB12345678901234" }, { CarrierType: "2", CarrierNum: "AB12345678901234" }],
       [{ type: "donation", love_code: "168001" }, { Donation: "1", LoveCode: "168001", CarrierType: "", Print: "0" }],
-      [{ type: "company", tax_id: "97025978", title: "綠界科技股份有限公司" }, { CustomerIdentifier: "97025978", CustomerName: "綠界科技股份有限公司", CarrierType: "1", Print: "0" }],
+      // The typed title is replaced by ECPay's registered name for the tax id.
+      [{ type: "company", tax_id: "97025978", title: "綠界" }, { CustomerIdentifier: "97025978", CustomerName: "綠界科技股份有限公司", CarrierType: "1", Print: "0" }],
     ])("the shopper's choice %j reaches ECPay", async (choice, expected) => {
       const c = await placeOrder(choice)
       expect(c.done.data.type).toEqual("order")
@@ -234,13 +260,15 @@ medusaIntegrationTestRunner({
       await waitFor(async () => (await invoiceOf(c.orderId!))?.status === "issued")
       stub.invoices.get(c.orderId!.replace(/^order_/, ""))!.voided = true // e.g. voided in the back office
       const admin = await h.superAdminHeaders(`void2-${c.orderId}@drn.test`)
+      expect((await api.post(`/admin/orders/${c.orderId}/cancel`, {}, { headers: admin, validateStatus: () => true })).status).toEqual(200)
+      stub.requests.length = 0
       const res = await api.post(
         `/admin/orders/${c.orderId}/ecpay-invoice/void`,
         { reason: "後台已作廢", consent: { method: "email", note: "買家來信同意" } },
         { headers: admin, validateStatus: () => true }
       )
       expect(res.status).toEqual(200)
-      expect(stub.requests.filter((r) => r.path !== "Issue").map((r) => r.path)).toEqual(["Invalid", "GetIssue"])
+      expect(stub.requests.filter((r) => r.path === "Invalid" || r.path === "GetIssue").map((r) => r.path).slice(-2)).toEqual(["Invalid", "GetIssue"])
       expect((await invoiceOf(c.orderId!)).status).toEqual("voided")
     })
 
@@ -256,6 +284,216 @@ medusaIntegrationTestRunner({
       const ops = await h.superAdminHeaders(`o-${c.orderId}@drn.test`, "operations")
       const res = await api.post(url, {}, { headers: ops, validateStatus: () => true })
       expect({ status: res.status, outcome: res.data?.result?.outcome }).toEqual({ status: 200, outcome: "issued" })
+    })
+
+    const loggerErrors = () => {
+      const logger = getContainer().resolve(ContainerRegistrationKeys.LOGGER)
+      return jest.spyOn(logger, "error")
+    }
+    const alertsFor = (spy: jest.SpyInstance, orderId: string) =>
+      spy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes("[ECPAY-ALERT]") && m.includes(orderId))
+
+    it("several products and charged shipping become separate lines that add up", async () => {
+      const headers = await h.storeHeaders()
+      const { data: r } = await api.get("/store/regions", { headers })
+      const { data: c } = await api.post("/store/carts", {
+        region_id: r.regions[0].id,
+        email: "buyer@drn.test",
+        shipping_address: { first_name: "測試", last_name: "買家", address_1: "信義路五段7號", city: "台北市", postal_code: "110", country_code: "tw", phone: "0912345678" },
+      }, { headers })
+      const products = [catalog.products[0], catalog.products[1]]
+      for (const [i, prod] of products.entries()) {
+        const { data: p } = await api.get(`/store/products?handle=${prod.handle}&fields=*variants`, { headers })
+        await api.post(`/store/carts/${c.cart.id}/line-items`, { variant_id: p.products[0].variants[0].id, quantity: i === 0 ? 2 : 1 }, { headers })
+      }
+      const { data: so } = await api.get(`/store/shipping-options?cart_id=${c.cart.id}`, { headers })
+      await api.post(`/store/carts/${c.cart.id}/shipping-methods`, { option_id: so.shipping_options.find((o: any) => o.name === "Test paid delivery").id }, { headers })
+      const { data: pc } = await api.post("/store/payment-collections", { cart_id: c.cart.id }, { headers })
+      const { data: ps } = await api.post(`/store/payment-collections/${pc.payment_collection.id}/payment-sessions`, { provider_id: "pp_ecpay_ecpay", data: { choose_payment: "Credit" } }, { headers })
+      await api.post(`/store/carts/${c.cart.id}/complete`, {}, { headers })
+      const session = ps.payment_collection.payment_sessions[0]
+      await pay({ session, sessionData: session.data })
+      const orderId = (await orderOf(c.cart.id))!
+      await waitFor(async () => (await invoiceOf(orderId))?.status === "issued")
+      const sent = issueRequests()[0].data
+      const price = (i: number) => catalog.products[i].price
+      expect(sent.SalesAmount).toEqual(2 * price(0) + price(1) + 60)
+      expect(sent.Items.map((i: any) => [i.ItemCount, i.ItemAmount])).toEqual([[2, 2 * price(0)], [1, price(1)], [1, 60]])
+      expect(sent.Items[2].ItemName).toEqual("運費")
+      for (const i of sent.Items) {
+        expect(Math.abs(i.ItemPrice * i.ItemCount - i.ItemAmount)).toBeLessThan(1)
+      }
+    })
+
+    it("checkout accepts the choice when ECPay's lookups are unavailable", async () => {
+      stub.state.lookups = "down"
+      for (const choice of [
+        { type: "mobile_barcode", barcode: "/ZZZ1234" },
+        { type: "donation", love_code: "7777" },
+        { type: "company", tax_id: "53212539", title: "某公司" },
+      ]) {
+        const c = await placeOrder(choice)
+        expect({ status: c.done.status, type: c.done.data?.type }).toEqual({ status: 200, type: "order" })
+      }
+    })
+
+    it("an active order is voided only together with a re-issue (new RelateNumber, consent kept)", async () => {
+      const c = await placeOrder()
+      await pay(c)
+      const first = await waitFor(async () => (await invoiceOf(c.orderId!))?.status === "issued" && invoiceOf(c.orderId!))
+      const admin = await h.superAdminHeaders(`re-${c.orderId}@drn.test`)
+      const url = `/admin/orders/${c.orderId}/ecpay-invoice/void`
+      const consent = { method: "email", note: "買家來信要求改開統編" }
+      const noReissue = await api.post(url, { reason: "改開統編", consent }, { headers: admin, validateStatus: () => true })
+      expect(noReissue.status).toEqual(400)
+      expect(stub.requests.filter((r) => r.path === "Invalid")).toHaveLength(0)
+
+      const res = await api.post(
+        url,
+        { reason: "改開統編", consent, reissue: true, invoice_choice: { type: "company", tax_id: "97025978", title: "綠界" } },
+        { headers: admin, validateStatus: () => true }
+      )
+      expect({ status: res.status, outcome: res.data?.reissued?.outcome }).toEqual({ status: 200, outcome: "issued" })
+      const base = c.orderId!.replace(/^order_/, "")
+      const issues = issueRequests()
+      expect(issues.map((r) => r.data.RelateNumber)).toEqual([base, `${base}R1`])
+      expect(issues[1].data).toMatchObject({ CustomerIdentifier: "97025978", CustomerName: "綠界科技股份有限公司" })
+      const now = await invoiceOf(c.orderId!)
+      expect(now).toMatchObject({
+        status: "issued",
+        sequence: 1,
+        relate_number: `${base}R1`,
+        previous: [{ invoice_no: first.invoice_no, relate_number: base, void: { consent } }],
+      })
+      expect(now.invoice_no).not.toEqual(first.invoice_no)
+      expect((await metadataOf(c.orderId!)).ecpay_invoice_choice).toMatchObject({ type: "company", tax_id: "97025978" })
+    })
+
+    it("a void ECPay refuses (e.g. past the deadline) leaves the invoice valid and nothing recorded", async () => {
+      const c = await placeOrder()
+      await pay(c)
+      await waitFor(async () => (await invoiceOf(c.orderId!))?.status === "issued")
+      const admin = await h.superAdminHeaders(`refuse-${c.orderId}@drn.test`)
+      await api.post(`/admin/orders/${c.orderId}/cancel`, {}, { headers: admin })
+      stub.state.invalid = "refuse"
+      const res = await api.post(
+        `/admin/orders/${c.orderId}/ecpay-invoice/void`,
+        { reason: "取消訂單", consent: { method: "line", note: "同意" } },
+        { headers: admin, validateStatus: () => true }
+      )
+      expect(res.status).toEqual(400)
+      expect(JSON.stringify(res.data)).toContain("折讓")
+      const inv = await invoiceOf(c.orderId!)
+      expect(inv.status).toEqual("issued")
+      expect(inv.void).toBeUndefined()
+    })
+
+    it("retry job: invoices a paid order whose event was lost; leaves unpaid and canceled-not-issued orders alone", async () => {
+      const off = process.env.ECPAY_INVOICE_MERCHANT_ID
+      delete process.env.ECPAY_INVOICE_MERCHANT_ID // subscribers see invoicing off = the event is "lost"
+      let lost: any, canceled: any, unpaid: any
+      try {
+        lost = await placeOrder()
+        await pay(lost)
+        canceled = await placeOrder()
+        await pay(canceled)
+        const admin = await h.superAdminHeaders(`job-${canceled.orderId}@drn.test`)
+        expect((await api.post(`/admin/orders/${canceled.orderId}/cancel`, {}, { headers: admin, validateStatus: () => true })).status).toEqual(200)
+        unpaid = await placeOrder()
+        await new Promise((r) => setTimeout(r, 300))
+      } finally {
+        process.env.ECPAY_INVOICE_MERCHANT_ID = off
+      }
+      expect(issueRequests()).toHaveLength(0)
+      expect(await invoiceOf(lost.orderId)).toBeUndefined()
+      const outcomes = await retryPendingInvoices(getContainer())
+      expect(outcomes[lost.orderId]).toEqual("issued")
+      expect(outcomes[canceled.orderId]).toEqual("skipped") // reconciled: ECPay has nothing
+      expect(outcomes[unpaid.orderId]).toBeUndefined()
+      expect(issueRequests().map((r) => r.data.RelateNumber)).toEqual([lost.orderId.replace(/^order_/, "")])
+    })
+
+    it("transport failures alert on the 3rd attempt only; MAX_ATTEMPTS stops the retries", async () => {
+      const c = await placeOrder()
+      stub.state.mode = "down"
+      const spy = loggerErrors()
+      await pay(c)
+      await waitFor(async () => (await invoiceOf(c.orderId!))?.attempts === 1)
+      await retryPendingInvoices(getContainer())
+      expect((await invoiceOf(c.orderId!)).attempts).toEqual(2)
+      expect(alertsFor(spy, c.orderId!)).toHaveLength(0)
+      await retryPendingInvoices(getContainer())
+      expect((await invoiceOf(c.orderId!)).attempts).toEqual(3)
+      expect(alertsFor(spy, c.orderId!)).toHaveLength(1)
+      await retryPendingInvoices(getContainer())
+      expect(alertsFor(spy, c.orderId!)).toHaveLength(1) // attempt 4: quiet again
+
+      const inv = await invoiceOf(c.orderId!)
+      await getContainer().resolve(Modules.ORDER).updateOrders([{ id: c.orderId!, metadata: { ecpay_invoice: { ...inv, attempts: MAX_ATTEMPTS } } }])
+      stub.requests.length = 0
+      const outcomes = await retryPendingInvoices(getContainer())
+      expect(outcomes[c.orderId!]).toBeUndefined()
+      expect(issueRequests()).toHaveLength(0)
+    })
+
+    it("a business refusal alerts on the first attempt", async () => {
+      const c = await placeOrder()
+      stub.state.mode = "refuse"
+      const spy = loggerErrors()
+      await pay(c)
+      await waitFor(async () => (await invoiceOf(c.orderId!))?.status === "failed")
+      expect(alertsFor(spy, c.orderId!)).toHaveLength(1)
+    })
+
+    it("an invoice ECPay voided in the back office is adopted as voided (and staff alerted)", async () => {
+      const c = await placeOrder()
+      stub.state.mode = "down"
+      await pay(c)
+      await waitFor(async () => (await invoiceOf(c.orderId!))?.status === "failed")
+      const relate = c.orderId!.replace(/^order_/, "")
+      stub.invoices.set(relate, { data: { RelateNumber: relate, SalesAmount: PRICE, CarrierType: "1" }, invoiceNo: "LO99999999", invoiceDate: "2026-10-13 05:00:00", random: "1234", voided: true })
+      stub.state.mode = "ok"
+      const spy = loggerErrors()
+      const outcomes = await retryPendingInvoices(getContainer())
+      expect(outcomes[c.orderId!]).toEqual("adopted")
+      expect(await invoiceOf(c.orderId!)).toMatchObject({ status: "voided", invoice_no: "LO99999999" })
+      expect(alertsFor(spy, c.orderId!).join()).toContain("voided")
+    })
+
+    it("cancel after a lost answer: ECPay's invoice is found, recorded and staff alerted — never voided automatically", async () => {
+      const c = await placeOrder()
+      stub.state.mode = "drop" // issued at ECPay, answer lost
+      stub.state.getIssue = "down" // and the lookup fails too
+      await pay(c)
+      await waitFor(async () => (await invoiceOf(c.orderId!))?.status === "failed")
+      stub.state.mode = "ok"
+      stub.state.getIssue = "ok"
+      const spy = loggerErrors()
+      const admin = await h.superAdminHeaders(`orph-${c.orderId}@drn.test`)
+      expect((await api.post(`/admin/orders/${c.orderId}/cancel`, {}, { headers: admin, validateStatus: () => true })).status).toEqual(200)
+      const held = stub.invoices.get(c.orderId!.replace(/^order_/, ""))!
+      const inv = await waitFor(async () => (await invoiceOf(c.orderId!))?.status === "issued" && invoiceOf(c.orderId!))
+      expect(inv.invoice_no).toEqual(held.invoiceNo)
+      expect(stub.requests.filter((r) => r.path === "Invalid")).toHaveLength(0)
+      await waitFor(async () => alertsFor(spy, c.orderId!).some((m) => m.includes("canceled")))
+    })
+
+    it("after a refund the order total no longer matches the sale: nothing is issued, staff alerted", async () => {
+      const c = await placeOrder()
+      stub.state.mode = "down"
+      await pay(c)
+      await waitFor(async () => (await invoiceOf(c.orderId!))?.status === "failed")
+      const [payment] = await h.capturedPayments(c.session.id)
+      const admin = await h.superAdminHeaders(`refund-${c.orderId}@drn.test`)
+      const refund = await api.post(`/admin/payments/${payment.id}/refund`, { amount: 575 }, { headers: admin, validateStatus: () => true })
+      expect(refund.status).toEqual(200)
+      stub.state.mode = "ok"
+      stub.requests.length = 0
+      const spy = loggerErrors()
+      const outcomes = await retryPendingInvoices(getContainer())
+      expect(outcomes[c.orderId!]).toEqual("failed")
+      expect(issueRequests()).toHaveLength(0)
+      expect(alertsFor(spy, c.orderId!).join()).toContain("refund or credit line")
     })
   },
 })

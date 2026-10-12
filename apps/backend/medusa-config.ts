@@ -1,6 +1,11 @@
 import { readFileSync } from "fs"
 import { MedusaError, loadEnv, defineConfig } from "@medusajs/framework/utils"
-import { ecpayLogisticsOptionsFromEnv, ecpayOptionsFromEnv } from "./src/lib/ecpay/config"
+import {
+  ecpayInvoiceConfigured,
+  ecpayInvoiceOptionsFromEnv,
+  ecpayLogisticsOptionsFromEnv,
+  ecpayOptionsFromEnv,
+} from "./src/lib/ecpay/config"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
@@ -93,6 +98,12 @@ const paymentModules = process.env.ECPAY_ENV
 // ECPay logistics (fulfillment provider "ecpay_logistics"), registered only when its
 // credentials are set. The manual provider stays registered (Medusa's default entry).
 // drn-0006 fails if the ECPay provider is missing, so production cannot run without it.
+// E-invoicing (P4-06) is not a module, but a bad production config (public test merchant,
+// test host override, wrong key length) must stop the boot, like payment and logistics.
+if (ecpayInvoiceConfigured()) {
+  ecpayInvoiceOptionsFromEnv()
+}
+
 const fulfillmentModules = process.env.ECPAY_LOGISTICS_MERCHANT_ID
   ? [
     {

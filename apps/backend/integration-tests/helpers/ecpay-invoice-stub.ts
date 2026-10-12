@@ -19,8 +19,23 @@ export type StubInvoice = {
 export function makeInvoiceStub(creds: Creds) {
   const requests: { path: string; data: Record<string, any> }[] = []
   const invoices = new Map<string, StubInvoice>() // by RelateNumber
-  // ok | refuse (business error) | drop (issued, connection dropped) | down (nothing, dropped)
-  const state = { mode: "ok" as "ok" | "refuse" | "drop" | "down", seq: 22068041 }
+  // Issue: ok | refuse (business error) | drop (issued, connection dropped) | down (nothing, dropped)
+  // lookups (CheckBarcode/CheckLoveCode/GetCompanyNameByTaxID): ok | down (connection dropped)
+  // getIssue: ok | down;  invalid: ok | refuse (e.g. past the void deadline; stays valid)
+  const state = {
+    mode: "ok" as "ok" | "refuse" | "drop" | "down",
+    lookups: "ok" as "ok" | "down",
+    getIssue: "ok" as "ok" | "down",
+    invalid: "ok" as "ok" | "refuse",
+    seq: 22068041,
+  }
+  const reset = () => {
+    state.mode = "ok"
+    state.lookups = "ok"
+    state.getIssue = "ok"
+    state.invalid = "ok"
+    requests.length = 0
+  }
 
   const answer = (res: http.ServerResponse, data: Record<string, unknown>) => {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8" })
@@ -82,6 +97,10 @@ export function makeInvoiceStub(creds: Creds) {
         return
       }
       if (path === "GetIssue") {
+        if (state.getIssue === "down") {
+          req.socket.destroy()
+          return
+        }
         const inv = [...invoices.values()].find(
           (i) => i.data.RelateNumber === data.RelateNumber || (data.InvoiceNo && i.invoiceNo === data.InvoiceNo)
         )
@@ -113,8 +132,16 @@ export function makeInvoiceStub(creds: Creds) {
           answer(res, { RtnCode: 5070453, RtnMsg: "B2C作廢發票 該發票已被作廢過", InvoiceNo: inv.invoiceNo })
           return
         }
+        if (state.invalid === "refuse") {
+          answer(res, { RtnCode: 9999999, RtnMsg: "stub: 已逾作廢期限", InvoiceNo: "" })
+          return
+        }
         inv.voided = true
         answer(res, { RtnCode: 1, RtnMsg: "作廢發票成功", InvoiceNo: inv.invoiceNo })
+        return
+      }
+      if (["CheckBarcode", "CheckLoveCode", "GetCompanyNameByTaxID"].includes(path) && state.lookups === "down") {
+        req.socket.destroy()
         return
       }
       if (path === "CheckBarcode") {
@@ -130,12 +157,12 @@ export function makeInvoiceStub(creds: Creds) {
           res,
           data.UnifiedBusinessNo === "12345678"
             ? { RtnCode: 1200125, RtnMsg: "統一編號檢查碼驗證失敗，請再確認", CompanyName: null }
-            : { RtnCode: 1, RtnMsg: "查詢名稱成功", CompanyName: "stub company" }
+            : { RtnCode: 1, RtnMsg: "查詢名稱成功", CompanyName: data.UnifiedBusinessNo === "97025978" ? "綠界科技股份有限公司" : "stub company" }
         )
         return
       }
       res.writeHead(404).end()
     })
   })
-  return { server, requests, invoices, state }
+  return { server, requests, invoices, state, reset }
 }

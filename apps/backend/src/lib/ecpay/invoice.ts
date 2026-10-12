@@ -228,30 +228,39 @@ export function buildIssueData(input: IssueInput): Record<string, unknown> {
 
 // ---- order <-> invoice records -------------------------------------------------------------
 
-// One RelateNumber per order (its id without the "order_" prefix, a 26-character ULID), so a
-// retry can never issue a second invoice: ECPay answers 5070357 「自訂編號重覆」 and the
-// invoice is looked up with GetIssue (verified on stage 2026-10-13).
-export function relateNumberFor(orderId: string): string {
+// One RelateNumber per invoice of an order: the order id without "order_" (a 26-character
+// ULID), plus "R<n>" for the n-th re-issue after a void. A retry therefore never issues a
+// second invoice: ECPay answers 5070357 「自訂編號重覆」 and GetIssue finds the existing one
+// (verified on stage 2026-10-13). RelateNumber is case-insensitive at ECPay; ULIDs are upper.
+export function relateNumberFor(orderId: string, sequence = 0): string {
   const id = orderId.replace(/^order_/, "")
-  if (!/^[A-Za-z0-9]{1,50}$/.test(id)) {
+  const relate = sequence > 0 ? `${id}R${sequence}` : id
+  if (!/^[A-Za-z0-9]{1,50}$/.test(relate) || !Number.isInteger(sequence) || sequence < 0) {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, `order id ${orderId} cannot be a RelateNumber`)
   }
-  return id
+  return relate
 }
 
 // What we keep on order.metadata.ecpay_invoice (always written as one whole object).
-export type InvoiceRecord = {
-  status: "issued" | "voided" | "failed"
+//  pending: to be issued (a re-issue after a staff void), failed: last attempt failed,
+//  issued / voided: ECPay's state. `previous` keeps earlier invoices of the order.
+export type InvoiceVoid = { at: string; reason: string; consent: { method: string; note: string }; by: string }
+export type InvoiceSummary = {
   relate_number: string
   invoice_no?: string
-  invoice_date?: string // "yyyy-MM-dd HH:mm:ss" (Taipei)
+  invoice_date?: string
   random_number?: string
   sales_amount?: number
+  void?: InvoiceVoid
+}
+export type InvoiceRecord = InvoiceSummary & {
+  status: "pending" | "issued" | "voided" | "failed"
+  sequence?: number
   choice?: InvoiceChoice
   error?: string
   attempts?: number
   updated_at: string
-  void?: { at: string; reason: string; consent: { method: string; note: string }; by: string }
+  previous?: InvoiceSummary[]
 }
 
 // Issue answer -> invoice fields.

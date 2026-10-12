@@ -4,8 +4,11 @@
 //   1. Places an order through the real store API (會員載具) and pays it by posting a
 //      correctly signed ReturnURL notice to OUR server (real ECPay cannot reach localhost).
 //   2. Waits for OUR subscriber to issue the invoice at real ECPay stage.
-//   3. Voids it through OUR void workflow (consent recorded as this test) and confirms with
-//      real GetIssue that ECPay shows it voided.
+//   3. Void + re-issue through OUR workflows (consent recorded as this test; new choice = 統編
+//      97025978): the first invoice is voided and a new one is issued under RelateNumber …R1
+//      with ECPay's registered company name.
+//   4. Cancels the order and voids the re-issued invoice (canceled -> void only).
+//   Real GetIssue confirms every state.
 // Refuses to run outside NODE_ENV=development against a local database.
 // Usage (from apps/backend, dev server running):
 //   ../../infra/dev-env.sh pnpm exec medusa exec ./src/scripts/ecpay-invoice-stage-e2e.ts
@@ -17,6 +20,8 @@ import { ECPAY_PROVIDER_ID, ecpayInvoiceOptionsFromEnv, ecpayOptionsFromEnv } fr
 import { issuedFromGetIssue, type InvoiceRecord } from "../lib/ecpay/invoice"
 import { invoiceCall } from "../lib/ecpay/invoice-client"
 import { PUBLISHABLE_KEYS } from "../lib/drn-setup"
+import { cancelOrderWorkflow } from "@medusajs/medusa/core-flows"
+import { issueEcpayInvoiceWorkflow } from "../workflows/ecpay/issue-ecpay-invoice"
 import { voidEcpayInvoiceWorkflow } from "../workflows/ecpay/void-ecpay-invoice"
 
 export default async function ecpayInvoiceStageE2e({ container }: ExecArgs) {
@@ -91,16 +96,30 @@ export default async function ecpayInvoiceStageE2e({ container }: ExecArgs) {
   const issuedAtEcpay = record?.relate_number ? await invoiceCall(invoiceOptions, "GetIssue", { RelateNumber: record.relate_number }) : null
   const before = issuedAtEcpay?.ok ? issuedFromGetIssue(issuedAtEcpay.data) : null
 
-  const { result: voided } = await voidEcpayInvoiceWorkflow(container).run({
-    input: { order_id: orderId, reason: "stage e2e", consent: { method: "web", note: "stage end-to-end test (no real buyer)" }, actor_id: "stage-e2e" },
+  const consent = { method: "web", note: "stage end-to-end test (no real buyer)" }
+  const lookup = async (relate?: string) => {
+    if (!relate) return null
+    const r = await invoiceCall(invoiceOptions, "GetIssue", { RelateNumber: relate })
+    return r.ok ? { ...issuedFromGetIssue(r.data), customer_name: r.data.IIS_Customer_Name, identifier: r.data.IIS_Identifier } : r
+  }
+  // 3. void + re-issue with a tax id
+  await voidEcpayInvoiceWorkflow(container).run({
+    input: { order_id: orderId, reason: "stage e2e reissue", consent, actor_id: "stage-e2e", reissue: true, choice: { type: "company", tax_id: "97025978", title: "綠界" } },
   })
-  const after = record?.relate_number ? await invoiceCall(invoiceOptions, "GetIssue", { RelateNumber: record.relate_number }) : null
+  const { result: reissued } = await issueEcpayInvoiceWorkflow(container).run({ input: { order_id: orderId } })
+  const afterReissue = (await orderModule.retrieveOrder(orderId, { select: ["id", "metadata"] })).metadata?.ecpay_invoice as InvoiceRecord
+  // 4. cancel, then void the re-issued invoice
+  await cancelOrderWorkflow(container).run({ input: { order_id: orderId, canceled_by: "stage-e2e" } })
+  const { result: finalRecord } = await voidEcpayInvoiceWorkflow(container).run({
+    input: { order_id: orderId, reason: "stage e2e cancel", consent, actor_id: "stage-e2e" },
+  })
   console.log(JSON.stringify({
     order: done.order.display_id,
     payment_ack: ack,
-    invoice: { status: record?.status, invoice_no: record?.invoice_no, random_number: record?.random_number, sales_amount: record?.sales_amount, choice: record?.choice },
-    ecpay_before_void: before && { invoice_no: before.invoice_no, sales_amount: before.sales_amount, voided: before.voided },
-    our_record_after_void: { status: voided.status, consent: voided.void?.consent?.method },
-    ecpay_after_void: after?.ok ? { voided: issuedFromGetIssue(after.data).voided } : after,
+    first: { status: record?.status, invoice_no: record?.invoice_no, random_number: record?.random_number, sales_amount: record?.sales_amount, ecpay_before: before && { voided: before.voided } },
+    first_at_ecpay_after_reissue: await lookup(record?.relate_number),
+    reissue: { outcome: reissued.outcome, relate_number: afterReissue?.relate_number, invoice_no: afterReissue?.invoice_no, previous: afterReissue?.previous?.map((p) => p.invoice_no) },
+    final: { status: finalRecord.status, consent: finalRecord.void?.consent?.method },
+    reissued_at_ecpay_after_void: await lookup(afterReissue?.relate_number),
   }))
 }

@@ -17,6 +17,7 @@
 | CheckBarcode／CheckLoveCode | `RtnCode 1`、`IsExist`（測試環境對 `/ABC+123`、`168001` 回 `Y`） |
 | GetCompanyNameByTaxID | 97025978 → 綠界科技股份有限公司；12345678 → `RtnCode 1200125`「統一編號檢查碼驗證失敗」 |
 | 回應外層 | HTTP 200、`application/json`；`PlatformID, MerchantID, RpHeader, TransCode, TransMsg, Data` |
+| 單價×數量≠合計（3 × 1116.67 vs 3350） | `RtnCode 1` 開立成功（LO22068057），隨即作廢；綠界接受小數單價的捨入誤差 |
 
 → 設計：每張訂單固定 RelateNumber（訂單 id 去掉 `order_`，26 碼 ULID）；開立失敗或沒收到回應時一律先 GetIssue，查得到就沿用，**不會重複開立**。作廢失敗時以 GetIssue 的 `IIS_Invalid_Status` 判定是否其實已作廢。
 
@@ -49,7 +50,20 @@
 - `completeCartWorkflow.hooks.validate` 只能註冊**一個** handler（create-hook.js:72-73）。→ 物流與發票檢查合併在 `src/workflows/hooks/complete-cart-validate.ts`。
 - `acquireLockStep`／`releaseLockStep` 可用；鍵加 `drn-einvoice:` 前綴避開核心鎖。✅
 
-## 5. 未驗證／待辦
+## 5. 經由我方程式的端到端（`src/scripts/ecpay-invoice-stage-e2e.ts`，2026-10-13 04:25）
+
+本機 dev server（Redis 事件匯流排）→ 店面 API 下單（7-ELEVEN 取貨、會員載具、2 瓶）→ 以正確簽章送 ReturnURL 付款通知 → **我方訂閱者**收到 `payment.captured` → 真實綠界 stage 開立 **LO22068054**（NT$2,300，隨機碼 3706）→ 我方作廢流程（同意方式 web）→ 綠界 GetIssue `IIS_Invalid_Status=1`。
+
+```
+{"order":5,"payment_ack":"1|OK","invoice":{"status":"issued","invoice_no":"LO22068054","random_number":"3706","sales_amount":2300,"choice":{"type":"member"}},
+ "ecpay_before_void":{"invoice_no":"LO22068054","sales_amount":2300,"voided":false},"our_record_after_void":{"status":"voided","consent":"web"},"ecpay_after_void":{"voided":true}}
+```
+
+審查修正後再跑一次（04:47，同一腳本擴充）：付款 → 開立 **LO22068059**（會員載具）→ 有效訂單**作廢＋重開**（同意紀錄、改為統編 97025978、自填抬頭「綠界」）→ 綠界顯示 LO22068059 已作廢、以 RelateNumber `…R1` 開立 **LO22068060**，買受人名稱為登記名稱「綠界科技股份有限公司」→ 取消訂單（退款告警含發票提醒）→ 作廢 LO22068060 → 綠界 GetIssue 確認已作廢。
+
+**實測教訓（部署須知）**：前兩次失敗是本機殘留的舊版 `medusa develop` 行程（無發票訂閱者）也連在同一個 Redis 佇列，搶走了 `payment.captured` 事件。Redis 事件匯流排上**任何**worker 都可能取走事件；部署時新舊 worker 並存，事件可能被舊版吃掉。對策：①每 15 分鐘重試排程會補開（已有整合測試）；② P12 部署程序須先停舊 worker 再啟新版。
+
+## 6. 未驗證／待辦
 
 - 正式環境發票商店是否與金流共用 MerchantID：未載明，維持三組獨立設定（INV-06）。
 - 正式商店「發票通知方式」預設值未載明 → U-14 由 Aki 在正式後台設定（開立、作廢、中獎通知以 Email）。

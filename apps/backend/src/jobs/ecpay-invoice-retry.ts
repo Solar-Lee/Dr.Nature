@@ -1,6 +1,9 @@
-// [P4-06] Every 15 minutes: issue e-invoices that the subscriber could not (ECPay down,
-// worker restarted mid-way, ...). Looks at orders placed in the last 30 days that are paid
-// and have no issued/voided invoice; the workflow itself re-checks everything under a lock.
+// [P4-06] Every 15 minutes: finish e-invoicing the subscribers could not (ECPay down, a lost
+// event — on the Redis event bus an old worker can take it, see docs/research/
+// ecpay-invoice-p4-06.md §5 — or a worker restart). Looks at every order placed in the last
+// 30 days that is paid and has no issued/voided invoice, or a pending re-issue, or is
+// canceled with an unknown outcome (reconcile only). The workflow re-checks everything
+// under the per-order lock.
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { ecpayInvoiceConfigured } from "../lib/ecpay/config"
@@ -9,34 +12,47 @@ import { ECPAY_INVOICE_KEY } from "../workflows/ecpay/ecpay-invoice-steps"
 import { issueEcpayInvoiceWorkflow } from "../workflows/ecpay/issue-ecpay-invoice"
 
 const LOOKBACK_DAYS = 30
+const PAGE = 200
 const MAX_PER_RUN = 25
-const SCAN_LIMIT = 500
 // Stop retrying an order after this many failed attempts (staff are alerted long before).
-const MAX_ATTEMPTS = 50
+export const MAX_ATTEMPTS = 50
+
+type OrderRow = {
+  id: string
+  status: string
+  metadata?: Record<string, unknown> | null
+  payment_collections?: { payments?: { captured_at?: unknown }[] | null }[] | null
+}
+
+export function needsInvoiceWork(o: OrderRow): boolean {
+  const paid = (o.payment_collections ?? []).some((pc) => (pc.payments ?? []).some((p) => !!p.captured_at))
+  if (!paid) return false
+  const r = o.metadata?.[ECPAY_INVOICE_KEY] as InvoiceRecord | undefined
+  if (!r) return true // also canceled: reconcile in case ECPay issued it
+  if (r.status === "pending") return o.status !== "canceled"
+  return r.status === "failed" && (r.attempts ?? 0) < MAX_ATTEMPTS
+}
 
 export async function retryPendingInvoices(container: MedusaContainer, now = new Date()) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
   const query = container.resolve(ContainerRegistrationKeys.QUERY)
   const since = new Date(now.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
-  const { data } = await query.graph({
-    entity: "order",
-    fields: ["id", "status", "metadata", "payment_collections.payments.captured_at"],
-    filters: { created_at: { $gte: since } },
-    pagination: { take: SCAN_LIMIT, order: { created_at: "DESC" } },
-  })
-  if (data.length >= SCAN_LIMIT) {
-    logger.warn(`e-invoice retry scanned only the newest ${SCAN_LIMIT} orders of the last ${LOOKBACK_DAYS} days`)
-  }
-  const pending = (data as { id: string; status: string; metadata?: Record<string, unknown> | null; payment_collections?: { payments?: { captured_at?: unknown }[] | null }[] | null }[])
-    .filter((o) => o.status !== "canceled")
-    .filter((o) => (o.payment_collections ?? []).some((pc) => (pc.payments ?? []).some((p) => !!p.captured_at)))
-    .filter((o) => {
-      const r = o.metadata?.[ECPAY_INVOICE_KEY] as InvoiceRecord | undefined
-      return !r || (r.status === "failed" && (r.attempts ?? 0) < MAX_ATTEMPTS)
+  const pending: OrderRow[] = []
+  for (let skip = 0; ; skip += PAGE) {
+    const { data } = await query.graph({
+      entity: "order",
+      fields: ["id", "status", "metadata", "payment_collections.payments.captured_at"],
+      filters: { created_at: { $gte: since } },
+      pagination: { skip, take: PAGE, order: { created_at: "ASC" } },
     })
-    .slice(0, MAX_PER_RUN)
+    pending.push(...(data as OrderRow[]).filter(needsInvoiceWork))
+    if (data.length < PAGE) break
+  }
+  if (pending.length > MAX_PER_RUN) {
+    logger.warn(`e-invoice retry: ${pending.length} orders need work; doing the oldest ${MAX_PER_RUN} this run`)
+  }
   const outcomes: Record<string, string> = {}
-  for (const o of pending) {
+  for (const o of pending.slice(0, MAX_PER_RUN)) {
     try {
       const { result } = await issueEcpayInvoiceWorkflow(container).run({ input: { order_id: o.id } })
       outcomes[o.id] = result.outcome
@@ -52,7 +68,8 @@ export async function retryPendingInvoices(container: MedusaContainer, now = new
 }
 
 export default async function ecpayInvoiceRetryJob(container: MedusaContainer) {
-  if (!ecpayInvoiceConfigured()) {
+  // Tests call retryPendingInvoices directly; the wall-clock cron must not interleave.
+  if (!ecpayInvoiceConfigured() || process.env.NODE_ENV === "test") {
     return
   }
   await retryPendingInvoices(container)

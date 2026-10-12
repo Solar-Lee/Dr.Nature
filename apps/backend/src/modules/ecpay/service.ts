@@ -437,7 +437,7 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       requested_at: new Date().toISOString(),
     }
     this.logger_.error(
-      `[ECPAY-ALERT] manual refund required: NT$${record.amount} for MerchantTradeNo ${String(data.merchant_trade_no)} / TradeNo ${String(data.ecpay_trade_no)}`
+      `[ECPAY-ALERT] manual refund required: NT$${record.amount} for MerchantTradeNo ${String(data.merchant_trade_no)} / TradeNo ${String(data.ecpay_trade_no)}; also settle the order's e-invoice (void with the buyer's consent, or an allowance)`
     )
     return { data: { ...data, ecpay_manual_refunds: [...previous, record] } }
   }
