@@ -82,7 +82,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 |---|---|---|---|
 | G1 | 部署架構 | Aki | ✅ 混合式（2026-10-13） |
 | G2 | 產品名稱與功效用詞（日日順／晶亮／舒敏 是否保留；一般食品或申請健康食品） | Aki（CODE 依法規研究提案） | ⏳ 提案已出：[product/naming-proposal.md](product/naming-proposal.md) |
-| G3 | LINE OA webhook 歸屬：① 招商期給 `drnature_bot`（團購既有模式，鏡射到 tuangou 即時收件匣）② 給 OmniCS（消費者客服）③ 寫轉發器同時送兩邊 | Aki | ⬜ |
+| G3 | LINE OA webhook 歸屬：① 招商期給 `drnature_bot`（團購既有模式，鏡射到 tuangou 即時收件匣）② 給 OmniCS（消費者客服）③ 寫轉發器同時送兩邊 | Aki | ✅ ① 給團購招商機器人 `drnature_bot`（2026-10-13）；消費者上市前再評估 |
 | G4 | 視覺方向三選一（D-01）、Monogram 三選一（D-02） | Aki | ⬜ |
 | G5 | 品牌故事／Slogan 三選一（P1-03、P1-04） | Aki | ⬜ |
 | G6 | 付費素材生成批次核准（每批列出張數與點數） | Aki | ⬜ |
