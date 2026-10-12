@@ -1,6 +1,7 @@
 // Attaches a verified ECPay notice to its payment session: the ReturnURL payment notice
-// (P4-03, key ecpay_notice) or the PaymentInfoURL code-issued notice (P4-04, key
-// ecpay_payment_info). The provider's updatePayment re-verifies it against the session
+// (P4-03, key ecpay_notice), the PaymentInfoURL code-issued notice (P4-04, key
+// ecpay_payment_info) or a signed QueryTradeInfo answer found by reconciliation (P4-10, key
+// ecpay_trade_info). The provider's updatePayment re-verifies it against the session
 // (signature, trade number, session id, amount) before storing it, so a bad notice fails.
 // No compensation: attaching a verified, signed ECPay notice is idempotent and harmless.
 import {
@@ -14,7 +15,7 @@ import { MedusaError, Modules } from "@medusajs/framework/utils"
 type Input = {
   session_id: string
   notice: Record<string, string>
-  key?: "ecpay_notice" | "ecpay_payment_info"
+  key?: "ecpay_notice" | "ecpay_payment_info" | "ecpay_trade_info"
 }
 
 export const attachEcpayNoticeStep = createStep(
