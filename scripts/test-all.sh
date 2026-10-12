@@ -51,6 +51,9 @@ fi
 if [ -f apps/backend/package.json ]; then
   run_suite "backend:typecheck" pnpm --dir apps/backend exec tsc --noEmit -p tsconfig.json
   run_suite "backend:lint" pnpm --dir apps/backend run lint
+  if [ -n "$(find apps/backend/src -path '*/__tests__/*' -name '*.unit.spec.ts' -not -path '*/node_modules/*' | head -1)" ]; then
+    run_suite "backend:unit" bash -c 'cd apps/backend && ../../infra/test-env.sh pnpm run test:unit'
+  fi
   if compgen -G "apps/backend/integration-tests/http/*.spec.ts" >/dev/null; then
     if nc -z localhost 55432 >/dev/null 2>&1; then
       run_suite "backend:integration:http" bash -c 'cd apps/backend && ../../infra/test-env.sh pnpm run test:integration:http'
