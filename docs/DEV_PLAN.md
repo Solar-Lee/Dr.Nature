@@ -143,7 +143,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
 | P2-01 | 產品命名定案（三款）＋系列名 → `content/products/index.md` | C | G2 | 名稱過 claims-lint；Aki 核准 | `git revert` | ⛔ |
-| P2-02 | 編碼邏輯 `docs/product/sku-coding.md`：SKU（例：`DN-PB-01-060C`＝品牌-系列-品項-規格）、批號（例：生產日 `YYMMDD`＋產線碼）、條碼（GS1） | C | — | 規則可由腳本驗證（regex 測試通過） | `git revert` | ⬜ |
+| P2-02 | 編碼邏輯 `docs/product/sku-coding.md`：SKU（例：`DN-PB-01-060C`＝品牌-系列-品項-規格）、批號（例：生產日 `YYMMDD`＋產線碼）、條碼（GS1） | C | — | 規則可由腳本驗證（regex 測試通過） | `git revert` | ✅ |
 | P2-03 | 規格指南 `docs/product/guidebook.md`：每款的菌種／菌株（待 U-08）、每顆含量、建議食用量、保存、效期、過敏原、素食標示、包裝規格（60 顆／瓶、100ml PE/PP 瓶、50×50×100 外盒） | C | U-08 | 未取得的欄位標 `待 U-08`，不得填推測值 | `git revert` | ⛔ |
 | P2-04 | 法定標示文字 `content/products/<sku>/label.md`（品名、內容物、淨重、廠商、原產地、有效日期、營養標示、過敏原、注意事項…） | C | P2-01、P2-03、U-07 | 對照 regulatory.md 標示清單逐項打勾 | `git revert` | ⛔ |
 | P2-05 | 產品頁文案 `content/products/<sku>/copy.md`（名稱、副標、介紹、使用方式、FAQ） | C | P2-01、P1-02 | claims-lint 綠 | `git revert` | ⛔ |
@@ -154,20 +154,20 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
-| P3-01 | 建 `apps/backend`（`create-medusa-app` 對應 2.21.x；版本查證寫進提交訊息） | C | P0-06 | 本機 `docker compose up` 後 `curl :9000/health` → `OK` | `git revert` | ⬜ |
-| P3-02 | 本機開發用 `infra/docker-compose.dev.yml`（postgres:16-alpine、redis:7-alpine） | C | P3-01 | `docker compose ps` 三個服務 healthy | `docker compose down -v`（僅本機） | ⬜ |
-| P3-03 | 區域與幣別：Taiwan region、TWD、含稅價（5% 營業稅內含） | C | P3-01 | 整合測試：建立購物車 → 金額為含稅整數 TWD | `git revert` | ⬜ |
-| P3-04 | 商品資料種子 `apps/backend/src/scripts/seed.ts`：3 SKU、價格 1,150、庫存、圖片佔位 | C | P3-03、P2-02 | `medusa exec seed` 後 Store API 列出 3 件商品 | 重建資料庫 | ⬜ |
-| P3-05 | 銷售通路：官網、團購（分潤賣場）兩個 sales channel＋各自 publishable key | C | P3-04 | Store API 以不同 key 查詢，商品集合符合設定 | `git revert` | ⬜ |
+| P3-01 | 建 `apps/backend`（`create-medusa-app` 對應 2.21.x；版本查證寫進提交訊息） | C | P0-06 | 本機 `docker compose up` 後 `curl :9000/health` → `OK` | `git revert` | ✅ |
+| P3-02 | 本機開發用 `infra/docker-compose.dev.yml`（postgres:16-alpine、redis:7-alpine） | C | P3-01 | `docker compose ps` 三個服務 healthy | `docker compose down -v`（僅本機） | ✅ |
+| P3-03 | 區域與幣別：Taiwan region、TWD、含稅價（5% 營業稅內含） | C | P3-01 | 整合測試：建立購物車 → 金額為含稅整數 TWD | `git revert` | ✅ |
+| P3-04 | 商品資料種子 `apps/backend/src/scripts/seed.ts`：3 SKU、價格 1,150、庫存、圖片佔位 | C | P3-03、P2-02 | `medusa exec seed` 後 Store API 列出 3 件商品 | 重建資料庫 | ✅ |
+| P3-05 | 銷售通路：官網、團購（分潤賣場）兩個 sales channel＋各自 publishable key | C | P3-04 | Store API 以不同 key 查詢，商品集合符合設定 | `git revert` | ✅ |
 | P3-06 | 檔案儲存改 S3 provider（Supabase Storage） | C | P0-08 | 後台上傳圖片 → 公開 URL 回 200 | 改回 local provider | ⛔ |
-| P3-07 | 後台 RBAC：角色「管理員／營運／客服／內容編輯／財務」與權限（`rbacRole`、`rbacPolicy`，2.15.5 起） | C | P3-01 | 整合測試：內容編輯角色呼叫商品刪除 API → 403 | `git revert` | ⬜ |
+| P3-07 | 後台 RBAC：角色「管理員／營運／客服／內容編輯／財務」與權限（`rbacRole`、`rbacPolicy`，2.15.5 起） | C | P3-01 | 整合測試：內容編輯角色呼叫商品刪除 API → 403 | `git revert` | ✅（另補 Medusa 2.21.2 RBAC 缺口，見 docs/reviews/2026-10-13-p3-backend.md；**待 Aki 確認：營運角色可取消訂單＝自動退款**） |
 
 ### P4 ECPay 金流／物流／發票
 
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
-| P4-01 | 查證 ECPay 目前版 API 文件（AIO 金流、物流、B2C 電子發票）→ `docs/research/ecpay.md`（端點、CheckMacValue 演算法、測試帳號取得方式、回傳格式） | C | — | 每個端點附官方文件網址 | 刪檔 | ⬜ |
-| P4-02 | CheckMacValue 純函式＋單元測試（用官方文件範例向量） | C | P4-01 | 官方範例輸入 → 官方範例輸出，完全相同 | `git revert` | ⬜ |
+| P4-01 | 查證 ECPay 目前版 API 文件（AIO 金流、物流、B2C 電子發票）→ `docs/research/ecpay.md`（端點、CheckMacValue 演算法、測試帳號取得方式、回傳格式） | C | — | 每個端點附官方文件網址 | 刪檔 | ✅ |
+| P4-02 | CheckMacValue 純函式＋單元測試（用官方文件範例向量） | C | P4-01 | 官方範例輸入 → 官方範例輸出，完全相同 | `git revert` | ✅ |
 | P4-03 | Payment provider `ecpay`：建立付款（導轉表單）、`getWebhookActionAndData`（驗章失敗一律 failed）、退款 | C | P4-02 | 測試環境：信用卡測試卡付款 → 訂單狀態 captured；竄改 CheckMacValue 的回呼 → 拒絕且不改訂單 | 停用 provider | ⬜ |
 | P4-04 | 付款方式：信用卡、ATM、超商代碼、Apple Pay（依 ECPay 測試環境實際支援為準） | C | P4-03 | 每種方式在測試環境走完一次，截圖存 `e2e/evidence/` | 停用該方式 | ⬜ |
 | P4-05 | Fulfillment provider `ecpay-logistics`：7-11／全家／萊爾富超商取貨（電子地圖選店）、宅配 | C | P4-01 | 測試環境：選店 → 建物流單 → 取得托運單號 | 停用 provider | ⬜ |
@@ -251,7 +251,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
-| P11-01 | 單元＋整合測試入 `scripts/test-all.sh`（後端用全新資料庫跑全部遷移） | C | P0-07 | 反向測試：弄壞一個遷移 → 紅 | — | ⬜ |
+| P11-01 | 單元＋整合測試入 `scripts/test-all.sh`（後端用全新資料庫跑全部遷移） | C | P0-07 | 反向測試：弄壞一個遷移 → 紅 | — | 🟡 後端整合 20 支＋單元 23 支已入 test-all（含反向測試） |
 | P11-02 | e2e smoke（Playwright）：首頁、商品頁、加入購物車、結帳到付款頁、Blog、登入；只讀模式可對正式站跑 | C | P7-05 | 本機與 staging 全綠；`E2E_ALLOW_WRITES` 未設時不建立訂單（測試斷言） | — | ⬜ |
 | P11-03 | e2e 全流程（測試環境）：三種付款、兩種物流、發票、退款、等級升級、分潤歸因 | C | P4、P5、P9 | 全綠＋證據截圖 | — | ⛔ |
 | P11-04 | 效能預算：行動版 LCP ≤ 2.5 s、CLS ≤ 0.1、INP ≤ 200 ms；首屏 JS ≤ 200 KB gzip | C | P7 | Lighthouse CI 斷言 | — | ⛔ |
@@ -268,7 +268,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P12-03 | 映像在 Mac（arm64，與主機同架構）建置 → `docker save \| gzip` → 傳主機 → `docker load`；主機上不 build | C | P12-02 | 主機 `docker images` 出現 `drn-backend:<tag>`；磁碟剩餘 ≥ 4 GB，否則停手 | `docker rmi drn-backend:<tag>` | ⬜ |
 | P12-04 | 新增 `/etc/nginx/sites-available/drn.conf`（只含 `api.dr.nature.smilelife.tw`）→ symlink → `nginx -t` → `reload` | C | U-05 | `nginx -t` 成功；其他 65 個站台設定檔 md5 前後一致 | 刪 symlink＋`nginx -t`＋`reload` | ⬜ |
 | P12-05 | 憑證：`certbot certonly --webroot -d api.dr.nature.smilelife.tw`（不讓 certbot 改其他站台） | C | P12-04 | `curl -I https://api.dr.nature.smilelife.tw/health` → 200 | `certbot delete --cert-name …` | ⬜ |
-| P12-06 | 資料庫遷移與種子（對 Supabase `drn-prod`） | C | P0-08 | `medusa db:migrate` 成功；Store API 回商品 | Supabase 時間點還原 | ⬜ |
+| P12-06 | 資料庫遷移與種子（對 Supabase `drn-prod`）：**分兩步** `medusa db:migrate --skip-scripts` → `medusa db:migrate:scripts`（2.21.2 的 db:migrate 在 script 失敗時仍回 0），一律從 `.medusa/server` 執行 | C | P0-08 | 兩步離場碼皆 0；`script_migrations` 中 drn-0001～0004 的 `finished_at` 皆非空；Store API 回商品 | Supabase 時間點還原 | ⬜ |
 | P12-07 | Vercel 正式部署＋網域 `dr.nature.smilelife.tw` | C＋U | U-05、P0-09 | `curl -I https://dr.nature.smilelife.tw` → 200，憑證 CN 正確（不再是 jadedrop） | Vercel 回上一版／移除網域 | ⬜ |
 | P12-08 | 備份：Supabase 每日備份確認；`drn-redis` 無需備份（僅 session） | C | P12-06 | Supabase 後台看到最近備份 | — | ⬜ |
 | P12-09 | 部署後檢查：既有容器清單、nginx 站台、排程與部署前完全一致（除新增 drn 資源） | C | P12-07 | diff 腳本輸出僅 drn 相關新增 | 依各任務回滾 | ⬜ |
