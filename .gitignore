@@ -14,3 +14,16 @@
 # Local tooling / OS
 .remember/
 .DS_Store
+
+# Infra inventory (public repo — keep host details private)
+docs/private/
+
+# Build output
+node_modules/
+.next/
+.medusa/
+dist/
+coverage/
+playwright-report/
+test-results/
+!.env.example
