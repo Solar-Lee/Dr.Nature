@@ -173,7 +173,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P4-01 | 查證 ECPay 目前版 API 文件（AIO 金流、物流、B2C 電子發票）→ `docs/research/ecpay.md`（端點、CheckMacValue 演算法、測試帳號取得方式、回傳格式） | C | — | 每個端點附官方文件網址 | 刪檔 | ✅ |
 | P4-02 | CheckMacValue 純函式＋單元測試（用官方文件範例向量） | C | P4-01 | 官方範例輸入 → 官方範例輸出，完全相同 | `git revert` | ✅ |
 | P4-03 | Payment provider `ecpay`：建立付款（導轉表單）、`getWebhookActionAndData`（驗章失敗一律 failed）、退款 | C | P4-02 | 測試環境：信用卡測試卡付款 → 訂單狀態 captured；竄改 CheckMacValue 的回呼 → 拒絕且不改訂單 | 停用 provider | ✅ 本機驗證＋審查修正（簽章通知即付款證明、零 QueryTradeInfo 熱路徑；16 支整合＋90 支單元，含反向測試）；**實際 ECPay 測試環境回呼待 P4-04 公開網址**；退款暫以 manual_pending＋SOP（docs/ops/ecpay-manual-refund.md）直到 P4-08 |
-| P4-04 | 付款方式：信用卡、ATM、超商代碼、Apple Pay（依 ECPay 測試環境實際支援為準） | C | P4-03 | 每種方式在測試環境走完一次，截圖存 `e2e/evidence/` | 停用該方式 | ⬜ |
+| P4-04 | 付款方式：信用卡、ATM、超商代碼、Apple Pay（依 ECPay 測試環境實際支援為準） | C | P4-03 | 每種方式在測試環境走完一次，截圖存 `e2e/evidence/` | 停用該方式 | 🟡 程式完成（ATM／超商代碼／條碼＋PaymentInfoURL，22 支整合＋121 支單元，含反向測試）；**真實綠界測試環境已接受四種簽章表單、QueryTradeInfo 格式與簽章已驗證**（docs/research/ecpay-stage-probe-2026-10-13.md）；剩餘：公開網址後的完整回呼與付款截圖（stage 需開 `ECPAY_ACCEPT_SIMULATED_PAYMENTS`） |
 | P4-05 | Fulfillment provider `ecpay-logistics`：7-11／全家／萊爾富超商取貨（電子地圖選店）、宅配 | C | P4-01 | 測試環境：選店 → 建物流單 → 取得托運單號 | 停用 provider | ⬜ |
 | P4-06 | 電子發票：付款成功後開立（載具：手機條碼／自然人憑證／會員；捐贈碼；統編） | C | P4-03 | 測試環境開立 → 回傳發票號碼寫入訂單 metadata；作廢流程測一次 | 停用訂閱者 | ⬜ |
 | P4-07 | 冪等與對帳：同一回呼重送兩次只入帳一次；每日對帳腳本 | C | P4-03 | 測試：同一 payload 重送 → 第二次 no-op | `git revert` | 🟡 重送冪等已測（duplicate notice → 同一筆付款）；對帳排程未做 |
