@@ -290,7 +290,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P12-09 | 部署後檢查：既有容器清單、nginx 站台、排程與部署前完全一致（除新增 drn 資源） | C | P12-07 | diff 腳本輸出僅 drn 相關新增 | 依各任務回滾 | ⬜ |
 | P12-10 | 正式站 smoke（只讀）＋一筆真實訂單（Aki 付款後退款） | C＋U | P12-09、U-02 | P11-02 對正式站全綠；真實訂單走完並退款成功 | — | ⬜ |
 | P12-11 | 回滾演練一次（Vercel 回上一版；後端換回上一個映像 tag） | C | P12-10 | 演練紀錄 | — | ⬜ |
-| P12-12 | 暫時頁：`dr.nature.smilelife.tw`（DNS 已指向主機）由主機 nginx 提供靜態「官網準備中」頁＋TLS，取代目前誤顯示的 JADEDROP 站；前台上線（P12-07）時移除（Aki 2026-10-13 選定） | C | P12-01 | `curl -I https://dr.nature.smilelife.tw` → 200、憑證 CN＝dr.nature.smilelife.tw；`nginx -t` 成功；其他 65 個站台設定檔與 nginx.conf 的 md5 前後一致；容器仍 58 個 | 刪 symlink＋`nginx -t`＋`reload`；`certbot delete --cert-name dr.nature.smilelife.tw`；刪 `/var/www/drn` | ⬜ |
+| P12-12 | 暫時頁：`dr.nature.smilelife.tw`（DNS 已指向主機）由主機 nginx 提供靜態「官網準備中」頁＋TLS，取代目前誤顯示的 JADEDROP 站；前台上線（P12-07）時移除（Aki 2026-10-13 選定） | C | P12-01 | `curl -I https://dr.nature.smilelife.tw` → 200、憑證 CN＝dr.nature.smilelife.tw；`nginx -t` 成功；其他 65 個站台設定檔與 nginx.conf 的 md5 前後一致；容器仍 58 個 | 刪 symlink＋`nginx -t`＋`reload`；`certbot delete --cert-name dr.nature.smilelife.tw`；刪 `/var/www/drn` | ✅ 2026-10-13 上線：`https://dr.nature.smilelife.tw` → 200，憑證 CN＝dr.nature.smilelife.tw（Let's Encrypt，2027-01-10 到期，certbot.timer 續期＋reload hook）；HTTP → 301 HTTPS；`noindex`。主機上 nginx 只多 `drn.conf`＋symlink（md5 與 repo 相同），其他 168 個 nginx 檔 md5 不變、容器 58 個不變、crontab 不變 |
 
 ### P13 上市營運
 
