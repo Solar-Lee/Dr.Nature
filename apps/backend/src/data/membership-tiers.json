@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "config_version": "2026-10-13-p5-02-v2",
+  "status": "proposal",
+  "approved_at": null,
+  "source": "docs/strategy/membership.md",
+  "currency": "twd",
+  "timezone": "Asia/Taipei",
+  "spend": {
+    "formula": "order.summary.paid_total - order.summary.refunded_total",
+    "rolling_window_days": 365,
+    "window_anchor": "payment_captured_at",
+    "confirm_after_delivered_days": 10,
+    "delivered_source": "fulfillment.delivered_at (last delivery of live shipments; set by the ECPay delivered notice or by staff)",
+    "confirm_fallback_after_payment_days": 30,
+    "exclude_canceled_orders": true,
+    "sales_channels": [
+      "Official Store",
+      "Group-buy"
+    ],
+    "guest_orders": "count_after_email_verified"
+  },
+  "schedule": {
+    "evaluate_daily_at": "03:00",
+    "recompute_on_events": [
+      "payment.refunded",
+      "order.canceled"
+    ],
+    "upgrade": "on_next_evaluation",
+    "downgrade_after_refund_or_cancel": "immediate",
+    "downgrade_after_window_expiry": "monthly",
+    "downgrade_review_day_of_month": 1,
+    "manual_override_until": "next_review_day",
+    "threshold_raise_notice_days": 30
+  },
+  "pricing": {
+    "official_price_per_bottle_twd": 1150,
+    "cash_floor_per_bottle_twd": 1035,
+    "gift_equivalent_floor_per_bottle_twd": 862.5,
+    "discount_base": "official_price_per_bottle_twd",
+    "member_price_min_bottles": 2,
+    "member_price_sales_channels": [
+      "Official Store"
+    ],
+    "bottles_per_unit": {
+      "single": 1,
+      "X3": 3,
+      "X6": 6
+    },
+    "mutually_exclusive_offers": [
+      "kol_code",
+      "first_order_gift",
+      "member_price"
+    ],
+    "max_promo_gifts_per_order": 1,
+    "cogs_per_bottle_twd": null,
+    "min_gross_margin_percent": 50,
+    "gift_value_basis": "public_price_or_purchase_cost"
+  },
+  "customer_groups": {
+    "repeat": "tier-repeat",
+    "loyal": "tier-loyal"
+  },
+  "tiers": [
+    {
+      "code": "member",
+      "name": "會員",
+      "min_spend_twd_12m": 0,
+      "discount_percent": 0,
+      "benefits": []
+    },
+    {
+      "code": "repeat",
+      "name": "回購會員",
+      "min_spend_twd_12m": 1035,
+      "discount_percent": 10,
+      "benefits": [
+        "member_price",
+        "birthday_gift",
+        "member_bundle_x6"
+      ]
+    },
+    {
+      "code": "loyal",
+      "name": "長期會員",
+      "min_spend_twd_12m": 9315,
+      "discount_percent": 10,
+      "benefits": [
+        "member_price",
+        "birthday_gift_extended",
+        "member_bundle_x6",
+        "early_access",
+        "priority_support"
+      ]
+    }
+  ],
+  "benefit_catalog": {
+    "member_price": {
+      "name": "會員回購價",
+      "min_bottles": 2
+    },
+    "birthday_gift": {
+      "name": "生日禮",
+      "months": "birth_month",
+      "min_bottles": 2,
+      "max_gift_market_value_twd": 380,
+      "once_per": "birthday_cycle",
+      "customer_group": "birthday-2plus"
+    },
+    "birthday_gift_extended": {
+      "name": "生日禮（放寬）",
+      "months": "birth_month_and_next",
+      "min_bottles": 1,
+      "max_gift_market_value_twd": 380,
+      "once_per": "birthday_cycle",
+      "customer_group": "birthday-any"
+    },
+    "member_bundle_x6": {
+      "name": "會員 6 入組",
+      "skus": [
+        "DN-PB-01-060C-X6"
+      ],
+      "member_price_list_twd": 6210,
+      "pricing": "customer_group_price_list",
+      "included_item_max_cost_twd": 100,
+      "included_item_max_market_value_twd": 300
+    },
+    "early_access": {
+      "name": "新品搶先購",
+      "days_before_public": 3,
+      "price": "same_as_public"
+    },
+    "priority_support": {
+      "name": "客服優先",
+      "status": "todo_verify_omnics"
+    }
+  }
+}
