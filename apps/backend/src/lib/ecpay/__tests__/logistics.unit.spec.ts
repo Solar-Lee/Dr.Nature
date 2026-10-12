@@ -1,8 +1,13 @@
 import {
+  autoSubmitHtml,
+  buildCancelC2COrderRequest,
   buildCreateShipmentRequest,
   buildMapForm,
+  buildPrintForm,
   buildQueryLogisticsTradeInfoRequest,
+  buildUpdateStoreInfoRequest,
   displayWidth,
+  isOkReply,
   nameProblem,
   newLogisticsTradeNo,
   normalizeCellphone,
@@ -304,4 +309,55 @@ it("logistics trade numbers are 20 letters/digits with a DL prefix", () => {
   expect(newLogisticsTradeNo(new Date("2026-10-12T17:05:09Z"), new Uint8Array([1, 2, 3, 4, 5, 6]))).toMatch(
     /^DL261013010509[0-9A-Z]{6}$/
   )
+})
+
+describe("after shipment (P4-11)", () => {
+  const ship = { allPayLogisticsId: "2669087", cvsPaymentNo: "D8844527", cvsValidationNo: "4471" }
+
+  it("UpdateStoreInfo names the store field by StoreType and is signed", () => {
+    const pickup = buildUpdateStoreInfoRequest(creds, { ...ship, storeType: "01", storeId: "131386" })
+    expect(pickup).toMatchObject({ StoreType: "01", ReceiverStoreID: "131386", CVSValidationNo: "4471" })
+    expect(pickup.ReturnStoreID).toBeUndefined()
+    expect(verifyCheckMacValue(pickup, md5)).toBe(true)
+    const ret = buildUpdateStoreInfoRequest(creds, { ...ship, storeType: "02", storeId: "991182" })
+    expect(ret).toMatchObject({ StoreType: "02", ReturnStoreID: "991182" })
+    expect(ret.ReceiverStoreID).toBeUndefined()
+  })
+
+  it("UpdateStoreInfo refuses a blank or over-long store code", () => {
+    for (const storeId of ["", " ", "1234567", "13-386"]) {
+      expect(() => buildUpdateStoreInfoRequest(creds, { ...ship, storeType: "02", storeId })).toThrow(/store id/)
+    }
+  })
+
+  it("CancelC2COrder carries all three 7-ELEVEN codes and is signed", () => {
+    const f = buildCancelC2COrderRequest(creds, ship)
+    expect(f).toMatchObject({ MerchantID: "2000933", AllPayLogisticsID: "2669087", CVSPaymentNo: "D8844527", CVSValidationNo: "4471" })
+    expect(verifyCheckMacValue(f, md5)).toBe(true)
+  })
+
+  it("only an exact 1|OK counts as success", () => {
+    expect(isOkReply("1|OK")).toBe(true)
+    expect(isOkReply("1|OK\r\n")).toBe(true)
+    expect(isOkReply("0|新取貨門市代碼與舊取貨門市代碼相同。")).toBe(false)
+    expect(isOkReply("1|OKAY")).toBe(false)
+  })
+
+  it("print form: per-carrier path; validation code and thermal mode only for 7-ELEVEN", () => {
+    const seven = buildPrintForm(creds, "stage", "UNIMARTC2C", [ship], "2")
+    expect(seven.action).toBe("https://logistics-stage.ecpay.com.tw/Express/PrintUniMartC2COrderInfo")
+    expect(seven.fields).toMatchObject({ CVSValidationNo: "4471", PrintMode: "2" })
+    expect(verifyCheckMacValue(seven.fields, md5)).toBe(true)
+    const fami = buildPrintForm(creds, "stage", "FAMIC2C", [{ allPayLogisticsId: "1", cvsPaymentNo: "2" }], "2")
+    expect(fami.action).toMatch(/PrintFAMIC2COrderInfo$/)
+    expect(fami.fields.PrintMode).toBeUndefined()
+    expect(fami.fields.CVSValidationNo).toBeUndefined()
+    expect(() => buildPrintForm(creds, "stage", "UNIMART", [ship])).toThrow(/no C2C slip printing/)
+  })
+
+  it("the auto-submit page escapes values and never carries the HashKey", () => {
+    const html = autoSubmitHtml({ action: "https://x/y", fields: { A: '"><script>' } })
+    expect(html).toContain('value="&quot;&gt;&lt;script&gt;"')
+    expect(html).not.toContain(creds.hashKey)
+  })
 })

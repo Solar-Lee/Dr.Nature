@@ -20,10 +20,8 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   if (!(C2C_CVS_SUBTYPES as readonly string[]).includes(String(d.logistics_subtype))) {
     throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "Only C2C convenience-store shipments have a return store")
   }
+  // buildUpdateStoreInfoRequest rejects a blank or malformed store code (400) before any call.
   const storeId = typeof body.store_id === "string" ? body.store_id.trim() : ""
-  if (!/^[0-9A-Za-z]{1,10}$/.test(storeId)) {
-    throw new MedusaError(MedusaError.Types.INVALID_DATA, "store_id is required (the store code from the ECPay e-map)")
-  }
   const options = ecpayLogisticsOptionsFromEnv()
   const r = await postLogistics(
     options,
