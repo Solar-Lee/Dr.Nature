@@ -1,10 +1,38 @@
-import { loadEnv, defineConfig } from "@medusajs/framework/utils"
+import { readFileSync } from "fs"
+import { MedusaError, loadEnv, defineConfig } from "@medusajs/framework/utils"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
 // Variable names must stay within docs/ENV.md (checked by scripts/check-env-names.mjs).
 // Module options follow the Medusa deployment guide (docs.medusajs.com/learn/deployment/general),
 // verified against Medusa 2.21.2 on 2026-10-13.
+// Non-local databases (Supabase in production) must use TLS with certificate
+// verification. Medusa 2.21.2 defaults to ssl=false (utils create-pg-connection), so the
+// CA must be supplied explicitly; startup fails closed if it is missing.
+const databaseUrl = process.env.DATABASE_URL
+const databaseHost = (() => {
+  try {
+    return databaseUrl ? new URL(databaseUrl).hostname : ""
+  } catch {
+    return ""
+  }
+})()
+const isLocalDatabase = ["", "localhost", "127.0.0.1", "::1"].includes(databaseHost)
+const databaseDriverOptions = isLocalDatabase
+  ? undefined
+  : (() => {
+    const caPath = process.env.DATABASE_SSL_CA_PATH
+    if (!caPath) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        `DATABASE_SSL_CA_PATH is required for non-local database host ${databaseHost}`
+      )
+    }
+    return {
+      connection: { ssl: { ca: readFileSync(caPath, "utf8"), rejectUnauthorized: true } },
+    }
+  })()
+
 const redisUrl = process.env.REDIS_URL
 const workerMode = (process.env.MEDUSA_WORKER_MODE || "shared") as
   | "shared"
@@ -47,7 +75,8 @@ const redisModules = redisUrl
 
 module.exports = defineConfig({
   projectConfig: {
-    databaseUrl: process.env.DATABASE_URL,
+    databaseUrl,
+    databaseDriverOptions,
     redisUrl,
     workerMode,
     http: {

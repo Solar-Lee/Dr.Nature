@@ -9,6 +9,7 @@
 | 名稱 | 用途 | 來源 |
 |---|---|---|
 | `DATABASE_URL` 🔒 | 專屬 Supabase 專案的 Postgres 連線字串（不可共用其他專案的資料庫） | Medusa deployment docs |
+| `DATABASE_SSL_CA_PATH` | 非本機資料庫（Supabase）的 CA 憑證檔路徑；有設 DATABASE_URL 且非 localhost 時必填，缺少則啟動失敗（fail closed） | medusa-config（P3 審查 F1） |
 | `REDIS_URL` 🔒 | `drn-redis`（僅 `drn_net` 內部） | Medusa deployment docs |
 | `JWT_SECRET` 🔒 | Medusa 驗證 | Medusa deployment docs |
 | `COOKIE_SECRET` 🔒 | Medusa session | Medusa deployment docs |
