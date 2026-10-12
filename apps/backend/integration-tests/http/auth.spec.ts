@@ -55,7 +55,18 @@ medusaIntegrationTestRunner({
             const [, sub, nonce] = (form.id_token ?? "").split(".")
             if (!sub || form.client_id !== LINE_CHANNEL) return reply(400, { error: "invalid_request", error_description: "Invalid IdToken." })
             if (form.nonce && form.nonce !== nonce) return reply(400, { error: "invalid_request", error_description: "Invalid IdToken Nonce." })
-            return reply(200, { iss: "https://access.line.me", sub, aud: LINE_CHANNEL, exp: 4102444800, iat: 1791820000, nonce, amr: ["linesso"], name: "測試 LINE", picture: "https://profile.line-scdn.net/x" })
+            // Test hooks: sub "Xaud..." = token issued to another channel, "Xiss..." = another issuer.
+            return reply(200, {
+              iss: sub.startsWith("Xiss") ? "https://evil.example" : "https://access.line.me",
+              sub,
+              aud: sub.startsWith("Xaud") ? "1659999999" : LINE_CHANNEL,
+              exp: 4102444800,
+              iat: 1791820000,
+              nonce,
+              amr: ["linesso"],
+              name: "測試 LINE",
+              picture: "https://profile.line-scdn.net/x",
+            })
           }
           reply(404, {})
         })
@@ -69,8 +80,8 @@ medusaIntegrationTestRunner({
       seen = []
     })
 
-    const startLine = async () => {
-      const res = await api.post("/auth/customer/line", {}, { validateStatus: () => true })
+    const startLine = async (body: Record<string, unknown> = {}) => {
+      const res = await api.post("/auth/customer/line", body, { validateStatus: () => true })
       expect(res.status).toEqual(200)
       const url = new URL(res.data.location)
       return { url, state: url.searchParams.get("state")!, nonce: url.searchParams.get("nonce")! }
@@ -95,6 +106,9 @@ medusaIntegrationTestRunner({
         bot_prompt: "normal",
       })
       expect(state).toMatch(/^[0-9a-f]{64}$/)
+      // A caller cannot redirect the code elsewhere.
+      const hijack = await startLine({ callback_url: "https://evil.example/cb" })
+      expect(hijack.url.searchParams.get("redirect_uri")).toEqual(`${process.env.STOREFRONT_URL}${OAUTH_CALLBACK_PATHS.line}`)
       expect(nonce).toMatch(/^[0-9a-f]{32}$/)
 
       const first = await lineCallback({ code: `code-U1001-${nonce}`, state })
@@ -134,6 +148,11 @@ medusaIntegrationTestRunner({
       const foreign = await lineCallback({ code: `code-U2002-${"0".repeat(32)}`, state: b.state }) // token minted for another login
       expect(foreign.status).toEqual(401)
       expect(JSON.stringify(foreign.data)).toContain("Nonce")
+
+      const d = await startLine()
+      expect((await lineCallback({ code: `code-XaudU3-${d.nonce}`, state: d.state })).status).toEqual(401) // token for another channel
+      const e = await startLine()
+      expect((await lineCallback({ code: `code-XissU3-${e.nonce}`, state: e.state })).status).toEqual(401) // not issued by LINE
 
       const c = await startLine()
       expect((await lineCallback({ code: "stolen", state: c.state })).status).toEqual(401)
