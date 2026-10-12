@@ -110,6 +110,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-11 | Meta Business：Pixel 與 CAPI token；GA4、GTM、Search Console 權限 | P8 |
 | U-12 | 研發長肖像與名義使用的書面同意（官網、廣告、包裝） | P7 信任區塊 |
 | U-13 | 綠界物流寄件人：**個人姓名**（2-5 個中文字；C2C 未取件退回寄件門市須出示身分證領取，綠界規定勿填公司名，developers.ecpay.com.tw/8809/）＋手機；並向綠界確認 C2C 合約是否含黑貓宅配 | P4-05 正式切換、宅配上架 |
+| U-14 | 綠界**正式**發票後台：【發票通知方式設定】開啟開立、作廢、中獎通知（Email）給買受人（測試環境不寄，無法替你驗證）；確認是否開通超商 kiosk 列印中獎發票 | 發票上線（要點第二十四點中獎通知義務） |
 
 ## 7. 任務清單（最小執行單位）
 
@@ -177,7 +178,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P4-03 | Payment provider `ecpay`：建立付款（導轉表單）、`getWebhookActionAndData`（驗章失敗一律 failed）、退款 | C | P4-02 | 測試環境：信用卡測試卡付款 → 訂單狀態 captured；竄改 CheckMacValue 的回呼 → 拒絕且不改訂單 | 停用 provider | ✅ 本機驗證＋審查修正（簽章通知即付款證明、零 QueryTradeInfo 熱路徑；16 支整合＋90 支單元，含反向測試）；**實際 ECPay 測試環境回呼待 P4-04 公開網址**；退款暫以 manual_pending＋SOP（docs/ops/ecpay-manual-refund.md）直到 P4-08 |
 | P4-04 | 付款方式：信用卡、ATM、超商代碼、Apple Pay（依 ECPay 測試環境實際支援為準） | C | P4-03 | 每種方式在測試環境走完一次，截圖存 `e2e/evidence/` | 停用該方式 | 🟡 程式完成（ATM／超商代碼／條碼＋PaymentInfoURL，22 支整合＋121 支單元，含反向測試）；**真實綠界測試環境已接受四種簽章表單、QueryTradeInfo 格式與簽章已驗證**（docs/research/ecpay-stage-probe-2026-10-13.md）；剩餘：公開網址後的完整回呼與付款截圖（stage 需開 `ECPAY_ACCEPT_SIMULATED_PAYMENTS`） |
 | P4-05 | Fulfillment provider `ecpay-logistics`：7-11／全家／萊爾富超商取貨（電子地圖選店）、宅配 | C | P4-01 | 測試環境：選店 → 建物流單 → 取得托運單號 | 停用 provider | 🟡 程式完成＋審查修正（docs/reviews/2026-10-13-p4-05-ecpay-logistics.md；23 支整合＋75 支單元，10 個反向測試皆轉紅）；**真實綠界測試環境：三家 C2C 建單成功且回應簽章驗證通過；經我方 provider＋Medusa 出貨流程取得托運單號 D8844528-4456**（docs/research/ecpay-logistics-stage-probe-2026-10-13.md；QueryLogisticsTradeInfo 亦已實測）；剩餘：公開網址後的狀態通知與選店回傳（stage 不推送狀態）、正式寄件人（U-13）；宅配選項已建立但未上架 |
-| P4-06 | 電子發票：付款成功後開立（載具：手機條碼／自然人憑證／會員；捐贈碼；統編） | C | P4-03 | 測試環境開立 → 回傳發票號碼寫入訂單 metadata；作廢流程測一次 | 停用訂閱者 | ⬜ |
+| P4-06 | 電子發票：付款成功後開立（載具：手機條碼／自然人憑證／會員；捐贈碼；統編） | C | P4-03 | 測試環境開立 → 回傳發票號碼寫入訂單 metadata；作廢流程測一次 | 停用訂閱者 | 🟡 程式完成＋審查修正（docs/reviews/2026-10-13-p4-06-ecpay-invoice.md；27 支整合＋55 支單元，反向測試 23 個皆轉紅）；**真實綠界 stage：經我方訂閱者開立 LO22068054 並以我方作廢流程作廢，GetIssue 確認**（docs/research/ecpay-invoice-p4-06.md）；作廢需買受人同意（要點第九點）、有效訂單只能作廢＋重開；剩餘：正式商店與通知設定（U-02、U-14）、前台發票選項與告知事項（P7-05） |
 | P4-07 | 冪等與對帳：同一回呼重送兩次只入帳一次；每日對帳腳本 | C | P4-03 | 測試：同一 payload 重送 → 第二次 no-op | `git revert` | 🟡 重送冪等已測（duplicate notice → 同一筆付款）；對帳排程未做 |
 | P4-08 | 信用卡退款自動化：CreditDetail/DoAction（**僅正式環境有此 API，測試環境無法驗證**）＋先查卡片明細決定 R／N／E；完成前退款一律在綠界廠商後台手動處理 | C＋U | P4-03、U-02 | 以第一筆真實小額交易做一次退款並對帳；之前 `refundPayment` 一律拒絕並提示後台退款（已有測試） | 改回拒絕 | ⬜ |
 | P4-09 | 未付款訂單：信用卡 N 分鐘未付自動取消並釋放庫存；訂單頁「重新付款」產生新 MerchantTradeNo（舊編號不可重用） | C | P4-03、G-付款時限（Aki 決定 N） | 整合測試：逾時訂單被取消、庫存回補；重新付款可成功 | 停用排程 | ⬜ |
@@ -213,7 +214,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P7-02 | 基礎版型：Header、Footer、導覽、購物車抽屜、Toast、Skip link | C | D-04、D-05 | Playwright 無障礙掃描（axe）零嚴重問題 | `git revert` | ⛔ |
 | P7-03 | 商品列表頁 | C | P3-04、D-05 | e2e：列出 3 件商品、價格 NT$1,150 | `git revert` | ⛔ |
 | P7-04 | 商品頁 PDP（文案取自 `content/`，不在元件內寫死） | C | P2-05、D-05 | claims-lint 掃描建置後 HTML 全綠 | `git revert` | ⛔ |
-| P7-05 | 購物車＋結帳三步驟（資料、配送／選店、付款）＋訂單完成頁 | C | P4-03、P4-05 | e2e（測試環境）：下單到完成頁 | `git revert` | ⛔ |
+| P7-05 | 購物車＋結帳三步驟（資料、配送／選店、付款）＋訂單完成頁；發票選項（會員載具／手機條碼／自然人憑證／捐贈碼／統編）寫入 `cart.metadata.ecpay_invoice_choice`，並顯示電子發票實施作業要點第十九點應告知事項（docs/research/ecpay-invoice-p4-06.md） | C | P4-03、P4-05 | e2e（測試環境）：下單到完成頁 | `git revert` | ⛔ |
 | P7-06 | 會員中心：訂單、物流狀態、發票、等級與權益、地址簿 | C | P5-01、P5-03 | e2e：登入 → 看到剛才的訂單 | `git revert` | ⛔ |
 | P7-07 | 首頁 Hero 影片（`<video>`，poster、行動版／桌機版來源、`prefers-reduced-motion` 改靜態） | C | D-06、P10-03 | LCP（行動版模擬）≤ 2.5 s；reduced-motion 時不載入影片 | `git revert` | ⛔ |
 | P7-08 | Scroll 互動敘事：依 `design/motion/scroll-scenes.json` 驅動（程式讀規格檔，不手抄數值） | C | D-06 | 規格檔每一幕都有對應測試（捲到該區間時元素狀態正確）；CLS ≤ 0.1 | `git revert` | ⛔ |
@@ -275,7 +276,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 |---|---|---|---|---|---|---|
 | P12-01 | 部署前重新盤點，與 `docs/private/server-inventory.md` 比對；`drn` 名稱零重名；port 3961 未占用 | C | — | 差異報告（預期：無 drn 資源） | — | ⬜ |
 | P12-02 | `infra/docker-compose.prod.yml`：`drn-backend`（127.0.0.1:3961）、`drn-worker`、`drn-redis`（`redis:7-alpine`，不發佈 port），網路 `drn_net`，記憶體上限（backend 1.5G、worker 1G、redis 256M），log 輪替（max-size 10m×3） | C | P3 | `docker compose config` 無錯；本機以同檔啟動 healthy | `git revert` | ⬜ |
-| P12-03 | 映像在 Mac（arm64，與主機同架構）建置 → `docker save \| gzip` → 傳主機 → `docker load`；主機上不 build | C | P12-02 | 主機 `docker images` 出現 `drn-backend:<tag>`；磁碟剩餘 ≥ 4 GB，否則停手 | `docker rmi drn-backend:<tag>` | ⬜ |
+| P12-03 | 映像在 Mac（arm64，與主機同架構）建置 → `docker save \| gzip` → 傳主機 → `docker load`；主機上不 build；換版時**先停舊 `drn-worker` 再啟新版**（Redis 事件匯流排上舊 worker 會吃掉新訂閱者的事件，見 docs/research/ecpay-invoice-p4-06.md §5） | C | P12-02 | 主機 `docker images` 出現 `drn-backend:<tag>`；磁碟剩餘 ≥ 4 GB，否則停手 | `docker rmi drn-backend:<tag>` | ⬜ |
 | P12-04 | 新增 `/etc/nginx/sites-available/drn.conf`（只含 `api.dr.nature.smilelife.tw`）→ symlink → `nginx -t` → `reload` | C | U-05 | `nginx -t` 成功；其他 65 個站台設定檔 md5 前後一致 | 刪 symlink＋`nginx -t`＋`reload` | ⬜ |
 | P12-05 | 憑證：`certbot certonly --webroot -d api.dr.nature.smilelife.tw`（不讓 certbot 改其他站台） | C | P12-04 | `curl -I https://api.dr.nature.smilelife.tw/health` → 200 | `certbot delete --cert-name …` | ⬜ |
 | P12-06 | 資料庫遷移與種子（對 Supabase `drn-prod`）：**分兩步** `medusa db:migrate --skip-scripts` → `medusa db:migrate:scripts`（2.21.2 的 db:migrate 在 script 失敗時仍回 0），一律從 `.medusa/server` 執行 | C | P0-08 | 兩步離場碼皆 0；`script_migrations` 中 drn-0001～0004 的 `finished_at` 皆非空；Store API 回商品 | Supabase 時間點還原 | ⬜ |
