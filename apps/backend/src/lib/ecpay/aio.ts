@@ -116,7 +116,8 @@ export function buildCheckoutForm(input: CheckoutFormInput): CheckoutForm {
     EncryptType: "1",
     CustomField1: input.customField1,
   }
-  if (input.orderResultUrl) {
+  // OrderResultURL is not supported for ATM / CVS / BARCODE (developers.ecpay.com.tw/2864/).
+  if (input.orderResultUrl && !OFFLINE_CHOOSE_PAYMENT.includes(input.choosePayment)) {
     fields.OrderResultURL = input.orderResultUrl
   }
   if (input.clientBackUrl) {

@@ -47,6 +47,16 @@ describe("validateOptions", () => {
       EcpayPaymentProviderService.validateOptions({ ...options, environment: "prod", returnUrl: "http://x" } as any)
     ).toThrow()
   })
+
+  it("requires an HTTPS PaymentInfoURL in prod", () => {
+    expect(() =>
+      EcpayPaymentProviderService.validateOptions({
+        ...options,
+        environment: "prod",
+        paymentInfoUrl: "http://api.example.com/hooks/ecpay/payment-info",
+      } as any)
+    ).toThrow()
+  })
 })
 
 describe("initiatePayment", () => {
@@ -83,6 +93,25 @@ describe("initiatePayment", () => {
     expect(fields.ChoosePayment).toEqual(method)
     expect(fields.PaymentInfoURL).toEqual(options.paymentInfoUrl)
     expect(verifyCheckMacValue(fields, mac)).toBe(true)
+  })
+
+  it("overwrites ecpay_* keys a shopper planted at session creation", async () => {
+    const out = await provider().initiatePayment({
+      amount: 1150,
+      currency_code: "twd",
+      data: {
+        session_id: "payses_1",
+        choose_payment: "ATM",
+        ecpay_payment_instructions: { payment_type: "ATM_FIRST", bank_code: "999", v_account: "attacker" },
+        ecpay_notice: {},
+      },
+    })
+    const data = out.data as any
+    expect(data.ecpay_payment_instructions).toBeNull()
+    expect(data.ecpay_notice).toBeNull()
+    // Medusa merges client data first, then the provider's: simulate that merge.
+    const merged = { ecpay_payment_instructions: { bank_code: "999" }, ...data }
+    expect(merged.ecpay_payment_instructions).toBeNull()
   })
 
   it("refuses unknown payment methods", async () => {
@@ -254,6 +283,41 @@ describe("payment codes (ATM / CVS / BARCODE)", () => {
     })
   })
 
+  it("BARCODE: stores the three barcode segments", async () => {
+    const data = (
+      await provider().initiatePayment({
+        amount: 1150,
+        currency_code: "twd",
+        data: { session_id: "payses_1", choose_payment: "BARCODE" },
+      })
+    ).data as any
+    const info = signNotice({
+      MerchantID: options.merchantId,
+      MerchantTradeNo: data.merchant_trade_no,
+      RtnCode: "10100073",
+      TradeNo: "2610130105091234",
+      TradeAmt: "1150",
+      PaymentType: "BARCODE_BARCODE",
+      Barcode1: "151020601",
+      Barcode2: "1234567890123456",
+      Barcode3: "102001000001150",
+      ExpireDate: "2026/10/20 01:05:09",
+      CustomField1: data.session_id,
+    })
+    const out = await provider().updatePayment({ amount: 1150, currency_code: "twd", data: { ...data, ecpay_payment_info: info } })
+    expect((out.data as any).ecpay_payment_instructions.barcodes).toEqual(["151020601", "1234567890123456", "102001000001150"])
+  })
+
+  it("never keeps planted instructions: they are rebuilt from the verified code notice only", async () => {
+    const data = await atmSession()
+    const planted = { ...data, ecpay_payment_instructions: { payment_type: "ATM_FIRST", bank_code: "999", v_account: "attacker" } }
+    const unverifiedOut = await provider().authorizePayment({ data: planted })
+    expect((unverifiedOut.data as any).ecpay_payment_instructions).toBeUndefined()
+    const withInfo = { ...planted, ecpay_payment_info: atmInfoFor(data) }
+    const verifiedOut = await provider().authorizePayment({ data: withInfo })
+    expect((verifiedOut.data as any).ecpay_payment_instructions.v_account).toEqual("9103522175887271")
+  })
+
   it("an issued code is not a payment", async () => {
     const data = await atmSession()
     const stored = (
@@ -283,6 +347,18 @@ describe("payment codes (ATM / CVS / BARCODE)", () => {
     )
     const stage = new EcpayPaymentProviderService({ logger }, { ...options, acceptSimulatedPayments: true })
     expect((await stage.authorizePayment({ data: simulated })).status).toEqual(PaymentSessionStatus.CAPTURED)
+  })
+
+  it("getWebhookActionAndData maps a simulated paid notice to captured only when allowed", async () => {
+    const data = await atmSession()
+    const body = paidNoticeFor(data, { SimulatePaid: "1" })
+    expect((await provider().getWebhookActionAndData({ data: body, rawData: "", headers: {} })).action).toEqual(
+      PaymentActions.NOT_SUPPORTED
+    )
+    const stage = new EcpayPaymentProviderService({ logger }, { ...options, acceptSimulatedPayments: true })
+    expect((await stage.getWebhookActionAndData({ data: body, rawData: "", headers: {} })).action).toEqual(
+      PaymentActions.SUCCESSFUL
+    )
   })
 
   it("validateOptions refuses simulated payments in prod", () => {

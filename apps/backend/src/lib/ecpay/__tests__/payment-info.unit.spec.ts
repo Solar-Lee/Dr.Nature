@@ -47,6 +47,16 @@ describe("checkout form for offline methods", () => {
     expect(f).toMatchObject({ ChoosePayment: "BARCODE", StoreExpireDate: String(PAYMENT_DEADLINES.barcodeDays) })
   })
 
+  it.each(["ATM", "CVS", "BARCODE"] as const)("%s omits OrderResultURL (unsupported by ECPay for codes)", (m) => {
+    const f = buildCheckoutForm({ ...formBase, choosePayment: m, orderResultUrl: "https://shop.example.com/r" }).fields
+    expect(f.OrderResultURL).toBeUndefined()
+  })
+
+  it("Credit keeps OrderResultURL", () => {
+    const f = buildCheckoutForm({ ...formBase, choosePayment: "Credit", orderResultUrl: "https://shop.example.com/r" }).fields
+    expect(f.OrderResultURL).toEqual("https://shop.example.com/r")
+  })
+
   it("Credit carries no PaymentInfoURL or deadline", () => {
     const f = buildCheckoutForm({ ...formBase, choosePayment: "Credit" }).fields
     expect(f.PaymentInfoURL).toBeUndefined()

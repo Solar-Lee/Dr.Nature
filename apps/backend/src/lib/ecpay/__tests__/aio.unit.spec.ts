@@ -96,7 +96,8 @@ describe("buildCheckoutForm", () => {
     ["non-integer amount", { totalAmount: 1150.5 }],
     ["trade no with symbols", { merchantTradeNo: "DN-123" }],
     ["trade no over 20 chars", { merchantTradeNo: "D".repeat(21) }],
-    ["unsupported method", { choosePayment: "ATM" as any }],
+    ["unsupported method", { choosePayment: "WebATM" as any }],
+    ["ChoosePayment ALL", { choosePayment: "ALL" as any }],
     ["CustomField1 over 50 chars", { customField1: "x".repeat(51) }],
   ])("rejects %s", (_n, override) => {
     expect(() => buildCheckoutForm({ ...base, ...override })).toThrow()

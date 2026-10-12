@@ -22,6 +22,9 @@ export ECPAY_MERCHANT_ID="3002607"
 export ECPAY_HASH_KEY="pwFHCqoQZGmho4w6"
 export ECPAY_HASH_IV="EkRm7iFT261dpevs"
 export ECPAY_API_BASE_URL="http://127.0.0.1:56390"
+# Pinned so a developer's apps/backend/.env cannot change test behaviour (the one spec
+# that needs it on sets it itself before the app boots).
+export ECPAY_ACCEPT_SIMULATED_PAYMENTS=false
 
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "$#" -gt 0 ]; then
   exec "$@"

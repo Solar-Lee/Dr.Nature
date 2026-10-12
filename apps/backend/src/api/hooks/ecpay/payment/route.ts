@@ -97,6 +97,17 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     | { id: string; status: string; metadata?: Record<string, unknown> | null }
     | undefined
   if (order?.status === "canceled") {
+    // Paid and captured before the cancel (the cancel already refunded it through Medusa):
+    // this is a duplicate of a recorded payment, not money received after cancellation.
+    const { data: recorded } = await query.graph({
+      entity: "payment",
+      fields: ["id", "captured_at"],
+      filters: { payment_session_id: session.id },
+    })
+    if (recorded.some((p) => p?.captured_at)) {
+      logger.info(`${tag}: duplicate notice for a payment captured before order ${order.id} was canceled`)
+      return reply(res, 200, ACK)
+    }
     await flagPaidAfterCancelWorkflow(req.scope).run({
       input: {
         order_id: order.id,

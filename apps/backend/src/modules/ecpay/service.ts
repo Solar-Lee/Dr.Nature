@@ -63,6 +63,7 @@ import {
   type ChoosePayment,
   type CheckoutForm,
   type MerchantCredentials,
+  type PaymentInfoNotice,
   type TradeInfo,
 } from "../../lib/ecpay/aio"
 import type { EcpayProviderOptions } from "../../lib/ecpay/config"
@@ -101,6 +102,31 @@ export type PaymentInstructions = {
 type ProofOfPayment = { tradeNo: string; paymentType: string }
 
 const QUERY_TIMEOUT_MS = 10_000
+
+// Keys the provider owns. initiatePayment/updatePayment return them explicitly (null when
+// unset) so values a shopper merged into session.data at creation are overwritten.
+const PROVIDER_PROOF_KEYS = [
+  "ecpay_notice",
+  "ecpay_trade_info",
+  "ecpay_payment_info",
+  "ecpay_payment_instructions",
+  "ecpay_trade_no",
+  "ecpay_payment_type",
+] as const
+
+const clearedProofKeys = () =>
+  Object.fromEntries(PROVIDER_PROOF_KEYS.map((k) => [k, null])) as Record<(typeof PROVIDER_PROOF_KEYS)[number], null>
+
+function instructionsFrom(info: PaymentInfoNotice): PaymentInstructions {
+  return {
+    payment_type: info.paymentType,
+    ...(info.bankCode ? { bank_code: info.bankCode, v_account: info.vAccount } : {}),
+    ...(info.paymentNo ? { payment_no: info.paymentNo } : {}),
+    ...(info.barcodes ? { barcodes: info.barcodes } : {}),
+    expire_date: info.expireDate,
+    expires_at: paymentDeadlineIso(info.expireDate),
+  }
+}
 
 class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderOptions> {
   static identifier = "ecpay"
@@ -249,7 +275,15 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
 
   // Rebuilds session data from the provider's own keys, dropping anything else a client
   // may have sent at session creation.
+  // Rebuilds session data from the provider's own keys. ecpay_* proofs are carried over only
+  // if they verify for this session, and payment instructions are always re-derived from a
+  // verified code notice: a shopper can merge arbitrary data into payment_session.data at
+  // creation, so nothing client-planted survives (P4-04 review).
   protected providerKeys(session: EcpaySessionData): EcpaySessionData {
+    const binding = this.binding(session)
+    const notice = verifiedNoticeFor(session.ecpay_notice, binding, this.credentials, this.options_.acceptSimulatedPayments)
+    const tradeInfo = verifiedTradeInfoFor(session.ecpay_trade_info, binding, this.credentials)
+    const info = verifiedPaymentInfoFor(session.ecpay_payment_info, binding, this.credentials)
     return {
       session_id: session.session_id,
       merchant_trade_no: session.merchant_trade_no,
@@ -257,11 +291,10 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       currency_code: "twd",
       choose_payment: session.choose_payment,
       checkout_form: session.checkout_form,
-      ...(session.ecpay_notice ? { ecpay_notice: session.ecpay_notice } : {}),
-      ...(session.ecpay_trade_info ? { ecpay_trade_info: session.ecpay_trade_info } : {}),
-      ...(session.ecpay_payment_info ? { ecpay_payment_info: session.ecpay_payment_info } : {}),
-      ...(session.ecpay_payment_instructions
-        ? { ecpay_payment_instructions: session.ecpay_payment_instructions }
+      ...(notice ? { ecpay_notice: session.ecpay_notice } : {}),
+      ...(tradeInfo ? { ecpay_trade_info: session.ecpay_trade_info } : {}),
+      ...(info
+        ? { ecpay_payment_info: session.ecpay_payment_info, ecpay_payment_instructions: instructionsFrom(info) }
         : {}),
     }
   }
@@ -321,7 +354,11 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
     const amount = this.toWholeTwd(input.amount, input.currency_code)
     const data = this.buildSession(sessionId, amount, this.choosePayment(input.data))
     // session.data is visible to the shopper: it holds the signed form, never HashKey/HashIV.
-    return { id: data.merchant_trade_no, data, status: PaymentSessionStatus.PENDING }
+    return {
+      id: data.merchant_trade_no,
+      data: { ...clearedProofKeys(), ...data },
+      status: PaymentSessionStatus.PENDING,
+    }
   }
 
   // The module replaces session.data with what this returns.
@@ -347,15 +384,7 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       if (!info) {
         throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPay payment code notice does not verify for this session")
       }
-      const instructions: PaymentInstructions = {
-        payment_type: info.paymentType,
-        ...(info.bankCode ? { bank_code: info.bankCode, v_account: info.vAccount } : {}),
-        ...(info.paymentNo ? { payment_no: info.paymentNo } : {}),
-        ...(info.barcodes ? { barcodes: info.barcodes } : {}),
-        expire_date: info.expireDate,
-        expires_at: paymentDeadlineIso(info.expireDate),
-      }
-      return { data: { ...this.providerKeys(session), ecpay_payment_instructions: instructions } }
+      return { data: { ...this.providerKeys(session), ecpay_payment_instructions: instructionsFrom(info) } }
     }
     if (incoming.ecpay_notice || incoming.ecpay_trade_info) {
       const session = this.readSession(incoming)
@@ -368,7 +397,7 @@ class EcpayPaymentProviderService extends AbstractPaymentProvider<EcpayProviderO
       return { data: this.providerKeys(session) }
     }
     const data = this.buildSession(sessionId, amount, this.choosePayment(incoming))
-    return { data, status: PaymentSessionStatus.PENDING }
+    return { data: { ...clearedProofKeys(), ...data }, status: PaymentSessionStatus.PENDING }
   }
 
   // No network call: called at cart completion (before the shopper has paid) and from

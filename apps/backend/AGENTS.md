@@ -1,6 +1,6 @@
 # AGENTS.md (apps/backend — from the create-medusa-app 2.21.2 template)
 
-> Project-wide rules in the repo-root CLAUDE.md take precedence over this file. Package name is `@drn/backend`; the template text below still says `@drn/backend`.
+> Project-wide rules in the repo-root CLAUDE.md take precedence over this file. Package name is `@drn/backend`.
 
 ## Overview
 

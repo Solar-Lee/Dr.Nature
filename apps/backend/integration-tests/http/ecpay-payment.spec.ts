@@ -6,30 +6,23 @@
 //
 // Run: cd apps/backend && ../../infra/test-env.sh pnpm run test:integration:http
 import http from "http"
-import { readdirSync } from "fs"
-import { join } from "path"
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
-import type { IRbacModuleService, MedusaContainer } from "@medusajs/framework/types"
-import { ContainerRegistrationKeys, Modules, generateJwtToken } from "@medusajs/framework/utils"
-import { createShippingOptionsWorkflow } from "@medusajs/medusa/core-flows"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { computeCheckMacValue, verifyCheckMacValue } from "../../src/lib/ecpay/check-mac-value"
 import { ECPAY_PROVIDER_ID } from "../../src/lib/ecpay/config"
 import devAddTestStock from "../../src/scripts/dev-add-test-stock"
 import catalog from "../../src/data/catalog.json"
+import { PUBLISHABLE_KEYS } from "../../src/lib/drn-setup"
 import {
-  FULFILLMENT_SET_NAME,
-  PUBLISHABLE_KEYS,
-  STOCK_LOCATION_NAME,
-} from "../../src/lib/drn-setup"
+  MAC,
+  MERCHANT_ID,
+  addTestShipping,
+  makeCheckoutHelpers,
+  runAllSeeds,
+} from "../helpers/ecpay-checkout"
 
 jest.setTimeout(180 * 1000)
 
-const MAC = {
-  hashKey: process.env.ECPAY_HASH_KEY as string,
-  hashIV: process.env.ECPAY_HASH_IV as string,
-  algorithm: "sha256" as const,
-}
-const MERCHANT_ID = process.env.ECPAY_MERCHANT_ID as string
 const STUB_URL = new URL(process.env.ECPAY_API_BASE_URL as string)
 
 // ---- QueryTradeInfo stub ---------------------------------------------------------------
@@ -62,62 +55,6 @@ const stub = http.createServer((req, res) => {
   })
 })
 
-// ---- helpers ---------------------------------------------------------------------------
-const MIGRATION_DIR = join(__dirname, "../../src/migration-scripts")
-const runAllSeeds = async (container: MedusaContainer) => {
-  const files = readdirSync(MIGRATION_DIR)
-    .filter((f) => /\.(ts|js)$/.test(f) && !f.endsWith(".d.ts"))
-    .sort((a, b) => a.localeCompare(b))
-  for (const f of files) {
-    await (await import(join(MIGRATION_DIR, f))).default({ container })
-  }
-}
-
-// Test-only home delivery option; ECPay logistics replaces this in P4-05.
-const addTestShipping = async (container: MedusaContainer) => {
-  const link = container.resolve(ContainerRegistrationKeys.LINK)
-  const fulfillment = container.resolve(Modules.FULFILLMENT)
-  const [location] = await container.resolve(Modules.STOCK_LOCATION).listStockLocations({ name: STOCK_LOCATION_NAME })
-  await link.create({
-    [Modules.STOCK_LOCATION]: { stock_location_id: location.id },
-    [Modules.FULFILLMENT]: { fulfillment_provider_id: "manual_manual" },
-  })
-  const [set] = await fulfillment.listFulfillmentSets({ name: FULFILLMENT_SET_NAME }, { relations: ["service_zones"] })
-  const [profile] = await fulfillment.listShippingProfiles({ type: "default" })
-  await createShippingOptionsWorkflow(container).run({
-    input: [
-      {
-        name: "Test home delivery",
-        price_type: "flat",
-        provider_id: "manual_manual",
-        service_zone_id: set.service_zones[0].id,
-        shipping_profile_id: profile.id,
-        type: { label: "Test", description: "test", code: "test" },
-        prices: [{ currency_code: "twd", amount: 0 }],
-        rules: [
-          { attribute: "enabled_in_store", value: "true", operator: "eq" },
-          { attribute: "is_return", value: "false", operator: "eq" },
-        ],
-      },
-    ],
-  })
-}
-
-const signedNotice = (overrides: Record<string, string>) => {
-  const fields = {
-    MerchantID: MERCHANT_ID,
-    RtnCode: "1",
-    RtnMsg: "交易成功",
-    TradeNo: "2610130105091234",
-    PaymentType: "Credit_CreditCard",
-    PaymentDate: "2026/10/13 01:06:00",
-    TradeDate: "2026/10/13 01:05:09",
-    SimulatePaid: "0",
-    ...overrides,
-  }
-  return { ...fields, CheckMacValue: computeCheckMacValue(fields, MAC) }
-}
-
 medusaIntegrationTestRunner({
   testSuite: ({ api, getContainer }) => {
     beforeAll(async () => {
@@ -136,125 +73,17 @@ medusaIntegrationTestRunner({
       stubBadSignatures = 0
     })
 
-    const storeHeaders = async () => {
-      const [key] = await getContainer()
-        .resolve(Modules.API_KEY)
-        .listApiKeys({ title: PUBLISHABLE_KEYS.official, type: "publishable" })
-      return { "x-publishable-api-key": key.token }
-    }
-
-    const superAdminHeaders = async (email: string) => {
-      const container = getContainer()
-      const user = await container.resolve(Modules.USER).createUsers({ email })
-      const identity = await container.resolve(Modules.AUTH).createAuthIdentities({
-        provider_identities: [{ provider: "emailpass", entity_id: email }],
-        app_metadata: { user_id: user.id },
-      })
-      const [role] = await container.resolve<IRbacModuleService>(Modules.RBAC).listRbacRoles({ name: "Super Admin" })
-      await container.resolve(ContainerRegistrationKeys.LINK).create({
-        [Modules.USER]: { user_id: user.id },
-        [Modules.RBAC]: { rbac_role_id: role.id },
-      })
-      const { http: httpConfig } = container.resolve(ContainerRegistrationKeys.CONFIG_MODULE).projectConfig
-      const token = generateJwtToken(
-        { actor_id: user.id, actor_type: "user", auth_identity_id: identity.id, app_metadata: { user_id: user.id, roles: [role.id] } },
-        { secret: httpConfig.jwtSecret as string, expiresIn: "1d" }
-      )
-      return { authorization: `Bearer ${token}` }
-    }
-
-    // Store checkout up to an order awaiting payment (or stop before completing the cart).
-    const checkout = async ({
-      complete = true,
-      choosePayment = "Credit",
-    }: { complete?: boolean; choosePayment?: string } = {}) => {
-      const headers = await storeHeaders()
-      const { data: r } = await api.get("/store/regions", { headers })
-      const regionId = r.regions[0].id
-      const { data: p } = await api.get(`/store/products?handle=${catalog.products[0].handle}&fields=*variants`, { headers })
-      const { data: c } = await api.post(
-        "/store/carts",
-        {
-          region_id: regionId,
-          email: "buyer@drn.test",
-          shipping_address: {
-            first_name: "測試",
-            last_name: "買家",
-            address_1: "信義路五段7號",
-            city: "台北市",
-            postal_code: "110",
-            country_code: "tw",
-            phone: "0912345678",
-          },
-        },
-        { headers }
-      )
-      const cartId = c.cart.id
-      await api.post(`/store/carts/${cartId}/line-items`, { variant_id: p.products[0].variants[0].id, quantity: 1 }, { headers })
-      const { data: so } = await api.get(`/store/shipping-options?cart_id=${cartId}`, { headers })
-      await api.post(`/store/carts/${cartId}/shipping-methods`, { option_id: so.shipping_options[0].id }, { headers })
-      const { data: pc } = await api.post("/store/payment-collections", { cart_id: cartId }, { headers })
-      const { data: ps } = await api.post(
-        `/store/payment-collections/${pc.payment_collection.id}/payment-sessions`,
-        { provider_id: ECPAY_PROVIDER_ID, data: { choose_payment: choosePayment } },
-        { headers }
-      )
-      const session = ps.payment_collection.payment_sessions[0]
-      const paymentCollectionId = pc.payment_collection.id
-      if (!complete) {
-        return { cartId, session, sessionData: session.data, completion: null as any, paymentCollectionId, headers }
-      }
-      const { data: done } = await api.post(`/store/carts/${cartId}/complete`, {}, { headers })
-      return { cartId, session, sessionData: session.data, completion: done, paymentCollectionId, headers }
-    }
-
-    const postNotice = (body: Record<string, string>) =>
-      api.post("/hooks/ecpay/payment", new URLSearchParams(body).toString(), {
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        validateStatus: () => true,
-      })
-
-    const postPaymentInfo = (body: Record<string, string>) =>
-      api.post("/hooks/ecpay/payment-info", new URLSearchParams(body).toString(), {
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        validateStatus: () => true,
-      })
-
-    const codeIssuedNotice = (sessionData: any, session: any, method: "ATM" | "CVS", extra: Record<string, string> = {}) => {
-      const fields: Record<string, string> = {
-        MerchantID: MERCHANT_ID,
-        MerchantTradeNo: sessionData.merchant_trade_no,
-        TradeNo: "2610130105091234",
-        TradeAmt: String(sessionData.amount),
-        TradeDate: "2026/10/13 01:05:09",
-        CustomField1: session.id,
-        ...(method === "ATM"
-          ? { RtnCode: "2", RtnMsg: "Get VirtualAccount Succeeded", PaymentType: "ATM_FIRST", BankCode: "007", vAccount: "9103522175887271", ExpireDate: "2026/10/16" }
-          : { RtnCode: "10100073", RtnMsg: "Get CVS Code Succeeded.", PaymentType: "CVS_CVS", PaymentNo: "LLL22251222", ExpireDate: "2026/10/20 01:05:09" }),
-        ...extra,
-      }
-      return { ...fields, CheckMacValue: computeCheckMacValue(fields, MAC) }
-    }
-
-    const sessionData = async (sessionId: string) => {
-      const [s] = await getContainer().resolve(Modules.PAYMENT).listPaymentSessions({ id: [sessionId] })
-      return s?.data as any
-    }
-
-    const capturedPayments = async (sessionId: string) => {
-      const { data } = await getContainer()
-        .resolve(ContainerRegistrationKeys.QUERY)
-        .graph({ entity: "payment", fields: ["id", "captured_at", "amount"], filters: { payment_session_id: sessionId } })
-      return data.filter((p: any) => p.captured_at)
-    }
-
-    const paidNotice = (sessionData: any, session: any, extra: Record<string, string> = {}) =>
-      signedNotice({
-        MerchantTradeNo: sessionData.merchant_trade_no,
-        TradeAmt: String(sessionData.amount),
-        CustomField1: session.id,
-        ...extra,
-      })
+    const {
+      storeHeaders,
+      superAdminHeaders,
+      checkout,
+      postNotice,
+      postPaymentInfo,
+      codeIssuedNotice,
+      sessionData,
+      capturedPayments,
+      paidNotice,
+    } = makeCheckoutHelpers({ api, getContainer })
 
     it("region offers ECPay only (pp_system_default removed)", async () => {
       const headers = await storeHeaders()
@@ -359,6 +188,34 @@ medusaIntegrationTestRunner({
       const res = await postNotice(paidNotice(sessionData, session, { TradeAmt: "1" }))
       expect(res.data).toEqual("1|OK")
       expect(await capturedPayments(session.id)).toHaveLength(0)
+    })
+
+    it("duplicate paid notice after a paid order was canceled is not flagged as paid-after-cancel", async () => {
+      const { session, sessionData: data, completion } = await checkout()
+      expect((await postNotice(paidNotice(data, session))).data).toEqual("1|OK")
+      const admin = await superAdminHeaders("dup-cancel@drn.test")
+      expect((await api.post(`/admin/orders/${completion.order.id}/cancel`, {}, { headers: admin, validateStatus: () => true })).status).toEqual(200)
+      expect((await postNotice(paidNotice(data, session))).data).toEqual("1|OK")
+      const order = await getContainer().resolve(Modules.ORDER).retrieveOrder(completion.order.id)
+      expect(order.metadata?.ecpay_paid_after_cancel).toBeUndefined()
+      expect(await capturedPayments(session.id)).toHaveLength(1)
+    })
+
+    it("instructions a shopper plants at session creation are wiped", async () => {
+      const headers = await storeHeaders()
+      const { cartId } = await checkout({ complete: false, choosePayment: "ATM" })
+      const { data: pc } = await api.post("/store/payment-collections", { cart_id: cartId }, { headers })
+      const { data: ps } = await api.post(
+        `/store/payment-collections/${pc.payment_collection.id}/payment-sessions`,
+        {
+          provider_id: ECPAY_PROVIDER_ID,
+          data: { choose_payment: "ATM", ecpay_payment_instructions: { bank_code: "999", v_account: "attacker" }, ecpay_notice: {} },
+        },
+        { headers }
+      )
+      const planted = ps.payment_collection.payment_sessions[0].data
+      expect(planted.ecpay_payment_instructions).toBeNull()
+      expect(planted.ecpay_notice).toBeNull()
     })
 
     it("re-paying an already placed order through a new session is refused", async () => {
@@ -477,14 +334,14 @@ medusaIntegrationTestRunner({
         const { session, sessionData: data } = await checkout({ choosePayment: "ATM" })
         const res = await postPaymentInfo({ ...codeIssuedNotice(data, session, "ATM"), vAccount: "0000000000000000" })
         expect(res.status).toEqual(400)
-        expect((await sessionData(session.id)).ecpay_payment_instructions).toBeUndefined()
+        expect((await sessionData(session.id)).ecpay_payment_instructions ?? null).toBeNull()
       })
 
       it("failed code issue is acknowledged without storing anything", async () => {
         const { session, sessionData: data } = await checkout({ choosePayment: "CVS" })
         const res = await postPaymentInfo(codeIssuedNotice(data, session, "CVS", { RtnCode: "10100058", RtnMsg: "失敗" }))
         expect(res.data).toEqual("1|OK")
-        expect((await sessionData(session.id)).ecpay_payment_instructions).toBeUndefined()
+        expect((await sessionData(session.id)).ecpay_payment_instructions ?? null).toBeNull()
       })
 
       it("simulated payment of a code is ignored when ECPAY_ACCEPT_SIMULATED_PAYMENTS is off", async () => {
@@ -493,6 +350,21 @@ medusaIntegrationTestRunner({
         const res = await postNotice(paidNotice(data, session, { PaymentType: "ATM_FIRST", SimulatePaid: "1" }))
         expect(res.data).toEqual("1|OK")
         expect(await capturedPayments(session.id)).toHaveLength(0)
+      })
+
+      it("code notice for a different amount is acknowledged, nothing stored", async () => {
+        const { session, sessionData: data } = await checkout({ choosePayment: "ATM" })
+        const res = await postPaymentInfo(codeIssuedNotice(data, session, "ATM", { TradeAmt: "1" }))
+        expect(res.data).toEqual("1|OK")
+        expect((await sessionData(session.id)).ecpay_payment_instructions ?? null).toBeNull()
+      })
+
+      it("code notice pointing at another session -> 400", async () => {
+        const a = await checkout({ choosePayment: "ATM" })
+        const b = await checkout({ choosePayment: "ATM" })
+        const res = await postPaymentInfo(codeIssuedNotice(a.sessionData, b.session, "ATM"))
+        expect(res.status).toEqual(400)
+        expect((await sessionData(a.session.id)).ecpay_payment_instructions ?? null).toBeNull()
       })
     })
   },
