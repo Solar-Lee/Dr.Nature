@@ -3,6 +3,7 @@
 // check), so both always use the same merchant credentials.
 import { MedusaError } from "@medusajs/framework/utils"
 import { AIO_ENDPOINTS, type EcpayEnvironment } from "./aio"
+import { TRADENOAIO_HOSTS } from "./reconcile-file"
 
 export type EcpayProviderOptions = {
   environment: EcpayEnvironment
@@ -22,6 +23,8 @@ export type EcpayProviderOptions = {
   acceptSimulatedPayments: boolean
   checkoutUrl: string
   queryTradeInfoUrl: string
+  // Daily reconciliation file (P4-07, vendor host); the test stub shares ECPAY_API_BASE_URL.
+  tradeNoAioUrl: string
 }
 
 export const ECPAY_PROVIDER_ID = "pp_ecpay_ecpay"
@@ -69,6 +72,7 @@ export function ecpayOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Ecpay
     queryTradeInfoUrl: apiBase
       ? `${apiBase}/Cashier/QueryTradeInfo/V5`
       : AIO_ENDPOINTS[environment].queryTradeInfo,
+    tradeNoAioUrl: apiBase ? `${apiBase}/PaymentMedia/TradeNoAio` : TRADENOAIO_HOSTS[environment],
   }
 }
 
