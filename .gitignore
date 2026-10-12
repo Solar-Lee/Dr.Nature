@@ -1,0 +1,16 @@
+# Secrets — never commit
+3. Key/
+*.key
+*.pem
+.env
+.env.*
+
+# Contains LINE OA credentials; a redacted .md copy is committed instead
+1. 品牌資訊/Dr.nature 品牌資訊總覽.pages
+
+# Duplicate archive of "4. Design reference/"
+4. Design reference.zip
+
+# Local tooling / OS
+.remember/
+.DS_Store
