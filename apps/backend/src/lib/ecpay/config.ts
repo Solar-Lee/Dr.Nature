@@ -79,7 +79,8 @@ export type EcpayLogisticsOptions = {
   merchantId: string
   hashKey: string
   hashIV: string
-  // C2C 店到店 (Aki, 2026-10-13) or B2C 大宗寄倉; switchable without code changes.
+  // C2C 店到店 (Aki, 2026-10-13) or B2C 大宗寄倉. Switching is NOT just an env change: existing
+  // shipping options store their subtype (drn-0006), so they must be recreated for the contract.
   contract: "C2C" | "B2C"
   sender: { name: string; cellphone: string; zipCode?: string; address?: string }
   // Signed status notices (server to server).
@@ -91,6 +92,8 @@ export type EcpayLogisticsOptions = {
 
 export const ECPAY_LOGISTICS_PROVIDER_ID = "ecpay_logistics"
 export const ECPAY_LOGISTICS_STATUS_PATH = "/hooks/ecpay/logistics"
+// ECPay's PUBLIC logistics test merchants (developers.ecpay.com.tw/7398/): B2C/宅配, C2C.
+const PUBLIC_LOGISTICS_SANDBOX_MERCHANTS = ["2000132", "2000933"]
 
 export function ecpayLogisticsOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): EcpayLogisticsOptions {
   const environment = required(env, "ECPAY_ENV")
@@ -105,11 +108,15 @@ export function ecpayLogisticsOptionsFromEnv(env: NodeJS.ProcessEnv = process.en
   if (apiBase && environment === "prod") {
     throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_LOGISTICS_API_BASE_URL must not be set when ECPAY_ENV=prod")
   }
+  const merchantId = required(env, "ECPAY_LOGISTICS_MERCHANT_ID")
+  if (environment === "prod" && PUBLIC_LOGISTICS_SANDBOX_MERCHANTS.includes(merchantId)) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_LOGISTICS_MERCHANT_ID is ECPay's public test merchant; not allowed when ECPAY_ENV=prod")
+  }
   const backendUrl = required(env, "MEDUSA_BACKEND_URL").replace(/\/$/, "")
   const storefrontUrl = required(env, "STOREFRONT_URL").replace(/\/$/, "")
   return {
     environment,
-    merchantId: required(env, "ECPAY_LOGISTICS_MERCHANT_ID"),
+    merchantId,
     hashKey: required(env, "ECPAY_LOGISTICS_HASH_KEY"),
     hashIV: required(env, "ECPAY_LOGISTICS_HASH_IV"),
     contract,

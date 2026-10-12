@@ -24,6 +24,13 @@ Express/Create 回應 `Content-Type: text/html; charset=utf-8`，本文 `1|k=v&.
  "ecpay_status":{"code":"300","message":"訂單處理中(綠界已收到訂單資料)"},"tracking_number":"D8844528-4456"}
 ```
 
+## 3. QueryLogisticsTradeInfo/V5（同一探測腳本，三家各一次，審查修正後）
+
+- 我方 MD5 簽章（`MerchantID`、`MerchantTradeNo`、`TimeStamp`、空的 `PlatformID`）被接受；剛建立的物流單回 HTTP 200、`key=value&...`，**CheckMacValue 驗證通過**，AllPayLogisticsID 與建單回應相同，`LogisticsStatus` 7-ELEVEN／全家為 300、萊爾富為 2001。
+- 不存在的交易編號：HTTP 500、本文 `0|找不到訂單`。
+- 三家 Express/Create 成功回應都帶 MerchantID、MerchantTradeNo（與送出相同）、AllPayLogisticsID、CheckMacValue，因此成功回應改為「四者皆須相符」才接受。
+- 7-ELEVEN C2C 交貨便代碼為 CVSPaymentNo 與 CVSValidationNo 的組合（developers.ecpay.com.tw/7418/），託運單號改為直接相接（上表第 2 節的 `D8844528-4456` 為修正前格式）。
+
 ## 由實測確認
 
 1. 我方 MD5 CheckMacValue、MerchantTradeNo（`DL`+時間+亂數）、收寄件人姓名／手機、GoodsName（含中文）、GoodsAmount、C2C 三家子類型欄位格式皆被綠界接受。

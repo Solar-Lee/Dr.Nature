@@ -3,6 +3,7 @@
 //   1. POSTs the e-map form (stage returns a fixed store without showing a map) and reads
 //      the store fields ECPay would post back.
 //   2. Creates a C2C shipment (Express/Create) to that store and parses the "1|..." answer.
+//   3. Queries that trade and an unknown one (QueryLogisticsTradeInfo/V5) and checks signatures.
 // Only test data; no logins. Usage (from apps/backend):
 //   ../../infra/dev-env.sh pnpm exec medusa exec ./src/scripts/ecpay-logistics-stage-probe.ts [UNIMARTC2C|FAMIC2C|HILIFEC2C] [storeId]
 import crypto from "crypto"
@@ -11,9 +12,11 @@ import { MedusaError } from "@medusajs/framework/utils"
 import {
   LOGISTICS_HOSTS,
   buildCreateShipmentRequest,
+  buildQueryLogisticsTradeInfoRequest,
   buildMapForm,
   newLogisticsTradeNo,
   parseCreateShipmentResponse,
+  parseLogisticsTradeInfo,
   type CvsSubtype,
 } from "../lib/ecpay/logistics"
 
@@ -84,7 +87,9 @@ export default async function ecpayLogisticsStageProbe({ args }: ExecArgs) {
     body: new URLSearchParams(request),
   })
   const body = await createRes.text()
-  const parsed = parseCreateShipmentResponse(body, C2C_SANDBOX)
+  const merchantTradeNo = request.MerchantTradeNo
+  const parsed = parseCreateShipmentResponse(body, C2C_SANDBOX, merchantTradeNo)
+  const loose = Object.fromEntries(new URLSearchParams(body.slice(body.indexOf("|") + 1)).entries())
   console.log(JSON.stringify({
     step: "create",
     subtype,
@@ -92,12 +97,30 @@ export default async function ecpayLogisticsStageProbe({ args }: ExecArgs) {
     content_type: createRes.headers.get("content-type"),
     ok: parsed.ok,
     message: parsed.ok ? null : parsed.message,
-    signature_verified: parsed.ok ? parsed.signatureVerified : null,
-    response_keys: parsed.ok ? Object.keys(parsed.fields) : null,
-    status: parsed.ok ? { RtnCode: parsed.fields.RtnCode, RtnMsg: parsed.fields.RtnMsg } : null,
-    has_ids: parsed.ok
-      ? { AllPayLogisticsID: !!parsed.fields.AllPayLogisticsID, CVSPaymentNo: !!parsed.fields.CVSPaymentNo, CVSValidationNo: !!parsed.fields.CVSValidationNo }
-      : null,
-    raw_sample: body.slice(0, 160),
+    response_keys: Object.keys(loose),
+    merchant_trade_no_echoed: loose.MerchantTradeNo === merchantTradeNo,
+    status: { RtnCode: loose.RtnCode, RtnMsg: loose.RtnMsg },
+    has_ids: { AllPayLogisticsID: !!loose.AllPayLogisticsID, CVSPaymentNo: !!loose.CVSPaymentNo, CVSValidationNo: !!loose.CVSValidationNo },
   }))
+
+  for (const [label, tradeNo] of [["created", merchantTradeNo], ["unknown", "DLPROBE0000000000000"]] as const) {
+    const q = await fetch(`${LOGISTICS_HOSTS.stage}/Helper/QueryLogisticsTradeInfo/V5`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(buildQueryLogisticsTradeInfoRequest(C2C_SANDBOX, tradeNo, new Date())),
+    })
+    const qBody = await q.text()
+    const info = parseLogisticsTradeInfo(qBody, C2C_SANDBOX, tradeNo)
+    console.log(JSON.stringify({
+      step: "query",
+      trade: label,
+      http: q.status,
+      content_type: q.headers.get("content-type"),
+      verified: !!info,
+      response_keys: [...new URLSearchParams(qBody).keys()],
+      logistics_status: info?.LogisticsStatus ?? null,
+      same_shipment: info ? info.AllPayLogisticsID === loose.AllPayLogisticsID : null,
+      raw_sample: label === "unknown" ? qBody.slice(0, 160) : null,
+    }))
+  }
 }

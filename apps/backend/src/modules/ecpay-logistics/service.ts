@@ -6,8 +6,11 @@
 //    value is stored (shipping_method.data). Build the result from an allow-list; re-check the
 //    option too (Medusa never calls validateOption). The e-map store choice is unsigned.
 //  - createFulfillment: creates the shipment at ECPay (Express/Create, MD5). Throwing makes
-//    Medusa delete the fulfillment row. The returned data/labels are stored on the fulfillment
-//    and may be visible to the shopper: never put credentials there.
+//    Medusa delete the fulfillment row WITHOUT calling cancelFulfillment, so when ECPay may
+//    have created the shipment anyway (no or unusable answer) we first ask ECPay
+//    (QueryLogisticsTradeInfo) and adopt it, else raise [ECPAY-ALERT] with the trade number.
+//    The returned data/labels are stored on the fulfillment and may be visible to the
+//    shopper: never put credentials there.
 //  - cancelFulfillment: also the compensation step of order fulfillment, so it must not throw.
 //    ECPay voiding is done in the back office for now (alert).
 import crypto from "crypto"
@@ -26,11 +29,16 @@ import {
   B2C_CVS_SUBTYPES,
   C2C_CVS_SUBTYPES,
   buildCreateShipmentRequest,
+  buildQueryLogisticsTradeInfoRequest,
   nameProblem,
   newLogisticsTradeNo,
   normalizeCellphone,
   parseChosenStore,
   parseCreateShipmentResponse,
+  parseLogisticsTradeInfo,
+  receiverName,
+  receiverProblem,
+  shipmentCode,
   type ChosenStore,
   type CvsSubtype,
 } from "../../lib/ecpay/logistics"
@@ -54,8 +62,48 @@ export type EcpayMethodData = {
 
 const CREATE_TIMEOUT_MS = 15_000
 const GOODS_NAME = "Dr.Nature 保健食品"
+// ECPay GoodsAmount range for pickup without collection (developers.ecpay.com.tw/8809/).
+const MAX_DECLARED_TWD = 20_000
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
+
+type OrderLine = {
+  id: string
+  total?: unknown
+  quantity?: unknown
+  detail?: { quantity?: unknown }
+  variant?: { inventory_items?: { required_quantity?: unknown; inventory?: { id?: string } }[] }
+}
+
+// Declared value of THIS shipment: the paid (tax-inclusive, after-discount) price of the
+// fulfilled quantities. Fulfillment items are one per line, or one per inventory item of a
+// managed variant with quantity x required_quantity (Medusa 2.21.2 create-fulfillment).
+export function declaredValue(
+  items: Partial<Omit<FulfillmentItemDTO, "fulfillment">>[],
+  orderItems: OrderLine[]
+): number {
+  const lines = new Map(orderItems.map((l) => [l.id, l]))
+  const fulfilled = new Map<string, number>()
+  for (const it of items) {
+    const line = lines.get(str(it.line_item_id))
+    if (!line) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `fulfillment item ${it.line_item_id} is not on the order`)
+    }
+    const perUnit = line.variant?.inventory_items?.find((ii) => ii.inventory?.id === it.inventory_item_id)?.required_quantity
+    const units = MathBN.convert(it.quantity as never).toNumber() / Number(perUnit ?? 1)
+    fulfilled.set(line.id, Math.max(fulfilled.get(line.id) ?? 0, units))
+  }
+  let total = MathBN.convert(0)
+  for (const [id, units] of fulfilled) {
+    const line = lines.get(id)!
+    const lineQty = Number(line.quantity ?? line.detail?.quantity)
+    if (line.total === undefined || line.total === null || !(lineQty > 0)) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `order line ${id} has no total/quantity to declare`)
+    }
+    total = MathBN.add(total, MathBN.mult(MathBN.div(line.total as never, lineQty), units))
+  }
+  return Math.round(total.toNumber())
+}
 
 export function fulfillmentOptionsFor(contract: "C2C" | "B2C"): EcpayFulfillmentOption[] {
   const [unimart, fami, hilife] = (contract === "C2C" ? C2C_CVS_SUBTYPES : B2C_CVS_SUBTYPES) as readonly CvsSubtype[]
@@ -130,17 +178,9 @@ class EcpayLogisticsProviderService extends AbstractFulfillmentProviderService {
     context: ValidateFulfillmentDataContext
   ): Promise<EcpayMethodData> {
     const option = this.optionFor(optionData)
-    const address = context?.shipping_address
-    if (!address || str(address.country_code).toLowerCase() !== "tw") {
-      throw new MedusaError(MedusaError.Types.INVALID_DATA, "請先填寫台灣收件地址")
-    }
-    if (!normalizeCellphone(str(address.phone))) {
-      throw new MedusaError(MedusaError.Types.INVALID_DATA, "收件人手機須為 09 開頭的 10 碼號碼")
-    }
-    const receiverName = `${str(address.last_name)}${str(address.first_name)}`.trim()
-    const problem = nameProblem(receiverName)
+    const problem = receiverProblem(context?.shipping_address)
     if (problem) {
-      throw new MedusaError(MedusaError.Types.INVALID_DATA, "收件人姓名須為 2-5 個中文字或 4-10 個英文字母，不可含數字或符號")
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, problem)
     }
     if (option.logistics_type === "HOME") {
       return { option_id: option.id, logistics_type: "HOME", logistics_subtype: "TCAT" }
@@ -166,28 +206,36 @@ class EcpayLogisticsProviderService extends AbstractFulfillmentProviderService {
     data: Record<string, unknown>,
     items: Partial<Omit<FulfillmentItemDTO, "fulfillment">>[],
     order: Partial<FulfillmentOrderDTO> | undefined,
-    _fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>
+    fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>
   ): Promise<CreateFulfillmentResult> {
     const option = this.optionFor({ id: data.option_id, logistics_type: data.logistics_type, logistics_subtype: data.logistics_subtype })
-    const address = order?.shipping_address
+    // Staff may override the recipient when fulfilling; Medusa passes the merged address here.
+    const address = fulfillment?.delivery_address ?? order?.shipping_address
     if (!order || !address) {
       throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPay logistics needs the order's shipping address")
     }
-    // Declared value for ECPay (1-20000 TWD): the order's goods total.
-    const itemTotal = (order as { item_total?: number | string }).item_total ?? 0
-    const goodsAmount = Math.round(MathBN.convert(itemTotal).toNumber())
+    const declared = declaredValue(items, ((order as { items?: OrderLine[] }).items ?? []) as OrderLine[])
+    if (declared > MAX_DECLARED_TWD) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        `此次出貨申報金額 NT$${declared} 超過超商取貨上限 NT$${MAX_DECLARED_TWD}，請分成多筆出貨`
+      )
+    }
     const merchantTradeNo = newLogisticsTradeNo(new Date(), crypto.randomBytes(6))
+    const orderCreated = (order as { created_at?: string | Date }).created_at
     const common = {
       credentials: this.credentials,
       merchantTradeNo,
-      tradeDate: new Date(),
-      goodsAmount,
+      // ECPay asks for the time of the shopper's purchase (developers.ecpay.com.tw/8809/).
+      tradeDate: orderCreated ? new Date(orderCreated) : new Date(),
+      // A free shipment (100% discount, gift) still needs a declared value of 1-20000.
+      goodsAmount: Math.max(1, declared),
       goodsName: GOODS_NAME,
       sender: { name: this.options_.sender.name, cellphone: this.options_.sender.cellphone },
       receiver: {
-        name: `${str(address.last_name)}${str(address.first_name)}`.trim(),
+        name: receiverName(address),
         cellphone: str(address.phone),
-        ...(str((order as { email?: unknown }).email) ? { email: str((order as { email?: unknown }).email) } : {}),
+        email: str((order as { customer?: { email?: unknown } }).customer?.email),
       },
       serverReplyUrl: this.options_.statusReplyUrl,
     }
@@ -212,7 +260,9 @@ class EcpayLogisticsProviderService extends AbstractFulfillmentProviderService {
       })
     }
 
-    let body: string
+    let f: Record<string, string>
+    let body: string | null = null
+    let failure: string | null = null
     try {
       const res = await fetch(`${this.options_.apiHost}/Express/Create`, {
         method: "POST",
@@ -222,14 +272,29 @@ class EcpayLogisticsProviderService extends AbstractFulfillmentProviderService {
       })
       body = await res.text()
     } catch (e) {
-      throw new MedusaError(MedusaError.Types.UNEXPECTED_STATE, `ECPay logistics unreachable: ${(e as Error).message}`)
+      failure = `no answer (${(e as Error).message})`
     }
-    const result = parseCreateShipmentResponse(body, this.credentials)
-    if (!result.ok) {
+    const result = body === null ? null : parseCreateShipmentResponse(body, this.credentials, merchantTradeNo)
+    if (result?.ok) {
+      f = result.fields
+    } else if (result && !result.uncertain) {
       throw new MedusaError(MedusaError.Types.INVALID_DATA, `ECPay refused the shipment: ${result.message}`)
+    } else {
+      // ECPay may have created it: adopt it if ECPay confirms, otherwise make staff check.
+      failure = failure ?? (result as { message: string }).message
+      const found = await this.findShipment(merchantTradeNo)
+      if (!found) {
+        this.logger_.error(
+          `[ECPAY-ALERT] ${merchantTradeNo}: Express/Create outcome unknown (${failure}); check the ECPay back office before fulfilling again`
+        )
+        throw new MedusaError(
+          MedusaError.Types.UNEXPECTED_STATE,
+          `ECPay logistics: ${failure}. Check MerchantTradeNo ${merchantTradeNo} in the ECPay back office before retrying`
+        )
+      }
+      this.logger_.warn(`[ecpay-logistics] ${merchantTradeNo}: ${failure}; ECPay confirms shipment ${found.AllPayLogisticsID}`)
+      f = { ...found, RtnCode: found.LogisticsStatus ?? "", RtnMsg: "" }
     }
-    const f = result.fields
-    const trackingNumber = [f.CVSPaymentNo, f.CVSValidationNo].filter(Boolean).join("-") || f.BookingNote || f.AllPayLogisticsID
     this.logger_.info(`[ecpay-logistics] ${merchantTradeNo}: shipment ${f.AllPayLogisticsID} created for ${items.length} item(s)`)
     return {
       data: {
@@ -238,13 +303,30 @@ class EcpayLogisticsProviderService extends AbstractFulfillmentProviderService {
         logistics_subtype: option.logistics_subtype,
         ...(store ? { store } : {}),
         ecpay_merchant_trade_no: merchantTradeNo,
-        ecpay_all_pay_logistics_id: f.AllPayLogisticsID ?? "",
+        ecpay_all_pay_logistics_id: f.AllPayLogisticsID,
+        ecpay_declared_value: common.goodsAmount,
         ...(f.CVSPaymentNo ? { ecpay_cvs_payment_no: f.CVSPaymentNo } : {}),
         ...(f.CVSValidationNo ? { ecpay_cvs_validation_no: f.CVSValidationNo } : {}),
         ...(f.BookingNote ? { ecpay_booking_note: f.BookingNote } : {}),
         ecpay_status: { code: f.RtnCode ?? "", message: f.RtnMsg ?? "" },
       },
-      labels: [{ tracking_number: trackingNumber ?? "", tracking_url: "", label_url: "" }],
+      labels: [{ tracking_number: shipmentCode(f), tracking_url: "", label_url: "" }],
+    }
+  }
+
+  // Signed QueryLogisticsTradeInfo answer for our trade, or null (unknown trade answers
+  // "0|找不到訂單"; network errors and bad signatures also count as "not confirmed").
+  protected async findShipment(merchantTradeNo: string): Promise<Record<string, string> | null> {
+    try {
+      const res = await fetch(`${this.options_.apiHost}/Helper/QueryLogisticsTradeInfo/V5`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(buildQueryLogisticsTradeInfoRequest(this.credentials, merchantTradeNo, new Date())),
+        signal: AbortSignal.timeout(CREATE_TIMEOUT_MS),
+      })
+      return parseLogisticsTradeInfo(await res.text(), this.credentials, merchantTradeNo)
+    } catch {
+      return null
     }
   }
 

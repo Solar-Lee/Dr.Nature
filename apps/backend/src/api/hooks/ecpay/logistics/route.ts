@@ -3,9 +3,12 @@
 // for 3 days). Stage does NOT send these notices, so they are verified with local tests.
 //  shipped   -> createOrderShipmentWorkflow (once)
 //  delivered -> shipment if missed, then markOrderFulfillmentAsDeliveredWorkflow (once)
-//  arrived / info -> recorded only
-//  returning / reselect_store / canceled -> recorded + [ECPAY-ALERT] for staff
-// Both core workflows throw NOT_ALLOWED when repeated, so state is read first and repeats ACK.
+//  progress / arrived -> recorded only
+//  anything else (store closed, returning, lost, canceled, unknown code) -> recorded +
+//  [ECPAY-ALERT] for staff, once per distinct notice
+// Canceled fulfillments (or ones whose order link was never made) are recorded and alerted,
+// never shipped. Both core workflows throw NOT_ALLOWED when repeated, so state is read first
+// and repeats ACK.
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { IFulfillmentModuleService } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
@@ -14,7 +17,7 @@ import {
   markOrderFulfillmentAsDeliveredWorkflow,
 } from "@medusajs/medusa/core-flows"
 import { ECPAY_LOGISTICS_PROVIDER_ID, ecpayLogisticsOptionsFromEnv } from "../../../../lib/ecpay/config"
-import { parseLogisticsNotice, statusMeaning } from "../../../../lib/ecpay/logistics"
+import { parseLogisticsNotice, statusMeaning, statusNeedsAttention } from "../../../../lib/ecpay/logistics"
 import { recordLogisticsStatusWorkflow } from "../../../../workflows/ecpay/record-logistics-status"
 
 const ACK = "1|OK"
@@ -81,22 +84,26 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   const meaning = statusMeaning(notice.rtnCode)
   try {
     const f = await load()
-    if (f.data?.ecpay_all_pay_logistics_id && f.data.ecpay_all_pay_logistics_id !== notice.allPayLogisticsId) {
+    // Every fulfillment we create stores ECPay's shipment id; it must match the signed notice.
+    if (!f.data?.ecpay_all_pay_logistics_id || f.data.ecpay_all_pay_logistics_id !== notice.allPayLogisticsId) {
       logger.error(`${tag}: [ECPAY-ALERT] AllPayLogisticsID mismatch for fulfillment ${f.id}`)
       return reply(res, 400, "0|Shipment mismatch")
     }
-    if (!f.order) {
-      throw new MedusaError(MedusaError.Types.NOT_FOUND, "fulfillment has no order")
-    }
-    await recordLogisticsStatusWorkflow(req.scope).run({
+    const { result: recorded } = await recordLogisticsStatusWorkflow(req.scope).run({
       input: {
         fulfillment_id: f.id,
         status: { code: notice.rtnCode, message: notice.rtnMsg, updated_at: notice.updateStatusDate, meaning },
       },
     })
-    if (f.canceled_at || f.order.status === "canceled") {
-      logger.error(`${tag}: [ECPAY-ALERT] status for canceled fulfillment/order ${f.order.id}`)
+    const where = f.order ? `order ${f.order.id}` : `fulfillment ${f.id} (no order)`
+    if (f.canceled_at || !f.order || f.order.status === "canceled") {
+      if (!recorded.duplicate) {
+        logger.error(`${tag}: [ECPAY-ALERT] ${meaning} (${notice.rtnMsg}) for canceled ${where}; void it in the ECPay back office`)
+      }
       return reply(res, 200, ACK)
+    }
+    if (statusNeedsAttention(meaning) && !recorded.duplicate) {
+      logger.error(`${tag}: [ECPAY-ALERT] ${meaning} (${notice.rtnMsg}) for ${where}`)
     }
 
     const ship = async (current: FulfillmentView) => {
@@ -125,8 +132,6 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
           input: { orderId: f.order.id, fulfillmentId: f.id },
         })
       }
-    } else if (meaning === "returning" || meaning === "reselect_store" || meaning === "canceled") {
-      logger.error(`${tag}: [ECPAY-ALERT] ${meaning} (${notice.rtnMsg}) for order ${f.order.id}`)
     }
   } catch (e) {
     // A concurrent duplicate may have completed the transition first.

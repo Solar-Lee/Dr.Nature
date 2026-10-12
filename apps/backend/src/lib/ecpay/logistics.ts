@@ -122,6 +122,36 @@ export function normalizeCellphone(phone: string): string | null {
   return /^09\d{8}$/.test(digits) ? digits : null
 }
 
+// ReceiverEmail is optional, String(50) (developers.ecpay.com.tw/8809/): send it only when it
+// is short and well-formed, so one odd address cannot make ECPay refuse the whole shipment.
+export function receiverEmail(email: unknown): string | undefined {
+  const e = typeof email === "string" ? email.trim() : ""
+  return e.length <= 50 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : undefined
+}
+
+export type ReceiverAddress = { country_code?: unknown; phone?: unknown; first_name?: unknown; last_name?: unknown }
+
+const text = (v: unknown) => (typeof v === "string" ? v : "")
+
+export function receiverName(address: ReceiverAddress): string {
+  return `${text(address.last_name)}${text(address.first_name)}`.trim()
+}
+
+// Shopper-facing reason ECPay would refuse this receiver, or null. Checked when the pickup
+// option is chosen and again when the cart completes (the address can change in between).
+export function receiverProblem(address: ReceiverAddress | null | undefined): string | null {
+  if (!address || text(address.country_code).toLowerCase() !== "tw") {
+    return "請先填寫台灣收件地址"
+  }
+  if (!normalizeCellphone(text(address.phone))) {
+    return "收件人手機須為 09 開頭的 10 碼號碼"
+  }
+  if (nameProblem(receiverName(address))) {
+    return "收件人姓名須為 2-5 個中文字或 4-10 個英文字母，不可含數字或符號"
+  }
+  return null
+}
+
 // GoodsName banned characters (developers.ecpay.com.tw/8809/): ^'`!@#%&*+\"<>|_[]
 const GOODS_NAME_BANNED = /[\^'`!@#%&*+\\"<>|_[\]]/
 
@@ -178,8 +208,9 @@ export function buildCreateShipmentRequest(input: CreateShipmentInput): Record<s
     ReceiverCellPhone: normalizeCellphone(input.receiver.cellphone)!,
     ServerReplyURL: input.serverReplyUrl,
   }
-  if (input.receiver.email) {
-    fields.ReceiverEmail = input.receiver.email
+  const email = receiverEmail(input.receiver.email)
+  if (email) {
+    fields.ReceiverEmail = email
   }
   if (input.type === "CVS") {
     if (!/^[0-9A-Za-z]{1,6}$/.test(input.storeId)) {
@@ -207,32 +238,85 @@ export function buildCreateShipmentRequest(input: CreateShipmentInput): Record<s
   return fields
 }
 
+// `uncertain`: ECPay may have created the shipment even though we cannot use the answer
+// (anything but an explicit "0|..." refusal), so staff must check before retrying.
 export type CreateShipmentResult =
-  | { ok: true; fields: Record<string, string>; signatureVerified: boolean }
-  | { ok: false; message: string }
+  | { ok: true; fields: Record<string, string> }
+  | { ok: false; message: string; uncertain: boolean }
 
-// Parses "1|k=v&..." / "0|message". The success body may carry a CheckMacValue; when it does
-// it must verify (a mismatch is treated as failure).
-export function parseCreateShipmentResponse(body: string, credentials: MerchantCredentials): CreateShipmentResult {
+// Parses "1|k=v&..." / "0|message". A success must be signed (developers.ecpay.com.tw/8809/
+// requires checking CheckMacValue), be for our merchant and trade, and carry a shipment id.
+export function parseCreateShipmentResponse(
+  body: string,
+  credentials: MerchantCredentials,
+  merchantTradeNo: string
+): CreateShipmentResult {
   const text = body.trim()
   const sep = text.indexOf("|")
   if (sep < 0) {
-    return { ok: false, message: `unexpected response: ${text.slice(0, 120)}` }
+    return { ok: false, message: `unexpected response: ${text.slice(0, 120)}`, uncertain: true }
   }
   const code = text.slice(0, sep).trim()
   const rest = text.slice(sep + 1)
+  if (code === "0") {
+    return { ok: false, message: rest.trim().slice(0, 200) || "code 0", uncertain: false }
+  }
   if (code !== "1") {
-    return { ok: false, message: rest.trim().slice(0, 200) || `code ${code}` }
+    return { ok: false, message: `unexpected response code ${code.slice(0, 20)}`, uncertain: true }
   }
   const fields = Object.fromEntries(new URLSearchParams(rest).entries())
-  const signatureVerified = fields.CheckMacValue ? verifyCheckMacValue(fields, mac(credentials)) : false
-  if (fields.CheckMacValue && !signatureVerified) {
-    return { ok: false, message: "response CheckMacValue mismatch" }
+  if (!fields.CheckMacValue || !verifyCheckMacValue(fields, mac(credentials))) {
+    return { ok: false, message: "response CheckMacValue missing or wrong", uncertain: true }
   }
-  if (fields.MerchantID && fields.MerchantID !== credentials.merchantId) {
-    return { ok: false, message: "response for another merchant" }
+  if (fields.MerchantID !== credentials.merchantId || fields.MerchantTradeNo !== merchantTradeNo) {
+    return { ok: false, message: "response is for another merchant or trade", uncertain: true }
   }
-  return { ok: true, fields, signatureVerified }
+  if (!fields.AllPayLogisticsID) {
+    return { ok: false, message: "response has no AllPayLogisticsID", uncertain: true }
+  }
+  return { ok: true, fields }
+}
+
+// The code the sender and buyer use: 7-ELEVEN C2C 交貨便代碼 is CVSPaymentNo + CVSValidationNo
+// (developers.ecpay.com.tw/7418/); FamilyMart / Hi-Life C2C have CVSPaymentNo only; home
+// delivery has BookingNote.
+export function shipmentCode(f: Record<string, string | undefined>): string {
+  return `${f.CVSPaymentNo ?? ""}${f.CVSValidationNo ?? ""}` || f.BookingNote || f.AllPayLogisticsID || ""
+}
+
+// ---- query (QueryLogisticsTradeInfo/V5, developers.ecpay.com.tw/7418/) --------------------
+
+export function buildQueryLogisticsTradeInfoRequest(
+  credentials: MerchantCredentials,
+  merchantTradeNo: string,
+  now: Date
+): Record<string, string> {
+  const fields: Record<string, string> = {
+    MerchantID: credentials.merchantId,
+    MerchantTradeNo: merchantTradeNo,
+    // Valid for 3 minutes.
+    TimeStamp: String(Math.floor(now.getTime() / 1000)),
+    PlatformID: "",
+  }
+  fields.CheckMacValue = computeCheckMacValue(fields, mac(credentials))
+  return fields
+}
+
+// Answer is "k=v&..." (signed). Returns the fields only for a verified answer about this
+// merchant's trade that has a shipment id; anything else means "not confirmed".
+export function parseLogisticsTradeInfo(
+  body: string,
+  credentials: MerchantCredentials,
+  merchantTradeNo: string
+): Record<string, string> | null {
+  const fields = Object.fromEntries(new URLSearchParams(body.trim()).entries())
+  if (!fields.CheckMacValue || !verifyCheckMacValue(fields, mac(credentials))) {
+    return null
+  }
+  if (fields.MerchantID !== credentials.merchantId || fields.MerchantTradeNo !== merchantTradeNo || !fields.AllPayLogisticsID) {
+    return null
+  }
+  return fields
 }
 
 // ---- status notices (ServerReplyURL) -------------------------------------------------------
@@ -279,38 +363,57 @@ export function parseLogisticsNotice(
   }
 }
 
-// What a status code means for the order (developers.ecpay.com.tw/logistics_status/, LOG-13).
-export type StatusMeaning = "shipped" | "arrived" | "delivered" | "returning" | "reselect_store" | "canceled" | "info"
+// What a status code means for the order. Source: ECPay status workbook linked from
+// developers.ecpay.com.tw/7440/ (C2C sheets for UNIMARTC2C / FAMIC2C / HILIFEC2C, plus TCAT).
+// Anything NOT listed is "attention": staff get an alert, so a new or rare code is never silent.
+export type StatusMeaning =
+  | "progress"
+  | "shipped"
+  | "arrived"
+  | "delivered"
+  | "reselect_store"
+  | "returning"
+  | "lost"
+  | "canceled"
+  | "attention"
 
-const STATUS_MEANING: Record<string, StatusMeaning> = {
-  // seller dropped the parcel / logistics center accepted it
-  "2068": "shipped", // 7-ELEVEN C2C: 賣家已到門市寄件
-  "3032": "shipped", // FamilyMart / Hi-Life C2C: 賣家已到門市寄件
-  "2030": "shipped", // 7-ELEVEN / Hi-Life B2C: 物流中心驗收成功
-  "3024": "shipped", // FamilyMart / Hi-Life: 物流中心驗收成功
-  "3001": "shipped", // TCAT: 轉運中(即集貨)
-  // parcel at the pickup store
-  "2063": "arrived", // 7-ELEVEN B2C: 包裹配達取件門市
-  "2073": "arrived", // 7-ELEVEN C2C: 包裹配達取件門市
-  "2098": "arrived", // 7-ELEVEN: 包裹重新配達取件門市
-  "3018": "arrived", // FamilyMart / Hi-Life: 包裹配達取件門市
-  // picked up / delivered
-  "2067": "delivered", // 7-ELEVEN / Hi-Life: 買家已到店取貨
-  "3022": "delivered", // FamilyMart / Hi-Life: 買家已到店取貨
-  "3003": "delivered", // TCAT: 配完
-  // not picked up / returned
-  "2074": "returning", // 買家未取包裹，將退回物流中心
-  "3020": "returning", // 買家未取包裹，將退回物流中心
-  "5004": "returning", // TCAT / Hi-Life: 一般單退回 / 賣家未取包裹
-  "5008": "returning", // 退貨配完
-  // store closed: the shopper must pick another store
-  "2104": "reselect_store",
-  "7011": "reselect_store",
-  "9999": "canceled",
+const STATUS_CODES: Record<Exclude<StatusMeaning, "attention">, string[]> = {
+  // Normal progress, no action: received / uploaded / sent to store / sorting / weather delay...
+  progress: [
+    "300", "310", "311", "2000", "2001", "2024", "2025", "2027", "2031", "2041", "2043",
+    "2057", "2058", "2059", "2062", "2102", "2105", "7014",
+  ],
+  // Seller dropped the parcel off, or the logistics center accepted it.
+  shipped: ["2068", "3032", "2030", "3024", "3001"],
+  // At the pickup store (2098: re-delivered there).
+  arrived: ["2073", "3018", "3029", "2063", "2098"],
+  // Buyer picked it up (3003: TCAT delivered).
+  delivered: ["2067", "3022", "3003"],
+  // Pickup or drop-off store closed: a new store must be chosen (Hi-Life 2028: within 3 days).
+  reselect_store: ["2104", "7011", "2037", "7032", "2028", "2101", "2103"],
+  // Not picked up / going back / back at the sender's store / seller has not collected it.
+  returning: [
+    "2016", "2026", "2033", "2046", "2047", "2049", "2050", "2053", "2055", "2060", "2065", "2066",
+    "2069", "2070", "2072", "2074", "2075", "2076", "2077", "2078", "2079", "2080", "2081", "2082",
+    "2083", "2084", "2085", "2086", "2087", "2088", "2089", "2092", "2093", "2096", "2097", "2099",
+    "3019", "3020", "3021", "3023", "3025", "3031", "5004", "5008", "7016",
+  ],
+  // Lost, damaged or destroyed (7035: 逾期未領，貨件銷毀).
+  lost: ["2042", "5001", "5002", "7006", "7007", "7008", "7018", "7020", "7035", "7036"],
+  canceled: ["9999"],
 }
 
+const STATUS_MEANING: Record<string, StatusMeaning> = Object.fromEntries(
+  Object.entries(STATUS_CODES).flatMap(([meaning, codes]) => codes.map((c) => [c, meaning as StatusMeaning]))
+)
+
 export function statusMeaning(rtnCode: string): StatusMeaning {
-  return STATUS_MEANING[rtnCode] ?? "info"
+  return STATUS_MEANING[rtnCode] ?? "attention"
+}
+
+// Statuses that need nobody's attention; every other status raises [ECPAY-ALERT].
+export function statusNeedsAttention(meaning: StatusMeaning): boolean {
+  return !["progress", "shipped", "arrived", "delivered"].includes(meaning)
 }
 
 // "DL" + yyMMddHHmmss (Taipei) + 6 random base36 = 20 chars; distinct prefix from payment trades.

@@ -1,6 +1,7 @@
 import {
   buildCreateShipmentRequest,
   buildMapForm,
+  buildQueryLogisticsTradeInfoRequest,
   displayWidth,
   nameProblem,
   newLogisticsTradeNo,
@@ -8,7 +9,12 @@ import {
   parseChosenStore,
   parseCreateShipmentResponse,
   parseLogisticsNotice,
+  parseLogisticsTradeInfo,
+  receiverEmail,
+  receiverProblem,
+  shipmentCode,
   statusMeaning,
+  statusNeedsAttention,
 } from "../logistics"
 import { computeCheckMacValue, verifyCheckMacValue } from "../check-mac-value"
 
@@ -168,22 +174,79 @@ describe("parseCreateShipmentResponse", () => {
   }
   const body = (f: Record<string, string>) => `1|${new URLSearchParams(signMd5(f)).toString()}`
 
+  const TRADE = fields.MerchantTradeNo
+
   it("parses a signed success answer (shape seen from real stage)", () => {
-    const r = parseCreateShipmentResponse(body(fields), creds)
-    expect(r.ok).toBe(true)
-    if (r.ok) {
-      expect(r.signatureVerified).toBe(true)
-      expect(r.fields).toMatchObject({ AllPayLogisticsID: "3690131", CVSPaymentNo: "D8844527", CVSValidationNo: "4471" })
-    }
+    const r = parseCreateShipmentResponse(body(fields), creds, TRADE)
+    expect(r).toEqual({ ok: true, fields: expect.objectContaining({ AllPayLogisticsID: "3690131", CVSPaymentNo: "D8844527", CVSValidationNo: "4471" }) })
+  })
+
+  it("an explicit ECPay refusal is certain: no shipment exists", () => {
+    expect(parseCreateShipmentResponse("0|ReceiverName格式錯誤", creds, TRADE)).toEqual({ ok: false, message: "ReceiverName格式錯誤", uncertain: false })
   })
 
   it.each([
-    ["an ECPay error", "0|ReceiverName格式錯誤"],
     ["a tampered success", body(fields).replace("CVSPaymentNo=D8844527", "CVSPaymentNo=X0000000")],
+    ["an unsigned success", `1|${new URLSearchParams(fields).toString()}`],
     ["another merchant's answer", body({ ...fields, MerchantID: "2000132" })],
+    ["an answer for another trade", body({ ...fields, MerchantTradeNo: "DL2610130105090123XX" })],
+    ["a success without a shipment id", body({ ...fields, AllPayLogisticsID: "" })],
     ["a non-ECPay body", "<html>502</html>"],
-  ])("rejects %s", (_n, b) => {
-    expect(parseCreateShipmentResponse(b, creds).ok).toBe(false)
+  ])("rejects %s as uncertain (ECPay may have created it)", (_n, b) => {
+    expect(parseCreateShipmentResponse(b, creds, TRADE)).toMatchObject({ ok: false, uncertain: true })
+  })
+})
+
+describe("QueryLogisticsTradeInfo (shape verified on real stage 2026-10-13)", () => {
+  it("signs the request with a unix timestamp and an empty PlatformID", () => {
+    const r = buildQueryLogisticsTradeInfoRequest(creds, "DL2610130105090123AB", new Date("2026-10-13T00:00:00Z"))
+    expect(r).toMatchObject({ MerchantID: "2000933", MerchantTradeNo: "DL2610130105090123AB", TimeStamp: "1791849600", PlatformID: "" })
+    expect(verifyCheckMacValue(r, md5)).toBe(true)
+  })
+
+  const answer = signMd5({
+    AllPayLogisticsID: "3690131",
+    CVSPaymentNo: "D8844527",
+    CVSValidationNo: "4471",
+    LogisticsStatus: "300",
+    MerchantID: "2000933",
+    MerchantTradeNo: "DL2610130105090123AB",
+  })
+
+  it("accepts only a signed answer for this merchant's trade", () => {
+    const q = (o: Record<string, string>) => new URLSearchParams(o).toString()
+    expect(parseLogisticsTradeInfo(q(answer), creds, "DL2610130105090123AB")?.AllPayLogisticsID).toEqual("3690131")
+    expect(parseLogisticsTradeInfo(q({ ...answer, LogisticsStatus: "2067" }), creds, "DL2610130105090123AB")).toBeNull()
+    expect(parseLogisticsTradeInfo(q(answer), creds, "DL2610130105090123XX")).toBeNull()
+    expect(parseLogisticsTradeInfo("0|找不到訂單", creds, "DL2610130105090123AB")).toBeNull()
+  })
+})
+
+describe("shipment code and receiver checks", () => {
+  it("7-ELEVEN code is CVSPaymentNo + CVSValidationNo; others use what they have", () => {
+    expect(shipmentCode({ CVSPaymentNo: "D8844528", CVSValidationNo: "4456", AllPayLogisticsID: "1" })).toEqual("D88445284456")
+    expect(shipmentCode({ CVSPaymentNo: "20155540869", CVSValidationNo: "", AllPayLogisticsID: "1" })).toEqual("20155540869")
+    expect(shipmentCode({ BookingNote: "9010000000", AllPayLogisticsID: "1" })).toEqual("9010000000")
+  })
+
+  it.each([
+    ["buyer@drn.test", "buyer@drn.test"],
+    ["  buyer@drn.test ", "buyer@drn.test"],
+    [`${"a".repeat(45)}@x.tw`, `${"a".repeat(45)}@x.tw`], // exactly 50
+    [`${"a".repeat(46)}@x.tw`, undefined], // 51
+    ["not-an-email", undefined],
+    [undefined, undefined],
+  ])("ReceiverEmail %s -> %s", (input, out) => {
+    expect(receiverEmail(input)).toEqual(out)
+  })
+
+  it("explains in Chinese why ECPay would refuse a receiver", () => {
+    const ok = { country_code: "tw", phone: "0987-654-321", first_name: "小華", last_name: "陳" }
+    expect(receiverProblem(ok)).toBeNull()
+    expect(receiverProblem({ ...ok, country_code: "jp" })).toContain("台灣")
+    expect(receiverProblem({ ...ok, phone: "02-2345-6789" })).toContain("手機")
+    expect(receiverProblem({ ...ok, first_name: "User1", last_name: "" })).toContain("姓名")
+    expect(receiverProblem(null)).toContain("台灣")
   })
 })
 
@@ -213,14 +276,27 @@ describe("status notices", () => {
     ["3032", "shipped"],
     ["2073", "arrived"],
     ["3018", "arrived"],
+    ["3029", "arrived"],
     ["2067", "delivered"],
     ["3022", "delivered"],
     ["2074", "returning"],
+    ["3019", "returning"],
     ["2104", "reselect_store"],
-    ["300", "info"],
-    ["2001", "info"],
+    ["2037", "reselect_store"],
+    ["7032", "reselect_store"],
+    ["7035", "lost"],
+    ["9999", "canceled"],
+    ["300", "progress"],
+    ["2001", "progress"],
+    ["7013", "attention"], // 訂單超過驗收期限（賣家未出貨）
+    ["123456", "attention"], // any code we do not know
   ])("maps %s to %s", (code, meaning) => {
     expect(statusMeaning(code)).toEqual(meaning)
+  })
+
+  it("alerts on everything except normal progress", () => {
+    expect(["progress", "shipped", "arrived", "delivered"].map((m) => statusNeedsAttention(m as never))).toEqual([false, false, false, false])
+    expect(["reselect_store", "returning", "lost", "canceled", "attention"].map((m) => statusNeedsAttention(m as never))).toEqual([true, true, true, true, true])
   })
 })
 
