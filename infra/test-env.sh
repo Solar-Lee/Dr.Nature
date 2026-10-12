@@ -26,6 +26,17 @@ export ECPAY_API_BASE_URL="http://127.0.0.1:56390"
 # that needs it on sets it itself before the app boots).
 export ECPAY_ACCEPT_SIMULATED_PAYMENTS=false
 
+# ECPay PUBLIC C2C logistics sandbox merchant (developers.ecpay.com.tw/7398/); not a secret.
+export ECPAY_LOGISTICS_MERCHANT_ID="2000933"
+export ECPAY_LOGISTICS_HASH_KEY="XBERn1YOvpM9nfZc"
+export ECPAY_LOGISTICS_HASH_IV="h1ONHk4P4yqbl5LK"
+export ECPAY_LOGISTICS_CONTRACT="C2C"
+# Test sender (fictional). Production: the real sender's personal name and cellphone.
+export ECPAY_LOGISTICS_SENDER_NAME="王小明"
+export ECPAY_LOGISTICS_SENDER_CELLPHONE="0912345678"
+# Express/Create is answered by a local stub started in the logistics integration spec.
+export ECPAY_LOGISTICS_API_BASE_URL="http://127.0.0.1:56391"
+
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "$#" -gt 0 ]; then
   exec "$@"
 fi

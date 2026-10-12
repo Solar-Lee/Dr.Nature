@@ -131,7 +131,8 @@ export function makeCheckoutHelpers({ api, getContainer }: { api: Api; getContai
     const cartId = c.cart.id
     await api.post(`/store/carts/${cartId}/line-items`, { variant_id: p.products[0].variants[0].id, quantity: 1 }, { headers })
     const { data: so } = await api.get(`/store/shipping-options?cart_id=${cartId}`, { headers })
-    await api.post(`/store/carts/${cartId}/shipping-methods`, { option_id: so.shipping_options[0].id }, { headers })
+    const testOption = so.shipping_options.find((o: any) => o.name === "Test home delivery") ?? so.shipping_options[0]
+    await api.post(`/store/carts/${cartId}/shipping-methods`, { option_id: testOption.id }, { headers })
     const { data: pc } = await api.post("/store/payment-collections", { cart_id: cartId }, { headers })
     const { data: ps } = await api.post(
       `/store/payment-collections/${pc.payment_collection.id}/payment-sessions`,

@@ -1,6 +1,6 @@
 import { readFileSync } from "fs"
 import { MedusaError, loadEnv, defineConfig } from "@medusajs/framework/utils"
-import { ecpayOptionsFromEnv } from "./src/lib/ecpay/config"
+import { ecpayLogisticsOptionsFromEnv, ecpayOptionsFromEnv } from "./src/lib/ecpay/config"
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd())
 
@@ -90,6 +90,23 @@ const paymentModules = process.env.ECPAY_ENV
   ]
   : []
 
+// ECPay logistics (fulfillment provider "ecpay_logistics"), registered only when its
+// credentials are set. The manual provider stays registered (Medusa's default entry).
+// drn-0006 fails if the ECPay provider is missing, so production cannot run without it.
+const fulfillmentModules = process.env.ECPAY_LOGISTICS_MERCHANT_ID
+  ? [
+    {
+      resolve: "@medusajs/medusa/fulfillment",
+      options: {
+        providers: [
+          { resolve: "@medusajs/medusa/fulfillment-manual", id: "manual" },
+          { resolve: "./src/modules/ecpay-logistics", id: "logistics", options: ecpayLogisticsOptionsFromEnv() },
+        ],
+      },
+    },
+  ]
+  : []
+
 module.exports = defineConfig({
   projectConfig: {
     databaseUrl,
@@ -113,5 +130,5 @@ module.exports = defineConfig({
   // registered, so the flag alone leaves the module disabled; the explicit module entry
   // below replaces the default (disabled) one. Verified in @medusajs/framework 2.21.2.
   featureFlags: { rbac: true },
-  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, ...paymentModules],
+  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, ...paymentModules, ...fulfillmentModules],
 })

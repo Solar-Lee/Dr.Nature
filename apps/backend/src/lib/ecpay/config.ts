@@ -71,3 +71,56 @@ export function ecpayOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Ecpay
       : AIO_ENDPOINTS[environment].queryTradeInfo,
   }
 }
+
+// ---- Logistics (P4-05) -------------------------------------------------------------------
+
+export type EcpayLogisticsOptions = {
+  environment: EcpayEnvironment
+  merchantId: string
+  hashKey: string
+  hashIV: string
+  // C2C 店到店 (Aki, 2026-10-13) or B2C 大宗寄倉; switchable without code changes.
+  contract: "C2C" | "B2C"
+  sender: { name: string; cellphone: string; zipCode?: string; address?: string }
+  // Signed status notices (server to server).
+  statusReplyUrl: string
+  // Storefront page that receives the (unsigned) e-map store choice in the browser.
+  mapReplyUrl: string
+  apiHost: string
+}
+
+export const ECPAY_LOGISTICS_PROVIDER_ID = "ecpay_logistics"
+export const ECPAY_LOGISTICS_STATUS_PATH = "/hooks/ecpay/logistics"
+
+export function ecpayLogisticsOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): EcpayLogisticsOptions {
+  const environment = required(env, "ECPAY_ENV")
+  if (environment !== "stage" && environment !== "prod") {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, `ECPAY_ENV must be "stage" or "prod", got ${environment}`)
+  }
+  const contract = env.ECPAY_LOGISTICS_CONTRACT ?? "C2C"
+  if (contract !== "C2C" && contract !== "B2C") {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, `ECPAY_LOGISTICS_CONTRACT must be C2C or B2C, got ${contract}`)
+  }
+  const apiBase = env.ECPAY_LOGISTICS_API_BASE_URL?.replace(/\/$/, "")
+  if (apiBase && environment === "prod") {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_LOGISTICS_API_BASE_URL must not be set when ECPAY_ENV=prod")
+  }
+  const backendUrl = required(env, "MEDUSA_BACKEND_URL").replace(/\/$/, "")
+  const storefrontUrl = required(env, "STOREFRONT_URL").replace(/\/$/, "")
+  return {
+    environment,
+    merchantId: required(env, "ECPAY_LOGISTICS_MERCHANT_ID"),
+    hashKey: required(env, "ECPAY_LOGISTICS_HASH_KEY"),
+    hashIV: required(env, "ECPAY_LOGISTICS_HASH_IV"),
+    contract,
+    sender: {
+      name: required(env, "ECPAY_LOGISTICS_SENDER_NAME"),
+      cellphone: required(env, "ECPAY_LOGISTICS_SENDER_CELLPHONE"),
+      ...(env.ECPAY_LOGISTICS_SENDER_ZIPCODE ? { zipCode: env.ECPAY_LOGISTICS_SENDER_ZIPCODE } : {}),
+      ...(env.ECPAY_LOGISTICS_SENDER_ADDRESS ? { address: env.ECPAY_LOGISTICS_SENDER_ADDRESS } : {}),
+    },
+    statusReplyUrl: `${backendUrl}${ECPAY_LOGISTICS_STATUS_PATH}`,
+    mapReplyUrl: `${storefrontUrl}/checkout/ecpay/cvs-store`,
+    apiHost: apiBase ?? (environment === "prod" ? "https://logistics.ecpay.com.tw" : "https://logistics-stage.ecpay.com.tw"),
+  }
+}

@@ -29,6 +29,12 @@
 | `ECPAY_LOGISTICS_MERCHANT_ID` 🔒 | 綠界物流 | TODO(需查證：物流與金流是否共用同組金鑰) |
 | `ECPAY_LOGISTICS_HASH_KEY` 🔒 | 綠界物流 | 同上 |
 | `ECPAY_LOGISTICS_HASH_IV` 🔒 | 綠界物流 | 同上 |
+| `ECPAY_LOGISTICS_CONTRACT` | `C2C`（店到店，預設，Aki 2026-10-13 決定）／`B2C`（大宗寄倉） | 本專案定義（P4-05） |
+| `ECPAY_LOGISTICS_SENDER_NAME` | 寄件人**個人**姓名（C2C 規定，2-5 個中文字） | ECPay Express/Create（P4-05） |
+| `ECPAY_LOGISTICS_SENDER_CELLPHONE` | 寄件人手機 09xxxxxxxx | 同上 |
+| `ECPAY_LOGISTICS_SENDER_ZIPCODE` | 宅配寄件郵遞區號（僅宅配需要） | 同上 |
+| `ECPAY_LOGISTICS_SENDER_ADDRESS` | 宅配寄件地址（僅宅配需要） | 同上 |
+| `ECPAY_LOGISTICS_API_BASE_URL` | 僅測試／開發：Express/Create 改打本機替身；`ECPAY_ENV=prod` 時設定會啟動失敗 | 本專案定義（P4-05） |
 | `ECPAY_INVOICE_MERCHANT_ID` 🔒 | 綠界電子發票 | TODO(需查證：發票 API 金鑰獨立) |
 | `ECPAY_INVOICE_HASH_KEY` 🔒 | 綠界電子發票 | 同上 |
 | `ECPAY_INVOICE_HASH_IV` 🔒 | 綠界電子發票 | 同上 |
