@@ -131,3 +131,43 @@ export function ecpayLogisticsOptionsFromEnv(env: NodeJS.ProcessEnv = process.en
     apiHost: apiBase ?? (environment === "prod" ? "https://logistics.ecpay.com.tw" : "https://logistics-stage.ecpay.com.tw"),
   }
 }
+
+// ---- E-invoice (P4-06) ---------------------------------------------------------------------
+
+export type EcpayInvoiceOptions = {
+  environment: EcpayEnvironment
+  merchantId: string
+  hashKey: string
+  hashIV: string
+  apiHost: string
+}
+
+// ECPay's PUBLIC e-invoice test merchant (developers.ecpay.com.tw/7849/).
+const PUBLIC_INVOICE_SANDBOX_MERCHANTS = ["2000132"]
+
+export function ecpayInvoiceOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): EcpayInvoiceOptions {
+  const environment = required(env, "ECPAY_ENV")
+  if (environment !== "stage" && environment !== "prod") {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, `ECPAY_ENV must be "stage" or "prod", got ${environment}`)
+  }
+  const merchantId = required(env, "ECPAY_INVOICE_MERCHANT_ID")
+  if (environment === "prod" && PUBLIC_INVOICE_SANDBOX_MERCHANTS.includes(merchantId)) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_INVOICE_MERCHANT_ID is ECPay's public test merchant; not allowed when ECPAY_ENV=prod")
+  }
+  const apiBase = env.ECPAY_INVOICE_API_BASE_URL?.replace(/\/$/, "")
+  if (apiBase && environment === "prod") {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, "ECPAY_INVOICE_API_BASE_URL must not be set when ECPAY_ENV=prod")
+  }
+  return {
+    environment,
+    merchantId,
+    hashKey: required(env, "ECPAY_INVOICE_HASH_KEY"),
+    hashIV: required(env, "ECPAY_INVOICE_HASH_IV"),
+    apiHost: apiBase ?? (environment === "prod" ? "https://einvoice.ecpay.com.tw" : "https://einvoice-stage.ecpay.com.tw"),
+  }
+}
+
+// Invoicing is on only when its merchant is configured; orders are never blocked by it.
+export function ecpayInvoiceConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !!env.ECPAY_ENV && !!env.ECPAY_INVOICE_MERCHANT_ID
+}

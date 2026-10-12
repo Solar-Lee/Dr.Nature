@@ -35,9 +35,10 @@
 | `ECPAY_LOGISTICS_SENDER_ZIPCODE` | 宅配寄件郵遞區號（僅宅配需要） | 同上 |
 | `ECPAY_LOGISTICS_SENDER_ADDRESS` | 宅配寄件地址（僅宅配需要） | 同上 |
 | `ECPAY_LOGISTICS_API_BASE_URL` | 僅測試／開發：Express/Create 改打本機替身；`ECPAY_ENV=prod` 時設定會啟動失敗 | 本專案定義（P4-05） |
-| `ECPAY_INVOICE_MERCHANT_ID` 🔒 | 綠界電子發票 | TODO(需查證：發票 API 金鑰獨立) |
-| `ECPAY_INVOICE_HASH_KEY` 🔒 | 綠界電子發票 | 同上 |
-| `ECPAY_INVOICE_HASH_IV` 🔒 | 綠界電子發票 | 同上 |
+| `ECPAY_INVOICE_MERCHANT_ID` 🔒 | 綠界電子發票（與金流、物流各自獨立；測試環境為公開 2000132，`ECPAY_ENV=prod` 時拒用）。未設定＝不開立發票、不影響下單 | developers.ecpay.com.tw/7849/（INV-05、INV-06） |
+| `ECPAY_INVOICE_HASH_KEY` 🔒 | 綠界電子發票 AES 金鑰（16 字元） | 同上 |
+| `ECPAY_INVOICE_HASH_IV` 🔒 | 綠界電子發票 AES IV（16 字元） | 同上 |
+| `ECPAY_INVOICE_API_BASE_URL` | 僅測試／開發：發票 API 改打本機替身；`ECPAY_ENV=prod` 時設定會啟動失敗 | 本專案定義（P4-06） |
 | `SMS_PROVIDER` | `mitake`／`every8d`／`log`（`log` 只寫日誌不發送，開發預設） | 本專案定義 |
 | `SMS_USERNAME` 🔒 | 簡訊商帳號 | TODO(需查證：依選定簡訊商) |
 | `SMS_PASSWORD` 🔒 | 簡訊商密碼 | 同上 |

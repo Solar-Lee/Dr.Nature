@@ -30,6 +30,12 @@ export ECPAY_LOGISTICS_CONTRACT="C2C"
 export ECPAY_LOGISTICS_SENDER_NAME="王小明"
 export ECPAY_LOGISTICS_SENDER_CELLPHONE="0912345678"
 
+# ECPay PUBLIC e-invoice sandbox merchant (developers.ecpay.com.tw/7849/); not a secret.
+# Stage invoices are never uploaded to the Ministry of Finance.
+export ECPAY_INVOICE_MERCHANT_ID="2000132"
+export ECPAY_INVOICE_HASH_KEY="ejCk326UnaZWKisg"
+export ECPAY_INVOICE_HASH_IV="q9jcZX8Ib9LM8wYk"
+
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "$#" -gt 0 ]; then
   exec "$@"
 fi

@@ -62,6 +62,12 @@ const rbacHardening: MiddlewareRoute[] = ([
     policies: [{ resource: "workflow_execution", operation: "create" }],
   })),
   { methods: ["POST"], matcher: "/admin/rbac/roles", policies: [{ resource: "rbac_role", operation: "create" }] },
+  // [P4-06] Custom e-invoice actions: same permission as editing an order.
+  ...["/admin/orders/:id/ecpay-invoice/issue", "/admin/orders/:id/ecpay-invoice/void"].map((matcher) => ({
+    methods: ["POST"],
+    matcher,
+    policies: [{ resource: "order", operation: "update" }],
+  })),
   { methods: ["POST"], matcher: "/admin/index/sync", policies: SUPER_ADMIN_ONLY },
   { methods: ["DELETE"], matcher: "/admin/search-indexes/:id", policies: SUPER_ADMIN_ONLY },
   { methods: ["POST"], matcher: "/admin/search-indexes/:id/reindex", policies: SUPER_ADMIN_ONLY },

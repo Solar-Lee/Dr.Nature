@@ -82,14 +82,15 @@ export function makeCheckoutHelpers({ api, getContainer }: { api: Api; getContai
     return { "x-publishable-api-key": key.token }
   }
 
-  const superAdminHeaders = async (email: string) => {
+  // Admin user with one RBAC role (default Super Admin; also "operations", "support", ...).
+  const superAdminHeaders = async (email: string, roleName = "Super Admin") => {
     const container = getContainer()
     const user = await container.resolve(Modules.USER).createUsers({ email })
     const identity = await container.resolve(Modules.AUTH).createAuthIdentities({
       provider_identities: [{ provider: "emailpass", entity_id: email }],
       app_metadata: { user_id: user.id },
     })
-    const [role] = await container.resolve<IRbacModuleService>(Modules.RBAC).listRbacRoles({ name: "Super Admin" })
+    const [role] = await container.resolve<IRbacModuleService>(Modules.RBAC).listRbacRoles({ name: roleName })
     await container.resolve(ContainerRegistrationKeys.LINK).create({
       [Modules.USER]: { user_id: user.id },
       [Modules.RBAC]: { rbac_role_id: role.id },
