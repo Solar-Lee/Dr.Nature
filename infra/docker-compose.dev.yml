@@ -1,0 +1,31 @@
+# Local development only (never deployed). Ports bind to 127.0.0.1.
+# Start:  docker compose -f infra/docker-compose.dev.yml up -d
+# Reset:  docker compose -f infra/docker-compose.dev.yml down -v   (deletes local dev data only)
+name: drn-dev
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: drn
+      POSTGRES_PASSWORD: drn-local-dev
+      POSTGRES_DB: drn_dev
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - drn_dev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drn -d drn_dev"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  drn_dev_pgdata:
