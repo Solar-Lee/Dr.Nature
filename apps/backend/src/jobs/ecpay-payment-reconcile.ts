@@ -1,9 +1,11 @@
-// [P4-10] Recovers credit-card payments whose ReturnURL notice never arrived.
+// [P4-10] Recovers online (credit card, Apple Pay) payments whose ReturnURL notice never arrived.
 // ECPay's guidance (developers.ecpay.com.tw/2890/, /2887/): query a credit trade with
 // QueryTradeInfo when no notice has arrived 40 minutes after creation; do NOT poll offline
 // methods (ATM / CVS code / barcode) — those are covered by the daily TradeNoAio file (P4-07).
+// Apple Pay is paid on the same ECPay page and answered at once, so it is polled like credit
+// (lib/ecpay/unpaid.ts ONLINE_CHOOSE_PAYMENT; it was never polled before, review P4-09 design B).
 // No published rate limit, only "too fast -> HTTP 403, wait 30 minutes", so:
-//  - each credit session is asked at most 3 times: >= 40 min, >= 2 h, >= 24 h after it was
+//  - each online session is asked at most 3 times: >= 40 min, >= 2 h, >= 24 h after it was
 //    created, never after 48 h (counted per process: a restart may ask once more);
 //  - at most 15 queries per run, 2 s apart; a 403 stops the run and pauses all queries.
 // A paid, signed answer bound to the session is handed to recordVerifiedPayment — the same
@@ -13,6 +15,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { ECPAY_PROVIDER_ID, ecpayOptionsFromEnv } from "../lib/ecpay/config"
 import { recordVerifiedPayment } from "../lib/ecpay/record-payment"
 import { queryTrade } from "../lib/ecpay/trade-query"
+import { hasProof, isOnlineTrade } from "../lib/ecpay/unpaid"
 
 const MIN = 60 * 1000
 export const QUERY_AT_MINUTES = [40, 120, 24 * 60]
@@ -56,8 +59,8 @@ export async function reconcileEcpayPayments(container: MedusaContainer, opts: {
   for (const s of data as SessionRow[]) {
     const d = s.data ?? {}
     if (["authorized", "captured", "canceled"].includes(s.status)) continue
-    if (d.choose_payment !== "Credit") continue // offline: notices + daily file (P4-07)
-    if (d.ecpay_notice || d.ecpay_trade_info) continue // proof already attached
+    if (!isOnlineTrade(d)) continue // offline: notices + daily file (P4-07)
+    if (hasProof(s)) continue // proof already attached
     const due = dueAttempts(now.getTime() - new Date(s.created_at).getTime())
     if (due === 0 || (asked.get(s.id) ?? 0) >= due) continue
     if (queries >= MAX_QUERIES_PER_RUN) {

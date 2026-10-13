@@ -60,6 +60,15 @@ medusaIntegrationTestRunner({
       expect(stub.asked).toHaveLength(1)
     })
 
+    it("Apple Pay is polled like credit (paid on the same ECPay page)", async () => {
+      const c = await h.checkout({ choosePayment: "ApplePay" })
+      const s = await sessionRow(c.session.id)
+      stub.trades.set(c.sessionData.merchant_trade_no, { status: "1", amount: c.sessionData.amount, paymentType: "ApplePay" })
+      expect(await run(at(s, 39))).toEqual({})
+      expect(await run(at(s, 41))).toEqual({ [s.id]: "captured" })
+      expect(await h.capturedPayments(c.session.id)).toHaveLength(1)
+    })
+
     it("cart never completed (notice lost before checkout finished): payment recorded and the order created", async () => {
       const c = await h.checkout({ complete: false })
       const s = await sessionRow(c.session.id)
