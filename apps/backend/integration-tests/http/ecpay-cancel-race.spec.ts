@@ -67,12 +67,8 @@ medusaIntegrationTestRunner({
 
     const orderOf = (id: string) => getContainer().resolve(Modules.ORDER).retrieveOrder(id)
 
-    it("the cancel commits between the pre-check and the capture: flagged, alerted, paid_after_cancel", async () => {
-      const { session, sessionData, completion } = await checkout()
-      const notice: Record<string, string> = paidNotice(sessionData, session)
-      race().orderId = completion.order.id
-      race().canceled = false
-      const outcome = await recordVerifiedPayment(
+    const record = (session: any, notice: Record<string, string>) =>
+      recordVerifiedPayment(
         getContainer(),
         {
           session: { id: session.id, payment_collection_id: session.payment_collection_id },
@@ -85,6 +81,21 @@ medusaIntegrationTestRunner({
         },
         "test race"
       )
+
+    it("no cancel: a normal payment records 'captured' and flags nothing", async () => {
+      const { session, sessionData, completion } = await checkout()
+      expect(await record(session, paidNotice(sessionData, session))).toEqual("captured")
+      expect(await capturedPayments(session.id)).toHaveLength(1)
+      const order = await orderOf(completion.order.id)
+      expect(order.status).toEqual("pending")
+      expect(order.metadata?.ecpay_paid_after_cancel).toBeUndefined()
+    })
+
+    it("the cancel commits between the pre-check and the capture: flagged, alerted, paid_after_cancel", async () => {
+      const { session, sessionData, completion } = await checkout()
+      race().orderId = completion.order.id
+      race().canceled = false
+      const outcome = await record(session, paidNotice(sessionData, session))
       expect(race().canceled).toBe(true)
       // The capture still happened (the cancel's refund step read no capture): it must be reported.
       expect(await capturedPayments(session.id)).toHaveLength(1)
