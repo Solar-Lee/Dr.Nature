@@ -118,6 +118,19 @@ const blockSessionsOnPlacedOrders = async (
   }
 }
 
+// [P5-03 review membership-4] Customers may write their own metadata through the Store API
+// (Medusa 2.21.2 StoreCreateCustomer / StoreUpdateCustomer accept any metadata, merged
+// shallowly). Keys starting with drn_ belong to the project (tier snapshot and change log), so
+// shoppers must not set or erase them.
+const RESERVED_METADATA_PREFIX = "drn_"
+const rejectReservedCustomerMetadata = (req: MedusaRequest, _res: MedusaResponse, next: MedusaNextFunction) => {
+  const metadata = (req.body as { metadata?: unknown } | undefined)?.metadata
+  if (metadata && typeof metadata === "object" && Object.keys(metadata).some((k) => k.startsWith(RESERVED_METADATA_PREFIX))) {
+    return next(new MedusaError(MedusaError.Types.INVALID_DATA, `metadata keys starting with ${RESERVED_METADATA_PREFIX} are reserved`))
+  }
+  return next()
+}
+
 // The product index declares filterable `status` and `sales_channel_ids`, so
 // the route narrows it to published products in the key's sales channels.
 export default defineMiddlewares({
@@ -139,5 +152,7 @@ export default defineMiddlewares({
       matcher: "/store/payment-collections/:id/payment-sessions",
       middlewares: [blockSessionsOnPlacedOrders],
     },
+    { methods: ["POST"], matcher: "/store/customers", middlewares: [rejectReservedCustomerMetadata] },
+    { methods: ["POST"], matcher: "/store/customers/me", middlewares: [rejectReservedCustomerMetadata] },
   ],
 })

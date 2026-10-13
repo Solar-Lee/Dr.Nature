@@ -10,7 +10,7 @@ import type { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, MathBN, MedusaError, Modules } from "@medusajs/framework/utils"
 import { linkCustomerGroupsToCustomerWorkflow, updateCustomersWorkflow } from "@medusajs/medusa/core-flows"
 import { engineBlockedReason, loadTierConfig, type TierConfig } from "./config"
-import { decideTier, spendOf, type Reason, type SpendOrder } from "./rules"
+import { decideTier, reviewWindowStart, spendOf, type Reason, type SpendOrder } from "./rules"
 
 const LOG_LIMIT = 50
 const num = (v: unknown) => (v === null || v === undefined ? 0 : MathBN.convert(v as never).toNumber())
@@ -31,6 +31,7 @@ type OrderRow = {
   summary?: { paid_total?: unknown; refunded_total?: unknown } | null
   payment_collections?: { payments?: { captured_at?: string | Date | null }[] | null }[] | null
   fulfillments?: { delivered_at?: string | Date | null; canceled_at?: string | Date | null }[] | null
+  items?: { detail?: { quantity?: unknown; fulfilled_quantity?: unknown } | null }[] | null
 }
 
 export async function tierGroupIds(container: MedusaContainer, c: TierConfig): Promise<Map<string, string>> {
@@ -48,8 +49,16 @@ export async function tierGroupIds(container: MedusaContainer, c: TierConfig): P
   return out
 }
 
+// Fail closed like tierGroupIds: a renamed channel would otherwise silently zero everyone's spend.
 async function channelIds(container: MedusaContainer, c: TierConfig): Promise<Set<string>> {
-  const channels = await container.resolve(Modules.SALES_CHANNEL).listSalesChannels({ name: c.spend.sales_channels }, { select: ["id"] })
+  const channels = await container
+    .resolve(Modules.SALES_CHANNEL)
+    .listSalesChannels({ name: c.spend.sales_channels }, { select: ["id", "name"] })
+  const found = new Set(channels.map((s) => s.name))
+  const missing = c.spend.sales_channels.filter((n) => !found.has(n))
+  if (missing.length) {
+    throw new MedusaError(MedusaError.Types.NOT_FOUND, `[MEMBERSHIP] sales channel(s) ${missing.map((n) => `"${n}"`).join(", ")} missing (drn-0002; renamed?)`)
+  }
   return new Set(channels.map((s) => s.id))
 }
 
@@ -65,6 +74,7 @@ export function toSpendOrder(o: OrderRow): SpendOrder {
     captured_at: captured.length ? new Date(Math.min(...captured.map((d) => d.getTime()))) : null,
     paid_total: num(o.summary?.paid_total),
     refunded_total: num(o.summary?.refunded_total),
+    all_items_fulfilled: (o.items ?? []).every((i) => num(i.detail?.fulfilled_quantity) >= num(i.detail?.quantity)),
     deliveries: (o.fulfillments ?? []).filter((f) => !f.canceled_at).map((f) => (f.delivered_at ? new Date(f.delivered_at) : null)),
   }
 }
@@ -113,15 +123,20 @@ async function recomputeUnlocked(container: MedusaContainer, customerId: string,
       "id", "status", "sales_channel_id", "summary.*",
       "payment_collections.payments.captured_at",
       "fulfillments.delivered_at", "fulfillments.canceled_at",
+      "items.detail.quantity", "items.detail.fulfilled_quantity",
     ],
-    filters: { customer_id: customerId, created_at: { $gte: new Date(now.getTime() - (c.spend.rolling_window_days + 60) * 24 * 3600 * 1000) } },
+    // Orders are created before their payment is captured; 60 days of margin before the
+    // review-anchored window start (which is up to a month before now - window).
+    filters: { customer_id: customerId, created_at: { $gte: new Date(reviewWindowStart(c, now).getTime() - 60 * 24 * 3600 * 1000) } },
   })
-  const { confirmed, pending } = spendOf((orders as OrderRow[]).map(toSpendOrder), c, channels, now)
+  const spendOrders = (orders as OrderRow[]).map(toSpendOrder)
+  const { confirmed, pending } = spendOf(spendOrders, c, channels, now)
+  const atReview = spendOf(spendOrders, c, channels, now, reviewWindowStart(c, now)).confirmed
 
   // Current tier = the highest tier group the member is in (entry tier when none).
   const memberOf = new Set((customer.groups ?? []).map((g) => g.id))
   const current = [...c.tiers].reverse().find((t) => groups.has(t.code) && memberOf.has(groups.get(t.code)!))?.code ?? c.tiers[0].code
-  const decision = decideTier(c, current, confirmed, reason, now)
+  const decision = decideTier(c, current, confirmed, atReview)
 
   const want = groups.get(decision.code)
   const add = want && !memberOf.has(want) ? [want] : []

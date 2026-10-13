@@ -2,7 +2,7 @@ import { readFileSync } from "fs"
 import { join } from "path"
 import raw from "../../../data/membership-tiers.json"
 import { engineBlockedReason, loadTierConfig, tierConfigProblems, type TierConfig } from "../config"
-import { decideTier, orderContribution, spendOf, taipeiDayOfMonth, tierForSpend, type SpendOrder } from "../rules"
+import { decideTier, latestReviewInstant, orderContribution, reviewWindowStart, spendOf, taipeiDayOfMonth, tierForSpend, type SpendOrder } from "../rules"
 
 const DAY = 24 * 3600 * 1000
 const cfg = () => JSON.parse(JSON.stringify(raw)) as TierConfig
@@ -57,6 +57,7 @@ describe("spend rules", () => {
     captured_at: new Date(now.getTime() - 40 * DAY),
     paid_total: 1150,
     refunded_total: 0,
+    all_items_fulfilled: true,
     deliveries: [new Date(now.getTime() - 10 * DAY)],
     ...o,
   })
@@ -70,6 +71,18 @@ describe("spend rules", () => {
     expect(orderContribution(order({ deliveries: [new Date(now.getTime() - 20 * DAY), new Date(now.getTime() - 3 * DAY)] }), c, channels, now).kind).toBe("pending")
     expect(orderContribution(order({ deliveries: [new Date(now.getTime() - 20 * DAY), null] }), c, channels, now).kind).toBe("confirmed") // 40 days after payment: fallback
     expect(orderContribution(order({ captured_at: new Date(now.getTime() - 29 * DAY), deliveries: [null] }), c, channels, now).kind).toBe("pending")
+  })
+
+  it("a partially fulfilled order waits for the payment fallback, even when the shipped part was delivered", () => {
+    const partial = order({ all_items_fulfilled: false, captured_at: new Date(now.getTime() - 12 * DAY), deliveries: [new Date(now.getTime() - 11 * DAY)] })
+    expect(orderContribution(partial, c, channels, now)).toMatchObject({ kind: "pending" })
+    expect(orderContribution({ ...partial, captured_at: new Date(now.getTime() - 30 * DAY) }, c, channels, now).kind).toBe("confirmed")
+  })
+
+  it("an explicit window start replaces now - 365 days", () => {
+    const old = order({ captured_at: new Date(now.getTime() - 380 * DAY) })
+    expect(orderContribution(old, c, channels, now).kind).toBe("excluded")
+    expect(orderContribution(old, c, channels, now, new Date(now.getTime() - 400 * DAY)).kind).toBe("confirmed")
   })
 
   it("no delivery record: counts 30 days after payment", () => {
@@ -94,8 +107,6 @@ describe("spend rules", () => {
 
 describe("tier decisions", () => {
   const c = cfg()
-  const reviewDay = new Date("2027-04-01T01:00:00+08:00")
-  const otherDay = new Date("2027-04-02T01:00:00+08:00")
 
   it("thresholds: 1,035 回購會員, 9,315 長期會員", () => {
     expect(tierForSpend(c, 1034).code).toBe("member")
@@ -105,15 +116,37 @@ describe("tier decisions", () => {
   })
 
   it("upgrades at once, across levels", () => {
-    expect(decideTier(c, "member", 9315, "daily", otherDay)).toEqual({ code: "loyal", change: "up" })
+    expect(decideTier(c, "member", 9315, 9315)).toEqual({ code: "loyal", change: "up" })
   })
 
-  it("daily downgrades wait for the review day (Asia/Taipei); refunds and cancels do not", () => {
-    expect(decideTier(c, "loyal", 0, "daily", otherDay)).toEqual({ code: "loyal", change: "held" })
-    expect(decideTier(c, "loyal", 0, "daily", reviewDay)).toEqual({ code: "member", change: "down" })
-    expect(decideTier(c, "loyal", 1035, "refund", otherDay)).toEqual({ code: "repeat", change: "down" })
-    expect(decideTier(c, "repeat", 0, "cancel", otherDay)).toEqual({ code: "member", change: "down" })
-    expect(decideTier(c, "repeat", 2000, "daily", otherDay)).toEqual({ code: "repeat", change: "none" })
+  it("an order that only left the window keeps the tier until the review day (held)", () => {
+    // spend now 0 (expired), spend with the window anchored at the last review day still 9,315
+    expect(decideTier(c, "loyal", 0, 9315)).toEqual({ code: "loyal", change: "held" })
+  })
+
+  it("money not received (refund / cancel) lowers the review-anchored spend too: down at once", () => {
+    expect(decideTier(c, "loyal", 1035, 1035)).toEqual({ code: "repeat", change: "down" })
+    expect(decideTier(c, "repeat", 0, 0)).toEqual({ code: "member", change: "down" })
+  })
+
+  it("a held member stays held when an unrelated unpaid order is canceled (spend unchanged)", () => {
+    expect(decideTier(c, "repeat", 0, 1150)).toEqual({ code: "repeat", change: "held" })
+  })
+
+  it("nothing changes when spend still fits the tier", () => {
+    expect(decideTier(c, "repeat", 2000, 2000)).toEqual({ code: "repeat", change: "none" })
+  })
+})
+
+describe("review instants (Asia/Taipei)", () => {
+  it("is 00:00 Taipei on the review day of this month, or of last month before it", () => {
+    expect(latestReviewInstant(new Date("2027-04-01T00:00:00+08:00"), 1)).toEqual(new Date("2027-03-31T16:00:00Z"))
+    expect(latestReviewInstant(new Date("2027-03-31T23:59:59+08:00"), 1)).toEqual(new Date("2027-02-28T16:00:00Z"))
+    expect(latestReviewInstant(new Date("2027-01-15T12:00:00+08:00"), 20)).toEqual(new Date("2026-12-19T16:00:00Z"))
+  })
+
+  it("the review-anchored window starts 365 days before that instant", () => {
+    expect(reviewWindowStart(cfg(), new Date("2027-04-10T12:00:00+08:00"))).toEqual(new Date(new Date("2027-03-31T16:00:00Z").getTime() - 365 * DAY))
   })
 
   it("the review day is the Taipei calendar day", () => {

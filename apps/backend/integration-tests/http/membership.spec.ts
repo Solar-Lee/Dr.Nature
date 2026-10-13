@@ -69,10 +69,11 @@ medusaIntegrationTestRunner({
     }
 
     // Staff ship the whole order and mark it delivered; optionally backdate the delivery.
-    const deliver = async (orderId: string, deliveredAt?: Date) => {
+    // quantity: ship only that many units of each line (partial fulfillment)
+    const deliver = async (orderId: string, deliveredAt?: Date, quantity?: number) => {
       const admin = await h.superAdminHeaders(`ship-${orderId}-${Math.random()}@drn.test`)
       const { data } = await getContainer().resolve(ContainerRegistrationKeys.QUERY).graph({ entity: "order", fields: ["items.id", "items.quantity", "items.detail.quantity"], filters: { id: orderId } })
-      const items = (data[0] as any).items.map((i: any) => ({ id: i.id, quantity: Number(i.quantity ?? i.detail?.quantity) }))
+      const items = (data[0] as any).items.map((i: any) => ({ id: i.id, quantity: quantity ?? Number(i.quantity ?? i.detail?.quantity) }))
       const res = await api.post(`/admin/orders/${orderId}/fulfillments`, { items }, { headers: admin, validateStatus: () => true })
       expect({ status: res.status, message: res.data?.message }).toEqual({ status: 200, message: undefined })
       const { data: o } = await getContainer().resolve(ContainerRegistrationKeys.QUERY).graph({ entity: "order", fields: ["fulfillments.id"], filters: { id: orderId } })
@@ -157,9 +158,36 @@ medusaIntegrationTestRunner({
       const held = (await evaluateAllMembers(getContainer(), { now: afterWindow })).find((r) => r.customer_id === m.customerId)
       expect(held).toMatchObject({ from: "repeat", to: "repeat", change: "held", confirmed: 0 })
       expect((await membership(m.customerId)).meta).toMatchObject({ tier: "repeat", held_until_review: true })
+      // An unrelated cancel or refund (spend unchanged) does not cut the hold short.
+      expect(await recomputeCustomerTier(getContainer(), m.customerId, "cancel", { now: afterWindow })).toMatchObject({ to: "repeat", change: "held" })
+      expect((await membership(m.customerId)).groups).toEqual(["tier-repeat"])
       const review = (await evaluateAllMembers(getContainer(), { now: nextTaipeiFirst(afterWindow) })).find((r) => r.customer_id === m.customerId)
       expect(review).toMatchObject({ from: "repeat", to: "member", change: "down" })
       expect((await membership(m.customerId)).groups).toEqual([])
+    })
+
+    it("a partly shipped order is not confirmed by the first delivery (unshipped units still in their cooling-off)", async () => {
+      const m = await register("tier-partial@drn.test")
+      const { orderId } = await paidOrder(m.headers, 9)
+      await deliver(orderId, new Date(Date.now() - 12 * DAY), 1)
+      expect(await recomputeCustomerTier(getContainer(), m.customerId, "daily")).toMatchObject({ to: "member", confirmed: 0, pending: 10350 })
+      expect(await recomputeCustomerTier(getContainer(), m.customerId, "daily", { now: new Date(Date.now() + 31 * DAY) })).toMatchObject({ to: "loyal", confirmed: 10350 })
+    })
+
+    it("a renamed sales channel stops the engine instead of zeroing everyone's spend", async () => {
+      const m = await register("tier-channel@drn.test")
+      const sc = getContainer().resolve(Modules.SALES_CHANNEL)
+      const [official] = await sc.listSalesChannels({ name: "Official Store" })
+      await sc.updateSalesChannels(official.id, { name: "官網" })
+      await expect(recomputeCustomerTier(getContainer(), m.customerId, "daily")).rejects.toThrow(/sales channel\(s\) "Official Store" missing/)
+      await sc.updateSalesChannels(official.id, { name: "Official Store" })
+    })
+
+    it("shoppers cannot write the drn_ metadata that holds their tier and its log", async () => {
+      const m = await register("tier-metadata@drn.test")
+      const forged = await api.post("/store/customers/me", { metadata: { drn_membership_log: [], drn_membership: { tier: "loyal" } } }, { headers: m.headers, validateStatus: () => true })
+      expect({ status: forged.status, message: forged.data.message }).toEqual({ status: 400, message: "metadata keys starting with drn_ are reserved" })
+      expect((await api.post("/store/customers/me", { metadata: { newsletter_topic: "x" } }, { headers: m.headers, validateStatus: () => true })).status).toEqual(200)
     })
 
     it("a member found in both tier groups is put back into exactly one", async () => {
