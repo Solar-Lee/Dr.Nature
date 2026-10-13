@@ -1,6 +1,8 @@
 // Local stand-in for ECPay's QueryTradeInfo/V5 (on ECPAY_API_BASE_URL). Answers with the
 // key=value body and SHA256 CheckMacValue real stage returned (docs/research/
 // ecpay-stage-probe-2026-10-13.md). Modes: ok | 403 (rate limited) | down (connection dropped).
+// state.delayMs holds each QueryTradeInfo answer back (widens race windows in the P4-09 lock
+// tests); the trade is listed in `asked` as soon as the request arrives.
 // Also serves the daily TradeNoAio CSV (P4-07) in the V1 layout real stage returned.
 import http from "http"
 import { computeCheckMacValue, verifyCheckMacValue } from "../../src/lib/ecpay/check-mac-value"
@@ -14,7 +16,7 @@ const HEADER = "交易日期,綠界交易序號,特店訂單編號,ATM條碼,交
 export function makeTradeStub(merchantId: string, mac: Mac) {
   const trades = new Map<string, StubTrade>()
   const asked: string[] = []
-  const state = { mode: "ok" as "ok" | "403" | "down", fileRows: [] as FileRow[], fileError: "" }
+  const state = { mode: "ok" as "ok" | "403" | "down", fileRows: [] as FileRow[], fileError: "", delayMs: 0 }
   const fileRequests: Record<string, string>[] = []
   const server = http.createServer((req, res) => {
     let raw = ""
@@ -40,26 +42,30 @@ export function makeTradeStub(merchantId: string, mac: Mac) {
         return
       }
       asked.push(params.MerchantTradeNo)
-      if (state.mode === "403") {
-        res.writeHead(403).end("Forbidden")
-        return
+      const answer = () => {
+        if (state.mode === "403") {
+          res.writeHead(403).end("Forbidden")
+          return
+        }
+        if (state.mode === "down") {
+          req.socket.destroy()
+          return
+        }
+        const t = trades.get(params.MerchantTradeNo) ?? { status: "0", amount: 0 }
+        const fields = {
+          MerchantID: merchantId,
+          MerchantTradeNo: params.MerchantTradeNo,
+          TradeNo: `T${params.MerchantTradeNo.slice(-10)}`,
+          TradeAmt: String(t.amount),
+          TradeStatus: t.status,
+          PaymentType: t.paymentType ?? "Credit_CreditCard",
+          PaymentDate: t.status === "1" ? "2026/10/13 05:00:00" : "",
+        }
+        res.writeHead(200, { "content-type": "text/html" })
+        res.end(new URLSearchParams({ ...fields, CheckMacValue: computeCheckMacValue(fields, mac) }).toString())
       }
-      if (state.mode === "down") {
-        req.socket.destroy()
-        return
-      }
-      const t = trades.get(params.MerchantTradeNo) ?? { status: "0", amount: 0 }
-      const fields = {
-        MerchantID: merchantId,
-        MerchantTradeNo: params.MerchantTradeNo,
-        TradeNo: `T${params.MerchantTradeNo.slice(-10)}`,
-        TradeAmt: String(t.amount),
-        TradeStatus: t.status,
-        PaymentType: t.paymentType ?? "Credit_CreditCard",
-        PaymentDate: t.status === "1" ? "2026/10/13 05:00:00" : "",
-      }
-      res.writeHead(200, { "content-type": "text/html" })
-      res.end(new URLSearchParams({ ...fields, CheckMacValue: computeCheckMacValue(fields, mac) }).toString())
+      if (state.delayMs > 0) setTimeout(answer, state.delayMs)
+      else answer()
     })
   })
   const reset = () => {
@@ -69,6 +75,7 @@ export function makeTradeStub(merchantId: string, mac: Mac) {
     state.mode = "ok"
     state.fileRows = []
     state.fileError = ""
+    state.delayMs = 0
   }
   return { server, trades, asked, state, fileRequests, reset }
 }

@@ -208,7 +208,20 @@ export function makeCheckoutHelpers({ api, getContainer }: { api: Api; getContai
       validateStatus: () => true,
     })
 
-  const codeIssuedNotice = (sessionData: any, session: any, method: "ATM" | "CVS", extra: Record<string, string> = {}) => {
+  const CODE_FIELDS: Record<"ATM" | "CVS" | "BARCODE", Record<string, string>> = {
+    ATM: { RtnCode: "2", RtnMsg: "Get VirtualAccount Succeeded", PaymentType: "ATM_FIRST", BankCode: "007", vAccount: "9103522175887271", ExpireDate: "2026/10/16" },
+    CVS: { RtnCode: "10100073", RtnMsg: "Get CVS Code Succeeded.", PaymentType: "CVS_CVS", PaymentNo: "LLL22251222", ExpireDate: "2026/10/20 01:05:09" },
+    BARCODE: {
+      RtnCode: "10100073",
+      RtnMsg: "Get Barcode Succeeded.",
+      PaymentType: "BARCODE_BARCODE",
+      Barcode1: "1510207AA",
+      Barcode2: "0000000000000000",
+      Barcode3: "102000000001150",
+      ExpireDate: "2026/10/20 01:05:09",
+    },
+  }
+  const codeIssuedNotice = (sessionData: any, session: any, method: "ATM" | "CVS" | "BARCODE", extra: Record<string, string> = {}) => {
     const fields: Record<string, string> = {
       MerchantID: MERCHANT_ID,
       MerchantTradeNo: sessionData.merchant_trade_no,
@@ -216,9 +229,7 @@ export function makeCheckoutHelpers({ api, getContainer }: { api: Api; getContai
       TradeAmt: String(sessionData.amount),
       TradeDate: "2026/10/13 01:05:09",
       CustomField1: session.id,
-      ...(method === "ATM"
-        ? { RtnCode: "2", RtnMsg: "Get VirtualAccount Succeeded", PaymentType: "ATM_FIRST", BankCode: "007", vAccount: "9103522175887271", ExpireDate: "2026/10/16" }
-        : { RtnCode: "10100073", RtnMsg: "Get CVS Code Succeeded.", PaymentType: "CVS_CVS", PaymentNo: "LLL22251222", ExpireDate: "2026/10/20 01:05:09" }),
+      ...CODE_FIELDS[method],
       ...extra,
     }
     return { ...fields, CheckMacValue: computeCheckMacValue(fields, MAC) }

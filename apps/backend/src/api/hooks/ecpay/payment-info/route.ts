@@ -7,15 +7,21 @@
 // The route verifies the signature, binds the notice to its payment session, stores the
 // payment instructions on the session (the provider re-verifies the notice), and makes
 // sure the cart has become an order so the shopper's code belongs to a placed order.
+// Storing the code and completing the cart run under the collection lock
+// (lib/ecpay/collection-lock.ts; P4-09): re-pay decides on the stored code under the same
+// lock, so a code issued for the current trade cannot slip in while re-pay opens a new one.
+// A busy collection (20 s) answers non-ACK and ECPay retries.
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import type { IPaymentModuleService } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
 import { completeCartWorkflow } from "@medusajs/medusa/core-flows"
 import { isCodeIssued, parsePaymentInfoNotice } from "../../../../lib/ecpay/aio"
+import { withCollectionLock } from "../../../../lib/ecpay/collection-lock"
 import { ECPAY_PROVIDER_ID, ecpayOptionsFromEnv } from "../../../../lib/ecpay/config"
 import { attachEcpayNoticeWorkflow } from "../../../../workflows/ecpay/attach-ecpay-notice"
 
 const ACK = "1|OK"
+const PAYMENT_INFO_LOCK_WAIT_SECONDS = 20
 
 const reply = (res: MedusaResponse, status: number, body: string) =>
   res.status(status).type("text/plain").send(body)
@@ -65,29 +71,36 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   try {
-    await attachEcpayNoticeWorkflow(req.scope).run({
-      input: { session_id: session.id, notice: info.raw, key: "ecpay_payment_info" },
-    })
+    await withCollectionLock(
+      req.scope,
+      session.payment_collection_id,
+      async () => {
+        await attachEcpayNoticeWorkflow(req.scope).run({
+          input: { session_id: session.id, notice: info.raw, key: "ecpay_payment_info" },
+        })
 
-    // The storefront normally completes the cart before redirecting to ECPay. If it did
-    // not, complete it now: the shopper is about to pay a code for this order.
-    const { data: cartLinks } = await query.graph({
-      entity: "cart_payment_collection",
-      fields: ["cart_id", "cart.completed_at"],
-      filters: { payment_collection_id: session.payment_collection_id },
-    })
-    const link = cartLinks[0] as { cart_id?: string; cart?: { completed_at?: string | null } } | undefined
-    if (link?.cart_id && !link.cart?.completed_at) {
-      await completeCartWorkflow(req.scope).run({ input: { id: link.cart_id } })
-      const { data: orderLinks } = await query.graph({
-        entity: "order_cart",
-        fields: ["cart_id"],
-        filters: { cart_id: link.cart_id },
-      })
-      if (!orderLinks.length) {
-        throw new MedusaError(MedusaError.Types.UNEXPECTED_STATE, `cart ${link.cart_id} has no order after code issue`)
-      }
-    }
+        // The storefront normally completes the cart before redirecting to ECPay. If it did
+        // not, complete it now: the shopper is about to pay a code for this order.
+        const { data: cartLinks } = await query.graph({
+          entity: "cart_payment_collection",
+          fields: ["cart_id", "cart.completed_at"],
+          filters: { payment_collection_id: session.payment_collection_id },
+        })
+        const link = cartLinks[0] as { cart_id?: string; cart?: { completed_at?: string | null } } | undefined
+        if (link?.cart_id && !link.cart?.completed_at) {
+          await completeCartWorkflow(req.scope).run({ input: { id: link.cart_id } })
+          const { data: orderLinks } = await query.graph({
+            entity: "order_cart",
+            fields: ["cart_id"],
+            filters: { cart_id: link.cart_id },
+          })
+          if (!orderLinks.length) {
+            throw new MedusaError(MedusaError.Types.UNEXPECTED_STATE, `cart ${link.cart_id} has no order after code issue`)
+          }
+        }
+      },
+      PAYMENT_INFO_LOCK_WAIT_SECONDS
+    )
   } catch (e) {
     logger.error(`${tag}: processing failed, ECPay will retry: ${(e as Error).message}`)
     return reply(res, 500, "0|Processing Error")

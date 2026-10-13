@@ -11,6 +11,10 @@
 //     and alerts instead); otherwise attaches the notice as proof (the provider re-verifies
 //     it; no QueryTradeInfo round-trip), runs processPaymentWorkflow, and replies "1|OK"
 //     only once the payment is captured and the cart has become an order; else ECPay retries.
+//     It runs under the payment collection's lock (P4-09), shared with the unpaid-cancel job
+//     and re-pay; a collection busy for 20 s answers non-ACK and ECPay retries. A paid notice
+//     for an older trade of a re-paid order is captured if it is the first payment, otherwise
+//     recorded as ecpay_paid_twice for a manual refund (both answer "1|OK").
 // Log lines tagged [ECPAY-ALERT] need a human (monitoring hooks them up, P11/P12).
 // /hooks/* has no publishable-key, auth or CORS middleware in Medusa 2.21.2.
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
@@ -63,7 +67,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     session.provider_id !== ECPAY_PROVIDER_ID ||
     sessionData.merchant_trade_no !== notice.merchantTradeNo
   ) {
-    // Signed by ECPay but not attached to a live session (e.g. the session was replaced).
+    // Signed by ECPay but not attached to a live session (e.g. the session was replaced before
+    // checkout; once the order exists, re-pay keeps old sessions).
     // Keep answering non-ACK so ECPay retries and the alert repeats until handled.
     const level = notice.rtnCode === "1" && !notice.simulatePaid ? "[ECPAY-ALERT] paid notice" : "notice"
     logger.error(`${tag}: ${level} without a matching ECPay payment session (CustomField1=${notice.sessionId})`)
