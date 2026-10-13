@@ -1,0 +1,65 @@
+# [P12-02] Dr.Nature backend on the shared VPS (CLAUDE.md §1: everything prefixed drn; only
+# 127.0.0.1:3961 published; Redis not published; network drn_net only).
+# On the host: ~/drn/docker-compose.prod.yml next to ~/drn/.env (written by Aki, never in chat;
+# names in docs/ENV.md). Postgres is the Supabase project drn-prod (U-04), not a container.
+#   DRN_TAG=<git-sha> docker compose -f docker-compose.prod.yml up -d
+# Upgrades: stop the old drn-worker BEFORE starting the new one (an old worker on the Redis
+# event bus would consume events for subscribers it does not have; P12-03).
+name: drn
+
+x-backend: &backend
+  image: drn-backend:${DRN_TAG:?set DRN_TAG to the image tag}
+  env_file: .env
+  # Supabase CA (DATABASE_SSL_CA_PATH=/app/ca/supabase-ca.crt); downloaded by Aki next to .env.
+  volumes:
+    - ./supabase-ca.crt:/app/ca/supabase-ca.crt:ro
+  restart: unless-stopped
+  networks: [drn_net]
+  depends_on:
+    drn-redis:
+      condition: service_healthy
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  drn-backend:
+    <<: *backend
+    container_name: drn-backend
+    environment:
+      MEDUSA_WORKER_MODE: server
+      REDIS_URL: redis://drn-redis:6379
+    ports:
+      - "127.0.0.1:3961:9000"
+    mem_limit: 1536m
+
+  drn-worker:
+    <<: *backend
+    container_name: drn-worker
+    environment:
+      MEDUSA_WORKER_MODE: worker
+      DISABLE_MEDUSA_ADMIN: "true"
+      REDIS_URL: redis://drn-redis:6379
+    mem_limit: 1024m
+    healthcheck:
+      disable: true
+
+  drn-redis:
+    image: redis:7-alpine
+    container_name: drn-redis
+    command: ["redis-server", "--maxmemory", "200mb", "--maxmemory-policy", "noeviction", "--appendonly", "no", "--save", ""]
+    restart: unless-stopped
+    networks: [drn_net]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  drn_net:
+    name: drn_net

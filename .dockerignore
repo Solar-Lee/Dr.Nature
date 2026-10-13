@@ -1,0 +1,14 @@
+# Allowlist: the backend image needs only the workspace manifests, the lockfile and apps/backend.
+# Keys, env files, design references and docs never enter the build context.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!.npmrc
+!apps/backend
+apps/backend/node_modules
+apps/backend/.medusa
+apps/backend/integration-tests
+**/.env*
+**/*.key
+**/*.pem
