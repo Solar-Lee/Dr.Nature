@@ -270,6 +270,25 @@ medusaIntegrationTestRunner({
       ])
     })
 
+    it("Medusa's built-in /hooks/payment route is closed for ECPay: a replayed signed notice changes nothing", async () => {
+      const { session, sessionData: data, completion, paymentCollectionId } = await checkout()
+      const admin = await superAdminHeaders("builtin-hook@drn.test")
+      expect((await api.post(`/admin/orders/${completion.order.id}/cancel`, {}, { headers: admin, validateStatus: () => true })).status).toEqual(200)
+      for (const provider of ["ecpay_ecpay", "pp_ecpay_ecpay"]) {
+        const res = await api.post(`/hooks/payment/${provider}`, new URLSearchParams(paidNotice(data, session)).toString(), {
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          validateStatus: () => true,
+        })
+        expect(res.status).toEqual(404)
+      }
+      await new Promise((r) => setTimeout(r, 500))
+      expect(await capturedPayments(session.id)).toHaveLength(0)
+      const { data: pcs } = await getContainer()
+        .resolve(ContainerRegistrationKeys.QUERY)
+        .graph({ entity: "payment_collection", fields: ["status"], filters: { id: paymentCollectionId } })
+      expect(pcs[0].status).toEqual("canceled")
+    })
+
     it("paid notice for a session that was replaced before checkout -> non-ACK so ECPay keeps retrying", async () => {
       const first = await checkout({ complete: false })
       // Replace the session (allowed while the cart is not completed): the first one is deleted.

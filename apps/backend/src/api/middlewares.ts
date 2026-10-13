@@ -172,6 +172,17 @@ const hideCompletedCart = async (req: MedusaRequest, _res: MedusaResponse, next:
 const notOffered = (_req: MedusaRequest, _res: MedusaResponse, next: MedusaNextFunction) =>
   next(new MedusaError(MedusaError.Types.NOT_FOUND, "Not found"))
 
+// [P4-09 review, design H1] Medusa 2.21.2's public POST /hooks/payment/:provider queues every
+// body for the payment-webhook subscriber, which runs processPaymentWorkflow on any SUCCESSFUL
+// action (@medusajs/medusa dist/api/hooks/payment/[provider]/route.js, dist/subscribers/
+// payment-webhook.js); the ECPay provider answers SUCCESSFUL for any validly signed RtnCode=1
+// notice. A replayed signed notice would then bypass the collection lock and the canceled-order
+// / paid-twice guards of lib/ecpay/record-payment.ts, and a capture after a cancel turns the
+// CANCELED collection back to COMPLETED (payment-module.js:534-588). ECPay only calls
+// /hooks/ecpay/*, so the built-in route is closed for this provider (the module accepts the id
+// with or without "pp_", payment-module.js:696-700).
+const ECPAY_BUILTIN_WEBHOOKS = ["/hooks/payment/ecpay_ecpay", "/hooks/payment/pp_ecpay_ecpay"]
+
 // The product index declares filterable `status` and `sales_channel_ids`, so
 // the route narrows it to published products in the key's sales channels.
 export default defineMiddlewares({
@@ -208,5 +219,6 @@ export default defineMiddlewares({
       matcher: `/store/orders/:id/transfer/${action}`,
       middlewares: [notOffered],
     })),
+    ...ECPAY_BUILTIN_WEBHOOKS.map((matcher) => ({ methods: ["POST" as const], matcher, middlewares: [notOffered] })),
   ],
 })
