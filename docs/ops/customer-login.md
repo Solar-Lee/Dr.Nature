@@ -24,6 +24,10 @@
 ## 3. 安全性
 
 - `state` 隨機 64 字元，只能用一次，20 分鐘內有效，存在快取模組。目前用記憶體快取，所以只能跑**一個**後端 server 程序；重啟後，進行到一半的登入要重新開始。
+- **後端的 state 只證明「這是我們發出的登入」，不證明「是同一個瀏覽器」**（Medusa 2.21.2 的 callback 沒有 session 可綁）。有人可以自己開始登入、用自己的 LINE 帳號同意，再把回呼網址傳給別人；別人的前台若照轉，就會登入攻擊者的帳號（login CSRF，審查 auth-1）。所以**前台（P7）必須**：
+  1. 導去 LINE／Google 之前，從 `location` 取出 `state`，存在 sessionStorage 或短效 httpOnly、SameSite=Lax 的 cookie；
+  2. `/auth/callback/{line|google}` 頁只在網址的 `state` 與自己存的相同時，才把 code＋state 轉給後端；不論成功與否都刪掉存的值；不符或沒有時顯示「登入已逾時，請重新開始」；
+  3. P7 e2e：在另一個瀏覽器打開同一個回呼網址，前台不得轉送。
 - LINE 的 ID token 由 LINE 的 verify 端點驗證（帶我方的 nonce），系統再核對發行者、channel 與 nonce。
 - 回呼網址只用設定好的那一個，不接受前台指定。
 

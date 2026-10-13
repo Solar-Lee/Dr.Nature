@@ -173,8 +173,9 @@ medusaIntegrationTestRunner({
         redirect_uri: `${process.env.STOREFRONT_URL}${OAUTH_CALLBACK_PATHS.google}`,
         response_type: "code",
       })
+      // The message, not just 401: a missing state check would also end in 401 (failed token exchange).
       const forged = await api.post(`/auth/customer/google/callback?code=x&state=${"a".repeat(64)}`, {}, { validateStatus: () => true })
-      expect(forged.status).toEqual(401)
+      expect({ status: forged.status, message: forged.data.message }).toEqual({ status: 401, message: "No state provided, or session expired" })
     })
 
     it("staff cannot log in with LINE or Google", async () => {
