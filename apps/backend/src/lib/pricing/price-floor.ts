@@ -4,8 +4,10 @@
 //  - Bottles: line items whose variant SKU starts with DN-PB- (docs/product/sku-coding.md); a
 //    pack SKU ending -X{n} (e.g. DN-PB-01-060C-X3) holds n bottles. Free bottles count as
 //    bottles (買二送一 of the same product lowers the average).
-//  - Gift: any other line that ends up free (total 0, unit price > 0); its market value is the
-//    variant's unit price x quantity.
+//  - Gift: every whole unit of any other line that ends up free. A line may be partly free (buyget
+//    frees `apply_to_quantity` units of a line with more units), so free units are counted per
+//    unit, not per line; market value = the variant's unit price x free units. Partial discounts
+//    on several units that add up to a whole unit also count as one (errs on the strict side).
 //  - R1 cash floor: bottle cash / bottles >= cash_floor_per_bottle_twd (1,035 = 1,150 x 90%).
 //  - R3 gift-equivalent floor: bottle cash / (bottles + gift value / official price)
 //    >= gift_equivalent_floor_per_bottle_twd (862.5 = 75% of 1,150).
@@ -55,9 +57,13 @@ export function orderShape(items: FloorItem[]) {
     if (it.variant_sku?.startsWith(BOTTLE_SKU_PREFIX)) {
       bottles += qty * bottlesPerUnit(it.variant_sku)
       cash += total
-    } else if (total <= 0.005 && num(it.unit_price) > 0) {
-      giftUnits += qty
-      giftValue += num(it.unit_price) * qty
+    } else {
+      const unit = num(it.unit_price)
+      const free = unit > 0 ? Math.min(qty, Math.floor((unit * qty - total) / unit + 1e-6)) : 0
+      if (free > 0) {
+        giftUnits += free
+        giftValue += unit * free
+      }
     }
   }
   return { bottles, cash, giftUnits, giftValue }

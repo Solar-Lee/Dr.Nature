@@ -92,7 +92,8 @@ export const TEMPLATE_SCHEMA = z.discriminatedUnion("template", [
     min_total_twd: TWD.optional(),
   }),
   // [P5-04] 會員價: percent off the listed products for members of the given tiers (customer
-  // groups, rule customer.groups.id in [...]), optionally from a cart total. A CODE, not
+  // groups, rule customer.groups.id in [...]), only in pricing.member_price_sales_channels and
+  // from pricing.member_price_min_bottles x the official price (the route enforces both). A CODE, not
   // automatic: Medusa re-adds automatic promotions on every cart refresh, so a member could
   // never choose a group-leader offer instead (R2). The storefront applies the code for
   // eligible members (P7). The route caps percent_off at the tiers' configured discount.
@@ -129,7 +130,22 @@ function campaignFor(t: Template): CreateCampaignDTO | undefined {
 }
 
 // tierGroups: tier code -> customer group id (member_price only; see lib/membership/engine.ts).
-export function buildPromotion(t: Template, tierGroups: Map<string, string> = new Map()): CreatePromotionDTO {
+// The offer kind a template creates (metadata.drn_offer).
+export const offerOf = (t: Template): string => (t.template === "member_price" ? "member_price" : t.offer)
+
+// Medusa re-adds automatic promotions on every cart refresh and shoppers cannot remove them, so
+// an automatic exclusive offer would make R2 impossible to satisfy (review promotions-4).
+export function automaticExclusiveProblem(t: Template, exclusive: string[]): string | null {
+  return t.automatic && exclusive.includes(offerOf(t)) ? `${offerOf(t)} offers must be codes, not automatic (they exclude each other at checkout)` : null
+}
+
+// ctx.tierGroups: tier code -> customer group id; ctx.salesChannelIds: where the member price
+// applies (member_price only; resolved by the route from the tier config).
+export function buildPromotion(
+  t: Template,
+  ctx: { tierGroups?: Map<string, string>; salesChannelIds?: string[] } = {}
+): CreatePromotionDTO {
+  const tierGroups = ctx.tierGroups ?? new Map<string, string>()
   const campaign = campaignFor(t)
   const base = {
     code: t.code,
@@ -138,7 +154,7 @@ export function buildPromotion(t: Template, tierGroups: Map<string, string> = ne
     is_tax_inclusive: true,
     ...(t.limit ? { limit: t.limit } : {}),
     ...(campaign ? { campaign } : {}),
-    metadata: { drn_template: t.template, drn_name: t.name, drn_offer: t.template === "member_price" ? "member_price" : t.offer },
+    metadata: { drn_template: t.template, drn_name: t.name, drn_offer: offerOf(t) },
   }
   switch (t.template) {
     case "spend_threshold":
@@ -199,6 +215,7 @@ export function buildPromotion(t: Template, tierGroups: Map<string, string> = ne
         type: "standard",
         rules: [
           { attribute: "customer.groups.id", operator: "in", values: groups as string[] },
+          ...(ctx.salesChannelIds?.length ? [{ attribute: "sales_channel_id", operator: "in" as const, values: ctx.salesChannelIds }] : []),
           ...(t.min_total_twd ? [minTotalRule(t.min_total_twd)] : []),
         ],
         application_method: {
@@ -238,15 +255,18 @@ export function giftValueProblem(
   t: Extract<Template, { template: "buy_x_get_y" }>,
   unitPrices: Map<string, PriceRange>
 ): string | null {
-  if (t.gift_product_ids.some((id) => t.buy_product_ids.includes(id))) {
+  // Only the gift products that are also bought are a quantity discount; every other gift
+  // product is still a 贈品 and is checked (review promotions-5).
+  const giftIds = t.gift_product_ids.filter((id) => !t.buy_product_ids.includes(id))
+  if (!giftIds.length) {
     return null
   }
-  const missing = [...t.buy_product_ids, ...t.gift_product_ids].filter((id) => !unitPrices.has(id))
+  const missing = [...t.buy_product_ids, ...giftIds].filter((id) => !unitPrices.has(id))
   if (missing.length) {
     return `no TWD price for product(s) ${missing.join(", ")}`
   }
   const purchase = Math.min(...t.buy_product_ids.map((id) => unitPrices.get(id)!.min)) * t.buy_quantity
-  const gift = Math.max(...t.gift_product_ids.map((id) => unitPrices.get(id)!.max)) * t.gift_quantity
+  const gift = Math.max(...giftIds.map((id) => unitPrices.get(id)!.max)) * t.gift_quantity
   const cap = purchase >= 100 ? purchase / 2 : 50
   return gift > cap ? `gift worth NT$${gift} exceeds the legal cap NT$${cap} for a NT$${purchase} purchase (事業提供贈品贈獎額度辦法 §4)` : null
 }

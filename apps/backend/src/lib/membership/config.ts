@@ -37,6 +37,8 @@ export type TierConfig = {
     gift_equivalent_floor_per_bottle_twd: number
     max_promo_gifts_per_order: number
     mutually_exclusive_offers: string[]
+    member_price_min_bottles: number
+    member_price_sales_channels: string[]
   }
   customer_groups: Record<string, string>
   tiers: Tier[]

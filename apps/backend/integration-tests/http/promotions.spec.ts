@@ -8,12 +8,12 @@
 // Run: cd apps/backend && ../../infra/test-env.sh env TEST_TYPE=integration:http \
 //   NODE_OPTIONS=--experimental-vm-modules pnpm exec jest --runInBand --forceExit integration-tests/http/promotions.spec.ts
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
-import { Modules } from "@medusajs/framework/utils"
-import { createProductsWorkflow, createShippingOptionsWorkflow, linkCustomerGroupsToCustomerWorkflow } from "@medusajs/medusa/core-flows"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
+import { createProductsWorkflow, createPromotionsWorkflow, createShippingOptionsWorkflow, linkCustomerGroupsToCustomerWorkflow } from "@medusajs/medusa/core-flows"
 import devAddTestStock from "../../src/scripts/dev-add-test-stock"
 import catalog from "../../src/data/catalog.json"
 import { ECPAY_PROVIDER_ID } from "../../src/lib/ecpay/config"
-import { FULFILLMENT_SET_NAME, SALES_CHANNELS } from "../../src/lib/drn-setup"
+import { FULFILLMENT_SET_NAME, PUBLISHABLE_KEYS, SALES_CHANNELS } from "../../src/lib/drn-setup"
 import { loadTierConfig } from "../../src/lib/membership/config"
 import { tierGroupIds } from "../../src/lib/membership/engine"
 import { addTestShipping, makeCheckoutHelpers, runAllSeeds } from "../helpers/ecpay-checkout"
@@ -24,7 +24,7 @@ const HOUR = 3600 * 1000
 
 medusaIntegrationTestRunner({
   testSuite: ({ api, getContainer }) => {
-    const { storeHeaders, superAdminHeaders, registerCustomer } = makeCheckoutHelpers({ api, getContainer })
+    const { storeHeaders, superAdminHeaders, registerCustomer, postPaymentInfo, codeIssuedNotice } = makeCheckoutHelpers({ api, getContainer })
 
     beforeAll(async () => {
       const container = getContainer()
@@ -325,6 +325,116 @@ medusaIntegrationTestRunner({
       const two = await complete(r4)
       expect(two.status).toEqual(400)
       expect(two.data.message).toContain("最多一份贈品")
+    })
+
+    // ---- review fixes (promotions-1/2/4/5/6, cross-3) ------------------------------------
+    const promotionByCode = async (code: string) => {
+      const [p] = await getContainer().resolve(Modules.PROMOTION).listPromotions({ code }, { relations: ["campaign"] })
+      return p as any
+    }
+
+    it("promotions-2: a code whose window ended, or that staff deactivated, cannot be checked out with its discount", async () => {
+      const b = await bottle()
+      const now = Date.now()
+      const iso = (ms: number) => new Date(ms).toISOString()
+      expect((await createTemplate({ template: "spend_threshold", code: "LASTCALL", name: "最後一小時", min_total_twd: 1000, amount_off_twd: 100, window: { starts_at: iso(now - HOUR), ends_at: iso(now + HOUR) } })).status).toEqual(201)
+      const cart = await makeCart([[b.variantId, 1]])
+      await applyCode(cart, "LASTCALL")
+      expect(await totals(cart)).toEqual({ total: 1050, discount: 100 })
+      const promo = await promotionByCode("LASTCALL")
+      await getContainer().resolve(Modules.PROMOTION).updateCampaigns({ id: promo.campaign.id, ends_at: new Date(Date.now() - 1000) })
+      const ended = await complete(cart)
+      expect({ status: ended.status, message: ended.data.message }).toEqual({ status: 400, message: "優惠已結束或已停用，請重新整理購物車後再結帳。" })
+
+      expect((await createTemplate({ template: "spend_threshold", code: "RETIRED", name: "停用", min_total_twd: 1000, amount_off_twd: 100 })).status).toEqual(201)
+      const cart2 = await makeCart([[b.variantId, 1]])
+      await applyCode(cart2, "RETIRED")
+      expect((await totals(cart2)).discount).toEqual(100)
+      await getContainer().resolve(Modules.PROMOTION).updatePromotions({ id: (await promotionByCode("RETIRED")).id, status: "inactive" })
+      expect((await complete(cart2)).data.message).toEqual("優惠已結束或已停用，請重新整理購物車後再結帳。")
+    })
+
+    it("promotions-2: if ECPay already issued a code while the promotion was live, the fallback completion honours it", async () => {
+      const b = await bottle()
+      const now = Date.now()
+      const iso = (ms: number) => new Date(ms).toISOString()
+      expect((await createTemplate({ template: "spend_threshold", code: "CODEFIRST", name: "代碼先發", min_total_twd: 1000, amount_off_twd: 100, window: { starts_at: iso(now - HOUR), ends_at: iso(now + HOUR) } })).status).toEqual(201)
+      const cartId = await makeCart([[b.variantId, 1]])
+      await applyCode(cartId, "CODEFIRST")
+      const headers = await storeHeaders()
+      const { data: pc } = await api.post("/store/payment-collections", { cart_id: cartId }, { headers })
+      const { data: ps } = await api.post(`/store/payment-collections/${pc.payment_collection.id}/payment-sessions`, { provider_id: ECPAY_PROVIDER_ID, data: { choose_payment: "ATM" } }, { headers })
+      const session = ps.payment_collection.payment_sessions[0]
+      expect(session.data.amount).toEqual(1050)
+      // The campaign ends after the shopper was sent to ECPay, before ECPay reports the code.
+      await getContainer().resolve(Modules.PROMOTION).updateCampaigns({ id: (await promotionByCode("CODEFIRST")).campaign.id, ends_at: new Date(Date.now() - 1000) })
+      const info = await postPaymentInfo(codeIssuedNotice(session.data, session, "ATM"))
+      expect(info.data).toEqual("1|OK")
+      const { data } = await getContainer().resolve(ContainerRegistrationKeys.QUERY).graph({ entity: "order_cart", fields: ["order.total"], filters: { cart_id: cartId } })
+      expect(Number((data[0] as any).order.total)).toEqual(1050)
+    })
+
+    it("promotions-1: a gift line with one free and one paid unit is still a gift (R3 refuses BUY1HALF x2)", async () => {
+      const b = await bottle()
+      const half = await product("test-gift-half")
+      expect((await createTemplate({ template: "buy_x_get_y", code: "BUY1HALF2", name: "買一送半瓶價贈品", buy_product_ids: [b.id], buy_quantity: 1, gift_product_ids: [half.id] })).status).toEqual(201)
+      const cart = await makeCart([[b.variantId, 1], [half.variantId, 2]])
+      await applyCode(cart, "BUY1HALF2")
+      expect(await totals(cart)).toEqual({ total: 1725, discount: 575 })
+      expect((await complete(cart)).data.message).toContain("折扣上限")
+    })
+
+    it("promotions-4/5: exclusive offers cannot be automatic; a mixed gift list is still capped", async () => {
+      const b = await bottle()
+      const big = await product("test-gift-big")
+      const auto = await createTemplate({ template: "spend_threshold", code: "FIRSTAUTO", name: "首購折一百", offer: "first_order_gift", automatic: true, min_total_twd: 1000, amount_off_twd: 100 })
+      expect({ status: auto.status, message: auto.data.message }).toEqual({ status: 400, message: "first_order_gift offers must be codes, not automatic (they exclude each other at checkout)" })
+      const mixed = await createTemplate({ template: "buy_x_get_y", code: "MIXEDGIFT", name: "混合贈品", buy_product_ids: [b.id], buy_quantity: 1, gift_product_ids: [b.id, big.id] })
+      expect(mixed.status).toEqual(400)
+      expect(mixed.data.message).toContain("NT$900 exceeds the legal cap NT$575")
+    })
+
+    it("promotions-6 / cross-3: member price needs 2 bottles and the official store, from the template and at checkout", async () => {
+      const b = await bottle()
+      // Template without min_total_twd: defaulted to 2 bottles; below the minimum refused.
+      expect((await createTemplate({ template: "member_price", code: "MEMBER-LOW", name: "x", tiers: ["repeat"], product_ids: [b.id], percent_off: 10, min_total_twd: 1150 })).data.message).toContain("at least 2300")
+      expect((await createTemplate({ template: "member_price", code: "MEMBER-DEF", name: "會員價", tiers: ["repeat"], product_ids: [b.id], percent_off: 10 })).status).toEqual(201)
+      const m = await memberIn("def-member@drn.test", "repeat")
+      const one = await makeCart([[b.variantId, 1]], undefined, m.headers)
+      await applyCode(one, "MEMBER-DEF", m.headers)
+      expect((await totals(one, m.headers)).discount).toEqual(0)
+      // Group-buy store: the template's channel rule gives no discount there.
+      const [gbKey] = await getContainer().resolve(Modules.API_KEY).listApiKeys({ title: PUBLISHABLE_KEYS.groupBuy, type: "publishable" })
+      const gb = { ...m.headers, "x-publishable-api-key": gbKey.token }
+      const gbCart = await makeCart([[b.variantId, 2]], undefined, gb)
+      await applyCode(gbCart, "MEMBER-DEF", gb)
+      expect((await totals(gbCart, gb)).discount).toEqual(0)
+
+      // A member price made by hand (no channel rule, no minimum) is still held to both at checkout.
+      const groups = await tierGroupIds(getContainer(), loadTierConfig())
+      await createPromotionsWorkflow(getContainer()).run({
+        input: {
+          promotionsData: [
+            {
+              code: "MEMBER-HAND",
+              type: "standard",
+              status: "active",
+              is_tax_inclusive: true,
+              rules: [{ attribute: "customer.groups.id", operator: "in", values: [groups.get("repeat")!] }],
+              application_method: { type: "percentage", target_type: "items", allocation: "across", value: 10, currency_code: "twd", target_rules: [{ attribute: "items.product.id", operator: "in", values: [b.id] }] },
+              metadata: { drn_offer: "member_price" },
+            },
+          ],
+        },
+      })
+      const single = await makeCart([[b.variantId, 1]], undefined, m.headers)
+      await applyCode(single, "MEMBER-HAND", m.headers)
+      expect((await totals(single, m.headers)).discount).toEqual(115)
+      expect((await complete(single, m.headers)).data.message).toEqual("會員價需購買 2 瓶以上，請增加數量或移除會員價優惠碼。")
+      const gbTwo = await makeCart([[b.variantId, 2]], undefined, gb)
+      await applyCode(gbTwo, "MEMBER-HAND", gb)
+      expect((await totals(gbTwo, gb)).discount).toEqual(230)
+      expect((await complete(gbTwo, gb)).data.message).toEqual("會員價僅限官網使用，請移除會員價優惠碼後再結帳。")
     })
 
     it("only roles with promotion+campaign create may use templates; bad forms and unknown products are refused", async () => {

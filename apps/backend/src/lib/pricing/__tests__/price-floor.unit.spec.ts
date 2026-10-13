@@ -36,6 +36,15 @@ describe("price rules at checkout", () => {
     expect(() => checkPriceFloor([bottle(2, 2300), gift(1, 300)])).not.toThrow() // 1,017.3
   })
 
+  it("a gift line with paid units too: each free unit still counts (review promotions-1)", () => {
+    // BUY1HALF with 2 gift units: one unit free, one paid -> line total 575
+    expect(orderShape([bottle(1, 1150), gift(2, 575, 575)])).toMatchObject({ giftUnits: 1, giftValue: 575 })
+    expect(() => checkPriceFloor([bottle(1, 1150), gift(2, 575, 575)])).toThrow(/折扣上限/)
+    // BUY3TWO with 3 gift units: two free, one paid -> line total 300 -> two gifts
+    expect(() => checkPriceFloor([bottle(3, 3450), gift(3, 300, 300)])).toThrow(/最多一份贈品/)
+    expect(orderShape([bottle(1, 1150), gift(3, 300, 900)]).giftUnits).toBe(0)
+  })
+
   it("R4: at most one free gift unit; a discounted (not free) add-on is not a gift", () => {
     expect(() => checkPriceFloor([bottle(3, 3450), gift(2, 100)])).toThrow(/最多一份贈品/)
     expect(() => checkPriceFloor([bottle(3, 3450), gift(1, 100), { variant_sku: "GIFT-TEST-02", quantity: 1, total: 0, unit_price: 50 }])).toThrow(/最多一份贈品/)

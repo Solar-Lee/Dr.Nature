@@ -3,12 +3,12 @@
 // Body: { template: "spend_threshold" | "nth_item" | "buy_x_get_y" | "free_shipping" | "member_price", code,
 // name, window?, budget?, automatic?, limit?, ...template fields }. SOP: docs/ops/promotions.md.
 import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { createPromotionsWorkflow } from "@medusajs/medusa/core-flows"
 import { loadTierConfig } from "../../../lib/membership/config"
 import { tierGroupIds } from "../../../lib/membership/engine"
-import { TEMPLATE_SCHEMA, buildPromotion, giftValueProblem, type PriceRange, type Template } from "../../../lib/promotions/templates"
+import { TEMPLATE_SCHEMA, automaticExclusiveProblem, buildPromotion, giftValueProblem, type PriceRange, type Template } from "../../../lib/promotions/templates"
 
 const productIdsOf = (t: Template): string[] =>
   t.template === "nth_item" || t.template === "member_price"
@@ -56,10 +56,16 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
       }
     }
   }
+  const c = loadTierConfig()
+  const automatic = automaticExclusiveProblem(t, c.pricing.mutually_exclusive_offers)
+  if (automatic) {
+    throw new MedusaError(MedusaError.Types.INVALID_DATA, automatic)
+  }
   let tierGroups = new Map<string, string>()
+  let salesChannelIds: string[] = []
   if (t.template === "member_price") {
-    // The tier config is the authority on member discounts (membership.md §10).
-    const c = loadTierConfig()
+    // The tier config is the authority on member discounts (membership.md §10): percent cap,
+    // 2-bottle minimum (as a tax-inclusive cart total) and the channels where it applies.
     const tiers = t.tiers.map((code) => c.tiers.find((x) => x.code === code))
     const unknown = t.tiers.filter((code, i) => !tiers[i] || !c.customer_groups[code])
     if (unknown.length) {
@@ -69,8 +75,23 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
     if (t.percent_off > cap) {
       throw new MedusaError(MedusaError.Types.INVALID_DATA, `percent_off ${t.percent_off} exceeds the tier discount ${cap}% (membership config)`)
     }
+    const minTotal = c.pricing.member_price_min_bottles * c.pricing.official_price_per_bottle_twd
+    if (t.min_total_twd !== undefined && t.min_total_twd < minTotal) {
+      throw new MedusaError(MedusaError.Types.INVALID_DATA, `min_total_twd must be at least ${minTotal} (${c.pricing.member_price_min_bottles} bottles)`)
+    }
+    t.min_total_twd = t.min_total_twd ?? minTotal
+    const channels = await req.scope
+      .resolve(Modules.SALES_CHANNEL)
+      .listSalesChannels({ name: c.pricing.member_price_sales_channels }, { select: ["id", "name"] })
+    const missing = c.pricing.member_price_sales_channels.filter((n) => !channels.some((ch) => ch.name === n))
+    if (missing.length) {
+      throw new MedusaError(MedusaError.Types.NOT_FOUND, `member price sales channel(s) missing: ${missing.join(", ")}`)
+    }
+    salesChannelIds = channels.map((ch) => ch.id)
     tierGroups = await tierGroupIds(req.scope, c)
   }
-  const { result } = await createPromotionsWorkflow(req.scope).run({ input: { promotionsData: [buildPromotion(t, tierGroups)] } })
+  const { result } = await createPromotionsWorkflow(req.scope).run({
+    input: { promotionsData: [buildPromotion(t, { tierGroups, salesChannelIds })] },
+  })
   res.status(201).json({ promotion: result[0] })
 }

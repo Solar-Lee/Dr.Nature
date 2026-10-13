@@ -1,4 +1,4 @@
-import { TEMPLATE_SCHEMA, buildPromotion, giftValueProblem, type Template } from "../templates"
+import { TEMPLATE_SCHEMA, automaticExclusiveProblem, buildPromotion, giftValueProblem, type Template } from "../templates"
 
 const parse = (body: Record<string, unknown>) => TEMPLATE_SCHEMA.parse(body)
 
@@ -130,6 +130,11 @@ describe("gift value cap (事業提供贈品贈獎額度辦法 §4)", () => {
     expect(giftValueProblem(t(), m)).toMatch(/NT\$501/)
   })
 
+  it("a gift list mixing the bought product and another product still checks the other one", () => {
+    const m = new Map([["a", { min: 1150, max: 1150 }], ["g", { min: 900, max: 900 }]])
+    expect(giftValueProblem(t({ gift_product_ids: ["a", "g"] }), m)).toMatch(/NT\$900 exceeds the legal cap NT\$575/)
+  })
+
   it("the same product as gift is a quantity discount, not a gift; unknown prices are refused", () => {
     expect(giftValueProblem(t({ gift_product_ids: ["a"] }), prices(1150, 1150))).toBeNull()
     expect(giftValueProblem(t(), new Map([["a", { min: 1150, max: 1150 }]]))).toMatch(/no TWD price for product\(s\) g/)
@@ -142,7 +147,7 @@ describe("member price (P5-04)", () => {
   it("is a code limited to the tier groups (customer.groups.id in), tax-inclusive percent across the bottles", () => {
     const p = buildPromotion(
       parse({ template: "member_price", code: "MEMBER-PRICE", name: "會員回購價", tiers: ["repeat", "loyal"], product_ids: ["prod_a"], percent_off: 10, min_total_twd: 2300 }),
-      groups
+      { tierGroups: groups, salesChannelIds: ["sc_official"] }
     )
     expect(p).toMatchObject({
       code: "MEMBER-PRICE",
@@ -151,6 +156,7 @@ describe("member price (P5-04)", () => {
       is_tax_inclusive: true,
       rules: [
         { attribute: "customer.groups.id", operator: "in", values: ["cusgroup_r", "cusgroup_l"] },
+        { attribute: "sales_channel_id", operator: "in", values: ["sc_official"] },
         { attribute: "original_item_total", operator: "gte", values: "2300" },
       ],
       application_method: { type: "percentage", value: 10, target_type: "items", allocation: "across", target_rules: [{ attribute: "items.product.id", operator: "in", values: ["prod_a"] }] },
@@ -160,12 +166,24 @@ describe("member price (P5-04)", () => {
 
   it("cannot be automatic, and needs a group for every tier", () => {
     expect(TEMPLATE_SCHEMA.safeParse({ template: "member_price", code: "MP1", name: "x", tiers: ["repeat"], product_ids: ["a"], percent_off: 10, automatic: true }).success).toBe(false)
-    expect(() => buildPromotion(parse({ template: "member_price", code: "MP2", name: "x", tiers: ["member"], product_ids: ["a"], percent_off: 5 }), groups)).toThrow(/no customer group for tier\(s\) member/)
+    expect(() => buildPromotion(parse({ template: "member_price", code: "MP2", name: "x", tiers: ["member"], product_ids: ["a"], percent_off: 5 }), { tierGroups: groups })).toThrow(/no customer group for tier\(s\) member/)
   })
 
   it("other templates carry their offer kind (campaign by default)", () => {
     expect(buildPromotion(parse({ template: "free_shipping", code: "SHIP1", name: "x" })).metadata).toMatchObject({ drn_offer: "campaign" })
     expect(buildPromotion(parse({ template: "free_shipping", code: "GL-1", name: "x", offer: "kol_code" })).metadata).toMatchObject({ drn_offer: "kol_code" })
     expect(TEMPLATE_SCHEMA.safeParse({ template: "free_shipping", code: "SHIP2", name: "x", offer: "member_price" }).success).toBe(false)
+  })
+})
+
+describe("automatic exclusive offers (review promotions-4)", () => {
+  const EXCLUSIVE = ["kol_code", "first_order_gift", "member_price"]
+  const base = { template: "spend_threshold", code: "AUTO1", name: "x", min_total_twd: 1000, amount_off_twd: 100 }
+
+  it("leader codes and first-order gifts cannot be automatic; campaigns can", () => {
+    expect(automaticExclusiveProblem(parse({ ...base, automatic: true, offer: "first_order_gift" }), EXCLUSIVE)).toMatch(/must be codes/)
+    expect(automaticExclusiveProblem(parse({ ...base, automatic: true, offer: "kol_code" }), EXCLUSIVE)).toMatch(/must be codes/)
+    expect(automaticExclusiveProblem(parse({ ...base, automatic: true }), EXCLUSIVE)).toBeNull()
+    expect(automaticExclusiveProblem(parse({ ...base, offer: "kol_code" }), EXCLUSIVE)).toBeNull()
   })
 })
