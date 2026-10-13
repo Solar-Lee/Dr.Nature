@@ -181,7 +181,12 @@ const notOffered = (_req: MedusaRequest, _res: MedusaResponse, next: MedusaNextF
 // CANCELED collection back to COMPLETED (payment-module.js:534-588). ECPay only calls
 // /hooks/ecpay/*, so the built-in route is closed for this provider (the module accepts the id
 // with or without "pp_", payment-module.js:696-700).
-const ECPAY_BUILTIN_WEBHOOKS = ["/hooks/payment/ecpay_ecpay", "/hooks/payment/pp_ecpay_ecpay"]
+// Matched on the DECODED route param, not on literal paths: Express 4 matches paths undecoded,
+// so "/hooks/payment/ecpay%5Fecpay" would skip a literal matcher yet still reach the core route
+// with provider "ecpay_ecpay" (review payments, H1 bypass).
+const ECPAY_PROVIDER_IDS = ["ecpay_ecpay", "pp_ecpay_ecpay"]
+const closeBuiltinEcpayWebhook = (req: MedusaRequest, _res: MedusaResponse, next: MedusaNextFunction) =>
+  next(ECPAY_PROVIDER_IDS.includes(String(req.params.provider ?? "").toLowerCase()) ? new MedusaError(MedusaError.Types.NOT_FOUND, "Not found") : undefined)
 
 // The product index declares filterable `status` and `sales_channel_ids`, so
 // the route narrows it to published products in the key's sales channels.
@@ -219,6 +224,6 @@ export default defineMiddlewares({
       matcher: `/store/orders/:id/transfer/${action}`,
       middlewares: [notOffered],
     })),
-    ...ECPAY_BUILTIN_WEBHOOKS.map((matcher) => ({ methods: ["POST" as const], matcher, middlewares: [notOffered] })),
+    { methods: ["POST"], matcher: "/hooks/payment/:provider", middlewares: [closeBuiltinEcpayWebhook] },
   ],
 })

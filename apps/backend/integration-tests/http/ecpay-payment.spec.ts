@@ -274,13 +274,17 @@ medusaIntegrationTestRunner({
       const { session, sessionData: data, completion, paymentCollectionId } = await checkout()
       const admin = await superAdminHeaders("builtin-hook@drn.test")
       expect((await api.post(`/admin/orders/${completion.order.id}/cancel`, {}, { headers: admin, validateStatus: () => true })).status).toEqual(200)
-      for (const provider of ["ecpay_ecpay", "pp_ecpay_ecpay"]) {
+      // Encoded and upper-case forms reach the same core route (Express decodes route params).
+      for (const provider of ["ecpay_ecpay", "pp_ecpay_ecpay", "ecpay%5Fecpay", "%70p_ecpay_ecpay", "ECPAY_ECPAY"]) {
         const res = await api.post(`/hooks/payment/${provider}`, new URLSearchParams(paidNotice(data, session)).toString(), {
           headers: { "content-type": "application/x-www-form-urlencoded" },
           validateStatus: () => true,
         })
-        expect(res.status).toEqual(404)
+        expect({ provider, status: res.status }).toEqual({ provider, status: 404 })
       }
+      // A non-ECPay provider still reaches Medusa's route (the block is not a blanket 404).
+      const other = await api.post("/hooks/payment/system_default", {}, { validateStatus: () => true })
+      expect(other.status).toEqual(200)
       await new Promise((r) => setTimeout(r, 500))
       expect(await capturedPayments(session.id)).toHaveLength(0)
       const { data: pcs } = await getContainer()
