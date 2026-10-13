@@ -1,13 +1,15 @@
-// Records a C2C store change on an ECPay shipment (P4-11) after ECPay accepted it
-// (UpdateStoreInfo "1|OK"): fulfillment.data.store (pickup store) and a history entry in
-// metadata.ecpay_store_updates. Compensation restores both.
+// Records a C2C store change on an ECPay shipment (P4-11): after ECPay accepted it
+// (UpdateStoreInfo "1|OK") fulfillment.data.store (pickup store) and a history entry in
+// metadata.ecpay_store_updates; when ECPay's answer was lost (unconfirmed) only the history entry,
+// so staff can check it in the ECPay back office. for_status ties a pickup-store change to the
+// closure notice it answers (one reselect per notice). Compensation restores both.
 import { createStep, createWorkflow, StepResponse, WorkflowResponse } from "@medusajs/framework/workflows-sdk"
 import { Modules } from "@medusajs/framework/utils"
 
 type Input = {
   fulfillment_id: string
   store?: Record<string, unknown> // new pickup store (StoreType 01)
-  update: { at: string; store_type: "01" | "02"; store_id: string; by: string }
+  update: { at: string; store_type: "01" | "02"; store_id: string; by: string; for_status?: string; unconfirmed?: boolean }
 }
 
 export const updateEcpayShipmentStep = createStep(

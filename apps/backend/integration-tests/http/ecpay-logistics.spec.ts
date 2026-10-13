@@ -45,6 +45,9 @@ let createMode: "ok" | "refuse" | "drop" | "lost" = "ok"
 // P4-11: UpdateStoreInfo / CancelC2COrder calls, answered "1|OK" unless afterSaleRefuse is set.
 const afterSaleRequests: { path: string; params: Record<string, string> }[] = []
 let afterSaleRefuse = ""
+// When set, UpdateStoreInfo / CancelC2COrder answer with this HTTP status and an HTML page
+// (a lost or garbled answer: ECPay may or may not have applied the change).
+let afterSaleGarbled = 0
 let logisticsId = 3690131
 const signed = (f: Record<string, string>) => new URLSearchParams({ ...f, CheckMacValue: computeCheckMacValue(f, LOG_MAC) }).toString()
 const stub = http.createServer((req, res) => {
@@ -68,6 +71,10 @@ const stub = http.createServer((req, res) => {
     }
     if (req.url === "/Express/UpdateStoreInfo" || req.url === "/Express/CancelC2COrder") {
       afterSaleRequests.push({ path: String(req.url), params })
+      if (afterSaleGarbled) {
+        res.writeHead(afterSaleGarbled, { "content-type": "text/html" }).end("<html><body>Bad Gateway</body></html>")
+        return
+      }
       res.writeHead(200, { "content-type": "text/html" }).end(afterSaleRefuse ? `0|${afterSaleRefuse}` : "1|OK")
       return
     }
@@ -123,6 +130,7 @@ medusaIntegrationTestRunner({
       createMode = "ok"
       afterSaleRequests.length = 0
       afterSaleRefuse = ""
+      afterSaleGarbled = 0
     })
 
     const { storeHeaders, superAdminHeaders } = makeCheckoutHelpers({ api, getContainer })
@@ -499,6 +507,58 @@ medusaIntegrationTestRunner({
       const after = await fulfillmentOf(order.id)
       expect(after.data.store).toMatchObject({ store_id: "131386", store_name: "新門市" })
       expect(after.metadata.ecpay_store_updates).toEqual([expect.objectContaining({ store_type: "01", store_id: "131386", by: "shopper" })])
+    })
+
+    const fulfillmentsOf = async (orderId: string) => {
+      const { data } = await getContainer()
+        .resolve(ContainerRegistrationKeys.QUERY)
+        .graph({ entity: "order", fields: ["fulfillments.id", "fulfillments.data", "fulfillments.metadata", "fulfillments.created_at"], filters: { id: orderId } })
+      return ((data[0] as any).fulfillments ?? []).sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)))
+    }
+
+    it("one reselect per closure notice: a second caller cannot overwrite it; a new closure opens it again", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      await postStatus(notice(f, "2104", "門市關轉，請重選門市"))
+      expect((await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })).status).toEqual(200)
+      const again = await reselect(order.id, { email: "buyer@drn.test", store: { ...NEW_711, CVSStoreID: "999999" } })
+      expect({ status: again.status, message: again.data.message }).toEqual({ status: 400, message: "目前沒有需要重選門市的包裹" })
+      await postStatus(notice(f, "2104", "門市關轉，請重選門市", { UpdateStatusDate: "2026/10/16 09:00:00" }))
+      expect((await reselect(order.id, { email: "buyer@drn.test", store: { ...NEW_711, CVSStoreID: "999999" } })).status).toEqual(200)
+      expect(afterSaleRequests.map((r) => r.params.ReceiverStoreID)).toEqual(["131386", "999999"])
+    })
+
+    it("two parcels waiting on a closed store: the shopper names the parcel to move", async () => {
+      const order = await placeCvsOrder(2)
+      expect((await fulfill(order, { quantity: 1 })).status).toEqual(200)
+      expect((await fulfill(order, { quantity: 1 })).status).toEqual(200)
+      const [a, b] = await fulfillmentsOf(order.id)
+      await postStatus(notice(a, "2104", "門市關轉，請重選門市"))
+      await postStatus(notice(b, "2104", "門市關轉，請重選門市"))
+      const unnamed = await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })
+      expect({ status: unnamed.status, message: unnamed.data.message }).toEqual({ status: 400, message: "有多個包裹需要重選門市，請指定 fulfillment_id" })
+      const first = await reselect(order.id, { email: "buyer@drn.test", store: NEW_711, fulfillment_id: a.id })
+      expect({ status: first.status, id: first.data.fulfillment_id }).toEqual({ status: 200, id: a.id })
+      expect((await reselect(order.id, { email: "buyer@drn.test", store: NEW_711, fulfillment_id: a.id })).data.message).toEqual("這個包裹目前不需要重選門市")
+      // only b waits now, so it no longer needs naming
+      expect((await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })).data.fulfillment_id).toEqual(b.id)
+    })
+
+    it("a lost or garbled ECPay answer: 502, staff alerted, recorded as unconfirmed, store unchanged", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      await postStatus(notice(f, "2104", "門市關轉，請重選門市"))
+      afterSaleGarbled = 502
+      const res = await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })
+      expect({ status: res.status, message: res.data.message }).toEqual({ status: 502, message: "綠界沒有確認門市是否已變更，請聯絡客服。" })
+      const after = await fulfillmentOf(order.id)
+      expect(after.data.store.store_id).toEqual("238669")
+      expect(after.metadata.ecpay_store_updates).toEqual([expect.objectContaining({ store_type: "01", store_id: "131386", unconfirmed: true })])
+      const admin = await superAdminHeaders(`rs-g-${order.id}@drn.test`, "operations")
+      const ret = await api.post(`/admin/orders/${order.id}/ecpay-logistics/return-store`, { fulfillment_id: f.id, store_id: "991182" }, { headers: admin, validateStatus: () => true })
+      expect(ret.status).toEqual(502)
     })
 
     it("ECPay refusing the new store changes nothing", async () => {

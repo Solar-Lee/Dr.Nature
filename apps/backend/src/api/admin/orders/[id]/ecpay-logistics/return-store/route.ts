@@ -2,7 +2,7 @@
 // reported the sender store closed (7032 寄件門市關轉). RBAC: order:update (middlewares.ts).
 // Body: { fulfillment_id, store_id }
 import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { MedusaError } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
 import { ecpayLogisticsOptionsFromEnv } from "../../../../../../lib/ecpay/config"
 import { C2C_CVS_SUBTYPES, buildUpdateStoreInfoRequest } from "../../../../../../lib/ecpay/logistics"
 import { postLogistics } from "../../../../../../lib/ecpay/logistics-client"
@@ -37,12 +37,19 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
       }
     )
   )
-  if (!r.ok) {
+  const update = { at: new Date().toISOString(), store_type: "02" as const, store_id: storeId, by: req.auth_context.actor_id }
+  if (!r.ok && !r.uncertain) {
     res.status(422).json({ message: `ECPay refused: ${r.message}` })
     return
   }
-  await updateEcpayShipmentWorkflow(req.scope).run({
-    input: { fulfillment_id: f.id, update: { at: new Date().toISOString(), store_type: "02", store_id: storeId, by: req.auth_context.actor_id } },
-  })
+  if (!r.ok) {
+    req.scope
+      .resolve(ContainerRegistrationKeys.LOGGER)
+      .error(`[ECPAY-ALERT] UpdateStoreInfo (return store) for shipment ${String(d.ecpay_all_pay_logistics_id)} not confirmed: ${r.message}; check it in the ECPay back office`)
+    await updateEcpayShipmentWorkflow(req.scope).run({ input: { fulfillment_id: f.id, update: { ...update, unconfirmed: true } } })
+    res.status(502).json({ message: `ECPay did not confirm the change (${r.message}); check the ECPay back office` })
+    return
+  }
+  await updateEcpayShipmentWorkflow(req.scope).run({ input: { fulfillment_id: f.id, update } })
   res.json({ ok: true })
 }
