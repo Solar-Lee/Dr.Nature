@@ -20,9 +20,15 @@
 |---|---|---|
 | `paid after order … was canceled` | 訂單已取消後顧客仍完成付款；Medusa **未**入帳，訂單 metadata 有 `ecpay_paid_after_cancel` | 綠界後台全額退款，或與顧客確認後重新成立訂單 |
 | `paid notice without a matching ECPay payment session` | 綠界回報已付款，但對應的付款 session 已不存在（綠界會持續重送） | 以 MerchantTradeNo 在綠界後台查詢，人工對應訂單後退款或補登 |
+| `was already paid by another ECPay trade` | 顧客重新付款後，舊交易也付款成功（重複付款）；第二筆**未**入帳，訂單 metadata `ecpay_paid_twice` 列出該筆 | 綠界後台把 metadata 列出的那一筆（MerchantTradeNo）全額退款，保留先入帳的那筆 |
+| `was canceled while ECPay trade … was being captured` | 管理員取消訂單的同時付款入帳（取消流程沒有鎖）：該筆**已在 Medusa 入帳、沒有退款**，訂單 metadata `ecpay_paid_after_cancel` | 綠界後台全額退款，在訂單備註記錄退款日期與序號；或與顧客確認後重新成立訂單 |
+| `could not check for a capture after the cancel` | 訂單取消後的自動檢查失敗 | 人工查看該訂單的綠界付款：有已入帳未退款者，比照上一列處理 |
 | `amount mismatch` | 綠界簽章通知的金額與訂單不符；未入帳 | 立即人工檢查，原則上全額退款 |
 | `e-invoice: order … is canceled but invoice … is valid` | 已取消訂單仍有有效發票 | 取得買受人同意後作廢，或開折讓 |
 | `e-invoice: order … now totals … but invoice … states` | 開立後訂單金額改變（訂單編輯、退款） | 開折讓或補開發票 |
 | `e-invoice: order total … differs from the sale` | 訂單有退款／折抵，系統不自動開立 | 依實際銷售額在綠界後台手動開立，再補記錄 |
 | `e-invoice: order … failed` | 開立失敗（綠界拒絕，或連續 3 次連線失敗） | 依訊息修正；排程每 15 分鐘重試，後台可手動 `POST /admin/orders/:id/ecpay-invoice/issue` |
 | `e-invoice: order … is active but its invoice … is voided` | 有效訂單只剩作廢發票 | 以作廢路由 `reissue` 重開，或手動開立 |
+
+## 不要在綠界訂單上使用「標記為已付款」
+Medusa 後台的「標記為已付款」（mark as paid）會為付款集合建立新的 session，並**刪除所有既有 session**，包含綠界交易（@medusajs/core-flows 2.21.2 `mark-payment-collection-as-paid.js:63-75` → `createPaymentSessionsWorkflow`）。之後該交易的綠界通知會找不到 session（`paid notice without a matching ECPay payment session`），重複付款的保護也跟著失效。綠界訂單付款若沒有自動入帳：信用卡／Apple Pay 等對帳排程（交易建立後 40 分鐘、2 小時、24 小時各查一次）補登，其他付款方式等每日對帳（台灣時間每天 10:30，核對前一天）補登；仍未入帳時開單給 CODE，不要手動標記。
