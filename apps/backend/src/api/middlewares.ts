@@ -1,7 +1,9 @@
 import { configureStoreSearch, defineMiddlewares } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
 import { guardVerificationConfirm, guardVerificationRequest, requireEmailProof } from "./email-verification-guards"
+import { maskOrderBody } from "../lib/order-privacy"
 import type {
+  AuthenticatedMedusaRequest,
   MedusaNextFunction,
   MedusaRequest,
   MedusaResponse,
@@ -132,6 +134,44 @@ const rejectReservedCustomerMetadata = (req: MedusaRequest, _res: MedusaResponse
   return next()
 }
 
+// [P4-11 review logistics-1] Order privacy. Medusa 2.21.2 serves orders by id alone and the id
+// is not a secret, so non-owners (anyone but the logged-in customer the order belongs to) get a
+// masked order (lib/order-privacy.ts); a completed cart is not shown to non-owners (it holds the
+// same e-mail and phone); order transfer is not offered: in 2.21.2 ANY registered customer may
+// request the transfer of ANY order id, which answers with the order and leaves a REQUESTED
+// order change that blocks fulfillment, shipment and delivery until handled.
+const ownerOf = async (req: MedusaRequest, entity: "order" | "cart") => {
+  const { data } = await req.scope.resolve(ContainerRegistrationKeys.QUERY).graph({
+    entity,
+    fields: entity === "cart" ? ["id", "customer_id", "completed_at"] : ["id", "customer_id"],
+    filters: { id: req.params.id },
+  })
+  const row = data[0] as { customer_id?: string | null; completed_at?: unknown } | undefined
+  const actor = (req as AuthenticatedMedusaRequest).auth_context?.actor_id
+  return { row, owner: !!row && !!actor && actor === row.customer_id }
+}
+const maskUnlessOwner = (entity: "order" | "cart") => async (req: MedusaRequest, res: MedusaResponse, next: MedusaNextFunction) => {
+  try {
+    if (!(await ownerOf(req, entity)).owner) {
+      const send = res.json.bind(res)
+      res.json = ((body: unknown) => send(maskOrderBody(body))) as typeof res.json
+    }
+    return next()
+  } catch (e) {
+    return next(e)
+  }
+}
+const hideCompletedCart = async (req: MedusaRequest, _res: MedusaResponse, next: MedusaNextFunction) => {
+  try {
+    const { row, owner } = await ownerOf(req, "cart")
+    return next(row?.completed_at && !owner ? new MedusaError(MedusaError.Types.NOT_FOUND, `Cart id not found: ${req.params.id}`) : undefined)
+  } catch (e) {
+    return next(e)
+  }
+}
+const notOffered = (_req: MedusaRequest, _res: MedusaResponse, next: MedusaNextFunction) =>
+  next(new MedusaError(MedusaError.Types.NOT_FOUND, "Not found"))
+
 // The product index declares filterable `status` and `sales_channel_ids`, so
 // the route narrows it to published products in the key's sales channels.
 export default defineMiddlewares({
@@ -158,5 +198,15 @@ export default defineMiddlewares({
     { methods: ["POST"], matcher: "/auth/verification/request", middlewares: [guardVerificationRequest] },
     { methods: ["POST"], matcher: "/auth/verification/confirm", middlewares: [guardVerificationConfirm] },
     { methods: ["POST"], matcher: "/store/customers/me", middlewares: [rejectReservedCustomerMetadata] },
+    // [P4-11 review logistics-1] order privacy
+    { methods: ["GET"], matcher: "/store/orders/:id", middlewares: [maskUnlessOwner("order")] },
+    { methods: ["POST"], matcher: "/store/carts/:id/complete", middlewares: [maskUnlessOwner("cart")] },
+    { methods: ["GET"], matcher: "/store/carts/:id", middlewares: [hideCompletedCart] },
+    // Exact matchers: a /transfer/:action param leaf would sort after core's static leaves.
+    ...["request", "cancel", "accept", "decline"].map((action) => ({
+      methods: ["POST" as const],
+      matcher: `/store/orders/:id/transfer/${action}`,
+      middlewares: [notOffered],
+    })),
   ],
 })
