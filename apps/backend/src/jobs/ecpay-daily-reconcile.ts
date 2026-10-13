@@ -112,8 +112,17 @@ export async function reconcileEcpayDay(container: MedusaContainer, day: string)
     await recover(row, s)
   }
 
-  // The other direction: captured in Medusa that day, not listed as paid at ECPay.
+  // The other direction: captured in Medusa that day, not listed as paid at ECPay. The file is
+  // by ECPay PAYMENT date, so a payment recorded after midnight (a lost notice recovered the next
+  // day, a ReturnURL retry) belongs to the file of the day it was paid: compare by the PaymentDate
+  // in the verified proof kept on the session, and only fall back to the capture day without one
+  // (review payments-7).
   const listed = new Set(paid.map((r) => r.merchantTradeNo))
+  const paymentDay = (s: SessionRow | undefined) => {
+    const proof = (s?.data?.ecpay_notice ?? s?.data?.ecpay_trade_info) as Record<string, string> | undefined
+    const m = /^(\d{4})\/(\d{2})\/(\d{2})/.exec(proof?.PaymentDate ?? "")
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+  }
   const { data: dayPayments } = await query.graph({
     entity: "payment",
     fields: ["payment_session_id", "captured_at", "provider_id"],
@@ -122,6 +131,10 @@ export async function reconcileEcpayDay(container: MedusaContainer, day: string)
   for (const p of dayPayments as { payment_session_id: string }[]) {
     const s = sessions.find((x) => x.id === p.payment_session_id)
     const trade = String(s?.data?.merchant_trade_no ?? "")
+    const paidOn = paymentDay(s)
+    if (paidOn && paidOn !== day) {
+      continue // listed (or missing) in that day's file
+    }
     if (trade && !listed.has(trade) && !report.recovered.includes(trade)) {
       alert(`${trade} is captured in Medusa but ECPay does not list it as paid on ${day}`)
     }

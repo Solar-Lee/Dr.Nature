@@ -84,11 +84,21 @@ medusaIntegrationTestRunner({
       expect(await h.capturedPayments(c.session.id)).toHaveLength(0)
     })
 
+    const ecpayDate = (day: string, time = "10:00:00") => `${day.replace(/-/g, "/")} ${time}`
+
     it("captured in Medusa today but not paid in ECPay's file: alert", async () => {
       const c = await h.checkout()
-      expect((await h.postNotice(h.paidNotice(c.sessionData, c.session))).data).toEqual("1|OK")
+      expect((await h.postNotice(h.paidNotice(c.sessionData, c.session, { PaymentDate: ecpayDate(today()) }))).data).toEqual("1|OK")
       const r = await run()
       expect(r.alerts.join()).toContain(`${c.sessionData.merchant_trade_no} is captured in Medusa but ECPay does not list it`)
+    })
+
+    it("paid yesterday at ECPay but recorded today (late notice / recovery): today's run does not alert", async () => {
+      const c = await h.checkout()
+      const yesterday = taipeiDay(new Date(Date.now() - 24 * 3600_000))
+      expect((await h.postNotice(h.paidNotice(c.sessionData, c.session, { PaymentDate: ecpayDate(yesterday, "23:50:00") }))).data).toEqual("1|OK")
+      const r = await run()
+      expect(r.alerts.join()).not.toContain(c.sessionData.merchant_trade_no)
     })
 
     it("ECPay's error row (one file per minute) is reported, not read as 'no trades'", async () => {
