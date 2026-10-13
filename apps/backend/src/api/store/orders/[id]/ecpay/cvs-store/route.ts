@@ -6,30 +6,48 @@
 // ECPay (UpdateStoreInfo, StoreType 01).
 // Body: { email (guests), store: { LogisticsSubType, CVSStoreID, CVSStoreName, CVSAddress, ... },
 //         fulfillment_id (required when several parcels wait for a new store) }
+//  - only the SHOPPER's pickup-store closures (PICKUP_STORE_CLOSED; 7032 = our sender store is
+//    for staff, return-store route);
 //  - one reselect per closure notice (for_status = the notice's code + UpdateStatusDate): a second
-//    caller cannot overwrite the shopper's choice until ECPay reports a new closure;
+//    caller cannot overwrite the shopper's choice until ECPay reports a new closure; requests are
+//    serialised per order and the shipments re-read under the lock (two at once -> one call);
+//  - guests: full e-mail, wrong guesses throttled (lib/order-owner.ts);
 //  - "1|OK" -> recorded; "0|..." -> 422, nothing recorded; no / unexpected answer -> 502,
 //    [ECPAY-ALERT] and an unconfirmed history entry (ECPay may have applied it).
 import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, MedusaError, Modules } from "@medusajs/framework/utils"
 import { ecpayLogisticsOptionsFromEnv } from "../../../../../../lib/ecpay/config"
-import { buildUpdateStoreInfoRequest, parseChosenStore, type CvsSubtype } from "../../../../../../lib/ecpay/logistics"
+import { PICKUP_STORE_CLOSED, buildUpdateStoreInfoRequest, parseChosenStore, type CvsSubtype } from "../../../../../../lib/ecpay/logistics"
 import { postLogistics } from "../../../../../../lib/ecpay/logistics-client"
 import { orderWithShipments } from "../../../../../../lib/ecpay/order-shipments"
-import { assertOrderOwner } from "../../../../../../lib/order-owner"
+import { assertOrderOwnerThrottled } from "../../../../../../lib/order-owner"
 import { updateEcpayShipmentWorkflow } from "../../../../../../workflows/ecpay/update-ecpay-shipment"
 
 type Status = { code?: string; updated_at?: string; meaning?: string }
 
 const statusKey = (s: Status) => `${s.code ?? ""}@${s.updated_at ?? ""}`
 
+type Reply = { status: number; body: Record<string, unknown> }
+
 export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
   const body = (req.body ?? {}) as { email?: unknown; store?: unknown; fulfillment_id?: unknown }
-  const { order, shipments } = await orderWithShipments(req.scope, req.params.id)
-  assertOrderOwner(order, req.auth_context?.actor_id, body.email)
+  const { order } = await orderWithShipments(req.scope, req.params.id)
+  await assertOrderOwnerThrottled(req.scope, req.params.id, order, req.auth_context?.actor_id, body.email)
+  const reply = await req.scope
+    .resolve(Modules.LOCKING)
+    .execute(`drn-cvs-store:${req.params.id}`, () => reselect(req, body), { timeout: 10 })
+    .catch((e: Error) => {
+      if (e instanceof MedusaError) throw e
+      return { status: 409, body: { message: "處理中，請稍後再試。" } } as Reply // lock wait timed out
+    })
+  res.status(reply.status).json(reply.body)
+}
+
+async function reselect(req: AuthenticatedMedusaRequest, body: { store?: unknown; fulfillment_id?: unknown }): Promise<Reply> {
+  const { order, shipments } = await orderWithShipments(req.scope, req.params.id) // fresh, under the lock
   const waiting = shipments.filter((f) => {
     const s = f.metadata?.ecpay_status as Status | undefined
-    if (s?.meaning !== "reselect_store") return false
+    if (!s || !PICKUP_STORE_CLOSED.includes(String(s.code))) return false
     const done = Array.isArray(f.metadata?.ecpay_store_updates) ? (f.metadata!.ecpay_store_updates as { store_type?: string; for_status?: string }[]) : []
     return !done.some((u) => u.store_type === "01" && u.for_status === statusKey(s))
   })
@@ -65,17 +83,15 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   )
   const update = { at: new Date().toISOString(), store_type: "01" as const, store_id: store.store_id, by: "shopper", for_status: forStatus }
   if (!r.ok && !r.uncertain) {
-    res.status(422).json({ message: `綠界無法變更門市：${r.message}` })
-    return
+    return { status: 422, body: { message: `綠界無法變更門市：${r.message}` } }
   }
   if (!r.ok) {
     req.scope
       .resolve(ContainerRegistrationKeys.LOGGER)
       .error(`[ECPAY-ALERT] UpdateStoreInfo for shipment ${String(d.ecpay_all_pay_logistics_id)} (order ${order!.id}, store ${store.store_id}) not confirmed: ${r.message}; check it in the ECPay back office`)
     await updateEcpayShipmentWorkflow(req.scope).run({ input: { fulfillment_id: chosen.id, update: { ...update, unconfirmed: true } } })
-    res.status(502).json({ message: "綠界沒有確認門市是否已變更，請聯絡客服。" })
-    return
+    return { status: 502, body: { message: "綠界沒有確認門市是否已變更，請聯絡客服。" } }
   }
   await updateEcpayShipmentWorkflow(req.scope).run({ input: { fulfillment_id: chosen.id, store, update } })
-  res.json({ store, fulfillment_id: chosen.id })
+  return { status: 200, body: { store, fulfillment_id: chosen.id } }
 }

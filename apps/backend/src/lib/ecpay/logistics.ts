@@ -391,6 +391,7 @@ const STATUS_CODES: Record<Exclude<StatusMeaning, "attention">, string[]> = {
   delivered: ["2067", "3022", "3003"],
   // Pickup or drop-off store closed: a new store must be chosen (Hi-Life 2028: within 3 days).
   reselect_store: ["2104", "7011", "2037", "7032", "2028", "2101", "2103"],
+
   // Not picked up / going back / back at the sender's store / seller has not collected it.
   returning: [
     "2016", "2026", "2033", "2046", "2047", "2049", "2050", "2053", "2055", "2060", "2065", "2066",
@@ -406,6 +407,10 @@ const STATUS_CODES: Record<Exclude<StatusMeaning, "attention">, string[]> = {
 const STATUS_MEANING: Record<string, StatusMeaning> = Object.fromEntries(
   Object.entries(STATUS_CODES).flatMap(([meaning, codes]) => codes.map((c) => [c, meaning as StatusMeaning]))
 )
+
+// The SHOPPER's pickup store closed (docs/ops/ecpay-logistics-c2c.md §3). 7032 is OUR sender
+// store closing: it also means reselect_store but only staff answer it (return-store route).
+export const PICKUP_STORE_CLOSED = ["2104", "7011", "2037", "2028", "2101", "2103"]
 
 export function statusMeaning(rtnCode: string): StatusMeaning {
   return STATUS_MEANING[rtnCode] ?? "attention"

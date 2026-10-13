@@ -17,7 +17,7 @@ import { ECPAY_PROVIDER_ID, ecpayOptionsFromEnv } from "../../../../../../lib/ec
 import { recordVerifiedPayment } from "../../../../../../lib/ecpay/record-payment"
 import { queryTrade } from "../../../../../../lib/ecpay/trade-query"
 import { liveOfflineCode } from "../../../../../../lib/ecpay/unpaid"
-import { assertOrderOwner } from "../../../../../../lib/order-owner"
+import { assertOrderOwnerThrottled } from "../../../../../../lib/order-owner"
 
 const UNPAID_COLLECTION = ["awaiting", "not_paid"]
 
@@ -49,16 +49,16 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
   })
   const order = data[0] as unknown as OrderView | undefined
   const actor = req.auth_context?.actor_id
-  assertOrderOwner(order, actor, body.email)
-  const pc = (order.payment_collections ?? [])[0]
-  if (order.status !== "pending" || !pc || !UNPAID_COLLECTION.includes(pc.status) || (pc.payments ?? []).some((p) => !!p.captured_at)) {
+  const owned = await assertOrderOwnerThrottled(req.scope, req.params.id, order, actor, body.email)
+  const pc = (owned.payment_collections ?? [])[0]
+  if (owned.status !== "pending" || !pc || !UNPAID_COLLECTION.includes(pc.status) || (pc.payments ?? []).some((p) => !!p.captured_at)) {
     throw new MedusaError(MedusaError.Types.NOT_ALLOWED, "此訂單無法重新付款")
   }
   const choosePayment = typeof body.choose_payment === "string" ? body.choose_payment : "Credit"
   const options = ecpayOptionsFromEnv()
 
   const result = await req.scope.resolve(Modules.LOCKING).execute(
-    `drn-repay:${order.id}`,
+    `drn-repay:${owned.id}`,
     async () => {
       const current = (pc.payment_sessions ?? [])
         .filter((s) => s.provider_id === ECPAY_PROVIDER_ID)
@@ -97,7 +97,7 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
         input: {
           payment_collection_id: pc.id,
           provider_id: ECPAY_PROVIDER_ID,
-          ...(actor && actor === order.customer_id ? { customer_id: actor } : {}),
+          ...(actor && actor === owned.customer_id ? { customer_id: actor } : {}),
           data: { choose_payment: choosePayment },
         },
       })

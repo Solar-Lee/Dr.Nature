@@ -48,12 +48,14 @@ let afterSaleRefuse = ""
 // When set, UpdateStoreInfo / CancelC2COrder answer with this HTTP status and an HTML page
 // (a lost or garbled answer: ECPay may or may not have applied the change).
 let afterSaleGarbled = 0
+// Delays the UpdateStoreInfo / CancelC2COrder answer (widens race windows).
+let afterSaleDelayMs = 0
 let logisticsId = 3690131
 const signed = (f: Record<string, string>) => new URLSearchParams({ ...f, CheckMacValue: computeCheckMacValue(f, LOG_MAC) }).toString()
 const stub = http.createServer((req, res) => {
   let raw = ""
   req.on("data", (c) => (raw += c))
-  req.on("end", () => {
+  req.on("end", async () => {
     const params = Object.fromEntries(new URLSearchParams(raw))
     if (!verifyCheckMacValue(params, LOG_MAC)) {
       res.writeHead(200).end("0|CheckMacValue Error")
@@ -71,6 +73,7 @@ const stub = http.createServer((req, res) => {
     }
     if (req.url === "/Express/UpdateStoreInfo" || req.url === "/Express/CancelC2COrder") {
       afterSaleRequests.push({ path: String(req.url), params })
+      if (afterSaleDelayMs) await new Promise((r) => setTimeout(r, afterSaleDelayMs))
       if (afterSaleGarbled) {
         res.writeHead(afterSaleGarbled, { "content-type": "text/html" }).end("<html><body>Bad Gateway</body></html>")
         return
@@ -131,6 +134,7 @@ medusaIntegrationTestRunner({
       afterSaleRequests.length = 0
       afterSaleRefuse = ""
       afterSaleGarbled = 0
+      afterSaleDelayMs = 0
     })
 
     const { storeHeaders, superAdminHeaders } = makeCheckoutHelpers({ api, getContainer })
@@ -543,6 +547,43 @@ medusaIntegrationTestRunner({
       expect((await reselect(order.id, { email: "buyer@drn.test", store: NEW_711, fulfillment_id: a.id })).data.message).toEqual("這個包裹目前不需要重選門市")
       // only b waits now, so it no longer needs naming
       expect((await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })).data.fulfillment_id).toEqual(b.id)
+    })
+
+    it("our sender-store closure (7032) is for staff: the shopper route does not offer it", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      await postStatus(notice(f, "7032", "寄件門市關轉"))
+      const res = await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })
+      expect({ status: res.status, message: res.data.message }).toEqual({ status: 400, message: "目前沒有需要重選門市的包裹" })
+      expect(afterSaleRequests).toEqual([])
+    })
+
+    it("two reselects at once: ECPay is called once; the other caller is told there is nothing left", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      await postStatus(notice(f, "2104", "門市關轉，請重選門市"))
+      afterSaleDelayMs = 800
+      const both = await Promise.all([
+        reselect(order.id, { email: "buyer@drn.test", store: NEW_711 }),
+        reselect(order.id, { email: "buyer@drn.test", store: { ...NEW_711, CVSStoreID: "999999" } }),
+      ])
+      expect(both.map((r) => r.status).sort()).toEqual([200, 400])
+      expect(afterSaleRequests).toHaveLength(1)
+    })
+
+    it("a guest guessing e-mails is stopped after 5 wrong tries; the logged-in owner never is", async () => {
+      const order = await placeCvsOrder()
+      expect((await fulfill(order)).status).toEqual(200)
+      const f = await fulfillmentOf(order.id)
+      await postStatus(notice(f, "2104", "門市關轉，請重選門市"))
+      for (let i = 0; i < 5; i++) {
+        expect((await reselect(order.id, { email: `guess${i}@drn.test`, store: NEW_711 })).status).toEqual(404)
+      }
+      const blocked = await reselect(order.id, { email: "buyer@drn.test", store: NEW_711 })
+      expect({ status: blocked.status, message: blocked.data.message }).toEqual({ status: 400, message: "嘗試次數過多，請 15 分鐘後再試。" })
+      expect(afterSaleRequests).toEqual([])
     })
 
     it("a lost or garbled ECPay answer: 502, staff alerted, recorded as unconfirmed, store unchanged", async () => {
