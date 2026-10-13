@@ -22,10 +22,11 @@
 |---|---|---|
 | A1 | 電商核心：**Medusa v2**（npm 最新 2.21.2，查證於 2026-10-13）＋ **Next.js** 前台 | 購物車、促銷、客群、RBAC（2.15.5 起）、後台都是內建；自架、資料自有 |
 | A2 | 金流／物流／發票：**綠界 ECPay**（先用官方測試環境，正式金鑰由 Aki 申請） | 一次整合信用卡、ATM、超商代碼、Apple Pay、超商取貨、電子發票 |
-| A3 | 部署：**混合式**——前台 Vercel；Medusa server＋worker＋Redis 在 VPS（映像在 Mac 建好再傳）；Postgres＋檔案儲存在**新建的專屬 Supabase 專案** | VPS 磁碟 97%、CPU 近滿載；前台需要 CDN 承載影片與 3D |
+| A3 | ~~部署：**混合式**~~（2026-10-13 由 A7 取代，以下保留供參考）——前台 Vercel；Medusa server＋worker＋Redis 在 VPS（映像在 Mac 建好再傳）；Postgres＋檔案儲存在**新建的專屬 Supabase 專案** | VPS 磁碟 97%、CPU 近滿載；前台需要 CDN 承載影片與 3D |
 | A4 | 設計交接走 GitHub repo：DESIGN 產出放 `design/` | 單一真實來源、可版控 |
 | A5 | **不重造既有系統**：團購招商／寄樣／結算 → tuangou-admin（新增品牌 `drnature`）；全通路客服 → OmniCS（站內嵌 widget）；廣告 → DigiAds；站外 SEO → Dr.Grey | 這些系統已在正式環境運作（盤點見 §4） |
 | A6 | 物流：**綠界 C2C 店到店**（7-ELEVEN／全家／萊爾富）；**全館免運**（運費 NT$0） | 起步免月租、門市覆蓋廣；免運降低結帳摩擦 |
+| A7 | **2026-10-13 18:40 改定**：正式主機改為 **Mac mini M4**（24 GB 以上／512 GB 以上），取代 A3 的「VPS＋Supabase」；資料庫先自架 `drn-postgres`（之後可搬 Supabase）；對外建議 Cloudflare Tunnel（待查證後定案）；MVP 只上後端，前台維持暫時頁；Claude Code 改在 Mac mini 接手。交接：[handoff/CODE_HANDOFF.md](handoff/CODE_HANDOFF.md) | U-04 暫不升級；VPS 磁碟只剩約 5 GB 且與 57 個其他容器共用 |
 
 ## 3. 系統架構
 
@@ -100,8 +101,8 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-01 | **輪替已外露的憑證**：LINE OA Channel secret／Access token（曾寫在 Pages 檔）；`3. Key/key.md` 內與本專案無關的金鑰另存他處 | 安全 |
 | U-02 | 申請綠界特店（金流＋物流＋電子發票），取得正式金鑰後親手寫入主機 `.env` | P4 正式切換 |
 | U-03 | 選定簡訊商（建議三竹 Mitake 或 Every8d）並開通帳號 | P8 簡訊 |
-| U-04 | Vercel：建立或指定團隊（商用需 Pro）；Supabase：核准建立新專案 `drn-prod`（Pro，避免閒置暫停）。**2026-10-13 查：Supabase 組織「Alex-Lee's Org」是 Free 方案，已有 2 個運作中的專案（kol-groupbuy-system、natrees-line-oa），再建一個會碰到免費方案的上限，且免費專案閒置會暫停 → 需要 Aki 把組織升級 Pro，或另開一個 Pro 組織給 drn-prod** | P0-08、P0-09、P12-06 |
-| U-05 | DNS：`dr.nature.smilelife.tw` 改 CNAME 到 Vercel；新增 `api.dr.nature.smilelife.tw` A 記錄 → 151.145.69.134（DNS only，不走代理） | P12 |
+| U-04 | Vercel：建立或指定團隊（商用需 Pro）；Supabase：核准建立新專案 `drn-prod`（Pro，避免閒置暫停）。**2026-10-13 查：Supabase 組織「Alex-Lee's Org」是 Free 方案，已有 2 個運作中的專案（kol-groupbuy-system、natrees-line-oa），再建一個會碰到免費方案的上限，且免費專案閒置會暫停 → 需要 Aki 把組織升級 Pro，或另開一個 Pro 組織給 drn-prod** | P0-08、P0-09、P12-06 **2026-10-13 Aki：暫不升級（見 A7）** |
+| U-05 | DNS：`dr.nature.smilelife.tw` 改 CNAME 到 Vercel；新增 `api.dr.nature.smilelife.tw` A 記錄 → 151.145.69.134（DNS only，不走代理） | P12 **2026-10-13：api A 記錄已建立並生效；正式主機改 Mac mini 後，依 Tunnel 方案改記錄（A7）** |
 | U-06 | GS1 Taiwan 申請商品條碼（EAN-13），三個 SKU 各一 | P2 包裝定稿 |
 | U-07 | 食品業者登錄字號（非登）、產品責任險、委託製造廠資料（廠名、地址、許可） | 標示定稿 |
 | U-08 | 菌株資料：每款的菌種學名、菌株編號、每顆含菌數、原料供應商文件、檢驗報告 | 產品文案、標示 |
@@ -278,6 +279,8 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P11-07 | 假綠稽核（false-green-audit 流程）：確認每道閘門壞了會紅 | C | P11-01～06 | 稽核報告列出已證明／未證明項目 | — | ⛔ |
 
 ### P12 部署
+
+> 2026-10-13 起依 A7 重新規劃：正式主機改為 Mac mini，下列 P12-02～P12-11 以「VPS＋Supabase」寫成，要在 Mac mini 新工作階段改寫後再執行（見 [handoff/CODE_HANDOFF.md](handoff/CODE_HANDOFF.md) §4）。P12-12 暫時頁仍在 VPS。
 
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|

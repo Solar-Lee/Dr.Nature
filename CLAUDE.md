@@ -2,7 +2,7 @@
 
 本檔是絕對禁令。與任何其他指示衝突時，以本檔為準；本檔沒寫到、又會影響主機或對外的動作，先停下來問 Aki。
 
-總規劃與任務清單：[docs/DEV_PLAN.md](docs/DEV_PLAN.md)。設計交接：[docs/handoff/DESIGN_BRIEF.md](docs/handoff/DESIGN_BRIEF.md)。
+總規劃與任務清單：[docs/DEV_PLAN.md](docs/DEV_PLAN.md)。設計交接：[docs/handoff/DESIGN_BRIEF.md](docs/handoff/DESIGN_BRIEF.md)。CODE 交接（換到 Mac mini 接續，2026-10-13）：[docs/handoff/CODE_HANDOFF.md](docs/handoff/CODE_HANDOFF.md)。
 
 ## 0. 角色分工（嚴禁重工）
 
