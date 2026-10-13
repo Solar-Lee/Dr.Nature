@@ -133,6 +133,14 @@ describe("issue data", () => {
     expect(items.map((i) => i.ItemSeq)).toEqual([1, 2])
   })
 
+  it("lines come out in a fixed order (SKU, then name) whatever order Medusa returns them in", () => {
+    const a = { title: "益生菌 A", sku: "DN-PB-01-060C", quantity: 2, total: 2300 }
+    const b = { title: "益生菌 B", sku: "DN-PB-02-060C", quantity: 1, total: 1150 }
+    const names = (lines: typeof a[]) => invoiceItems(lines, 60, 3510).map((i) => i.ItemName)
+    expect(names([b, a])).toEqual(["益生菌 A", "益生菌 B", "運費"])
+    expect(names([a, b])).toEqual(["益生菌 A", "益生菌 B", "運費"])
+  })
+
   it("adds shipping as its own line when charged", () => {
     const items = invoiceItems([{ title: "A", quantity: 1, total: 1150 }], 60, 1210)
     expect(items.map((i) => [i.ItemName, i.ItemAmount])).toEqual([["A", 1150], ["運費", 60]])

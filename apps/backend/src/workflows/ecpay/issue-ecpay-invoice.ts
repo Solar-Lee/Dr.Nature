@@ -53,7 +53,7 @@ type OrderView = {
   shipping_total: unknown
   metadata?: Record<string, unknown> | null
   customer?: { email?: string | null } | null
-  items?: { title?: string | null; product_title?: string | null; quantity?: unknown; detail?: { quantity?: unknown }; total?: unknown }[]
+  items?: { title?: string | null; product_title?: string | null; variant_sku?: string | null; quantity?: unknown; detail?: { quantity?: unknown }; total?: unknown }[]
   payment_collections?: { payments?: { captured_at?: unknown }[] | null }[] | null
 }
 
@@ -86,7 +86,7 @@ async function issueInvoice(input: Input, container: MedusaContainer): Promise<D
     entity: "order",
     fields: [
       "id", "email", "status", "total", "shipping_total", "metadata", "customer.email",
-      "items.title", "items.product_title", "items.quantity", "items.detail.quantity", "items.total",
+      "items.title", "items.product_title", "items.variant_sku", "items.quantity", "items.detail.quantity", "items.total",
       "payment_collections.payments.captured_at",
     ],
     filters: { id: input.order_id },
@@ -199,6 +199,7 @@ async function issueInvoice(input: Input, container: MedusaContainer): Promise<D
       salesAmount: sale,
       lines: (order.items ?? []).map((i) => ({
         title: i.product_title || i.title || "",
+        sku: i.variant_sku ?? null,
         quantity: Number(i.quantity ?? i.detail?.quantity),
         total: Number(i.total),
       })),

@@ -161,7 +161,7 @@ export function choiceFields(choice: InvoiceChoice): Record<string, string> {
 
 // ---- Issue data from an order --------------------------------------------------------------
 
-export type InvoiceLine = { title: string; quantity: number; total: number }
+export type InvoiceLine = { title: string; quantity: number; total: number; sku?: string | null }
 
 const ITEM_WORD = "件"
 const ITEM_NAME_MAX = 100
@@ -169,8 +169,12 @@ const ITEM_NAME_MAX = 100
 // Items must add up to SalesAmount exactly (INV-07). Totals are tax-inclusive TWD and may
 // carry decimals after discounts, so amounts are rounded and the rounding remainder goes
 // to the largest line.
+// Lines are put in a fixed order (SKU, then name) so the same order always gives the same
+// invoice: Medusa returns order items in no guaranteed order (this made the P4-06 spec flaky).
 export function invoiceItems(lines: InvoiceLine[], shippingTotal: number, salesAmount: number) {
-  const rows = lines
+  const key = (l: InvoiceLine) => `${l.sku ?? ""}\u0000${l.title}`
+  const rows = [...lines]
+    .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
     .filter((l) => l.quantity > 0)
     .map((l) => ({ name: [...l.title.trim()].slice(0, ITEM_NAME_MAX).join("") || "商品", count: l.quantity, amount: Math.round(l.total) }))
   if (Math.round(shippingTotal) > 0) {
