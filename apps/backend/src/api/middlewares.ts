@@ -1,5 +1,6 @@
 import { configureStoreSearch, defineMiddlewares } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
+import { guardVerificationConfirm, guardVerificationRequest, requireEmailProof } from "./email-verification-guards"
 import type {
   MedusaNextFunction,
   MedusaRequest,
@@ -152,7 +153,10 @@ export default defineMiddlewares({
       matcher: "/store/payment-collections/:id/payment-sessions",
       middlewares: [blockSessionsOnPlacedOrders],
     },
-    { methods: ["POST"], matcher: "/store/customers", middlewares: [rejectReservedCustomerMetadata] },
+    // [P5-01 review auth-2] e-mail ownership before a customer account claims an e-mail.
+    { methods: ["POST"], matcher: "/store/customers", middlewares: [rejectReservedCustomerMetadata, requireEmailProof] },
+    { methods: ["POST"], matcher: "/auth/verification/request", middlewares: [guardVerificationRequest] },
+    { methods: ["POST"], matcher: "/auth/verification/confirm", middlewares: [guardVerificationConfirm] },
     { methods: ["POST"], matcher: "/store/customers/me", middlewares: [rejectReservedCustomerMetadata] },
   ],
 })

@@ -11,6 +11,7 @@
 //   NODE_OPTIONS=--experimental-vm-modules pnpm exec jest --runInBand --forceExit integration-tests/http/auth.spec.ts
 import http from "http"
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils"
 import { OAUTH_CALLBACK_PATHS } from "../../src/lib/auth/config"
 import { makeCheckoutHelpers, runAllSeeds } from "../helpers/ecpay-checkout"
 
@@ -123,6 +124,10 @@ medusaIntegrationTestRunner({
       const auth = { ...store, authorization: `Bearer ${first.data.token}` }
       const noEmail = await api.post("/store/customers", { first_name: "測試", last_name: "LINE" }, { headers: auth, validateStatus: () => true })
       expect({ status: noEmail.status, message: noEmail.data.message }).toEqual({ status: 400, message: "Email is required to create a customer" })
+      // The e-mail must be proven first (review auth-2): unverified -> 403, verified -> 200.
+      const unverified = await api.post("/store/customers", { email: "line-user@drn.test", first_name: "測試", last_name: "LINE" }, { headers: auth, validateStatus: () => true })
+      expect({ status: unverified.status, message: unverified.data.message }).toEqual({ status: 403, message: "請先驗證這個 Email 再建立會員（EMAIL_NOT_VERIFIED）" })
+      await h.verifyEmail(first.data.token, "line-user@drn.test")
       const created = await api.post("/store/customers", { email: "line-user@drn.test", first_name: "測試", last_name: "LINE" }, { headers: auth, validateStatus: () => true })
       expect(created.status).toEqual(200)
       const { data: refreshed } = await api.post("/auth/token/refresh", {}, { headers: { authorization: `Bearer ${first.data.token}` } })
@@ -176,6 +181,83 @@ medusaIntegrationTestRunner({
       // The message, not just 401: a missing state check would also end in 401 (failed token exchange).
       const forged = await api.post(`/auth/customer/google/callback?code=x&state=${"a".repeat(64)}`, {}, { validateStatus: () => true })
       expect({ status: forged.status, message: forged.data.message }).toEqual({ status: 401, message: "No state provided, or session expired" })
+    })
+
+    // ---- e-mail ownership (review auth-2) --------------------------------------------------
+    const lineToken = async (sub: string) => {
+      const s = await startLine()
+      const r = await lineCallback({ code: `code-${sub}-${s.nonce}`, state: s.state })
+      expect(r.status).toEqual(200)
+      return r.data.token as string
+    }
+    const emailpassToken = async (email: string) => {
+      const { data } = await api.post("/auth/customer/emailpass/register", { email, password: "drn-test-only-Pw1" })
+      return data.token as string
+    }
+    const createCustomer = async (token: string, email: string) =>
+      api.post("/store/customers", { email, first_name: "測試", last_name: "會員" }, { headers: { ...(await h.storeHeaders()), authorization: `Bearer ${token}` }, validateStatus: () => true })
+    const requestVerification = (token: string | null, email: string) =>
+      api.post("/auth/verification/request", { entity_id: email, entity_type: "email" }, { headers: token ? { authorization: `Bearer ${token}` } : {}, validateStatus: () => true })
+    const confirmVerification = (token: string | null, code: string) =>
+      api.post("/auth/verification/confirm", { code }, { headers: token ? { authorization: `Bearer ${token}` } : {}, validateStatus: () => true })
+
+    it("auth-2: nobody can claim an e-mail they have not proven; guest orders stay with a guest customer", async () => {
+      expect((await createCustomer(await emailpassToken("victim@drn.test"), "victim@drn.test")).data.message).toEqual("請先驗證這個 Email 再建立會員（EMAIL_NOT_VERIFIED）")
+      expect((await createCustomer(await lineToken("USquat1"), "victim@drn.test")).status).toEqual(403)
+      // The victim later checks out as a guest: the order's customer is a guest, not an account.
+      const headers = await h.storeHeaders()
+      const { data: r } = await api.get("/store/regions", { headers })
+      const { data: c } = await api.post("/store/carts", { region_id: r.regions[0].id, email: "victim@drn.test" }, { headers })
+      const { data } = await getContainer().resolve(ContainerRegistrationKeys.QUERY).graph({ entity: "cart", fields: ["customer.has_account"], filters: { id: c.cart.id } })
+      expect((data[0] as any).customer?.has_account ?? false).toBe(false)
+    })
+
+    it("auth-2: a verification link only works for the identity that requested it", async () => {
+      const attacker = await lineToken("UAttack1")
+      h.ensureCodeSubscription()
+      const req = await requestVerification(attacker, "victim2@drn.test")
+      expect(req.status).toEqual(201)
+      expect(JSON.stringify(req.data)).not.toMatch(/"code"|token_hash|expires_at/)
+      const code = await h.verificationCodeFor("victim2@drn.test")
+      const anonymous = await confirmVerification(null, code)
+      expect({ status: anonymous.status, message: anonymous.data.message }).toEqual({ status: 401, message: "請先登入要驗證的帳號，再開啟驗證連結。" })
+      const victim = await emailpassToken("victim2@drn.test")
+      const other = await confirmVerification(victim, code)
+      expect({ status: other.status, message: other.data.message }).toEqual({ status: 403, message: "這個驗證連結屬於另一個登入帳號。" })
+      expect((await createCustomer(attacker, "victim2@drn.test")).status).toEqual(403)
+      // The right identity confirming its own code works.
+      expect((await confirmVerification(attacker, code)).status).toEqual(200)
+    })
+
+    it("auth-2: emailpass verifies only its login e-mail; e-mails are stored lowercase; resend limited; no mail provider -> 503", async () => {
+      const ep = await emailpassToken("own@drn.test")
+      expect((await requestVerification(ep, "someone-else@drn.test")).data.message).toEqual("只能驗證登入用的 Email")
+
+      const line = await lineToken("UCase1")
+      await h.verifyEmail(line, "Line-User2@DRN.test")
+      const created = await createCustomer(line, "Line-User2@DRN.test")
+      expect({ status: created.status, email: created.data.customer?.email }).toEqual({ status: 200, email: "line-user2@drn.test" })
+
+      const fast = await lineToken("UFast1")
+      expect((await requestVerification(fast, "fast@drn.test")).status).toEqual(201)
+      const again = await requestVerification(fast, "fast@drn.test")
+      expect({ status: again.status, message: again.data.message }).toEqual({ status: 429, message: "驗證信寄送太頻繁，請稍後再試。" })
+
+      const prev = process.env.EMAIL_PROVIDER
+      process.env.EMAIL_PROVIDER = ""
+      try {
+        const noMail = await lineToken("UNoMail1")
+        for (let i = 0; i < 2; i++) {
+          const r = await requestVerification(noMail, `nomail${i}@drn.test`)
+          expect({ status: r.status, message: r.data.message }).toEqual({ status: 503, message: "目前無法寄出驗證信，請改用 Google 登入或稍後再試。" })
+        }
+        const notes = await getContainer().resolve(Modules.NOTIFICATION).listNotifications({ channel: "feed" })
+        const mine = notes.filter((n: any) => String(n.idempotency_key ?? "").startsWith("drn-email-missing-"))
+        expect(mine).toHaveLength(1)
+        expect(JSON.stringify(mine[0].data)).not.toMatch(/nomail|@/)
+      } finally {
+        process.env.EMAIL_PROVIDER = prev
+      }
     })
 
     it("staff cannot log in with LINE or Google", async () => {

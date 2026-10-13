@@ -103,11 +103,46 @@ export function makeCheckoutHelpers({ api, getContainer }: { api: Api; getContai
     return { authorization: `Bearer ${token}` }
   }
 
-  // Registered member (emailpass): store headers with the member's bearer token.
+  // E-mail verification codes (P5-01 review auth-2): Medusa emits them only on the event bus
+  // (auth.verification_requested); tests read them there. One subscription per app container.
+  const verificationCodes = new Map<string, string>()
+  let subscribedTo: MedusaContainer | null = null
+  const ensureCodeSubscription = () => {
+    const container = getContainer()
+    if (subscribedTo === container) return
+    container.resolve(Modules.EVENT_BUS).subscribe("auth.verification_requested", async ({ data }: any) => {
+      if (data?.code) verificationCodes.set(String(data.entity_id), String(data.code))
+    })
+    subscribedTo = container
+  }
+  const verificationCodeFor = async (email: string) => {
+    for (let i = 0; i < 50; i++) {
+      const code = verificationCodes.get(email)
+      if (code) return code
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    throw new Error(`no verification code for ${email}`)
+  }
+  // Request + confirm an e-mail verification for the identity behind `token`.
+  const verifyEmail = async (token: string, email: string) => {
+    ensureCodeSubscription()
+    const normalized = email.trim().toLowerCase()
+    verificationCodes.delete(normalized)
+    const auth = { authorization: `Bearer ${token}` }
+    const req = await api.post("/auth/verification/request", { entity_id: email, entity_type: "email" }, { headers: auth, validateStatus: () => true })
+    if (req.status >= 300) throw new Error(`verification request ${req.status}: ${JSON.stringify(req.data)}`)
+    const code = await verificationCodeFor(normalized)
+    const conf = await api.post("/auth/verification/confirm", { code }, { headers: auth, validateStatus: () => true })
+    if (conf.status >= 300) throw new Error(`verification confirm ${conf.status}: ${JSON.stringify(conf.data)}`)
+    return code
+  }
+
+  // Registered member (emailpass, e-mail verified): store headers with the member's bearer token.
   const registerCustomer = async (email: string) => {
     const password = "drn-test-only-Pw1" // local test account, never a real credential
     const store = await storeHeaders()
     const { data: reg } = await api.post("/auth/customer/emailpass/register", { email, password })
+    await verifyEmail(reg.token, email)
     await api.post("/store/customers", { email, first_name: "測試", last_name: "會員" }, { headers: { ...store, authorization: `Bearer ${reg.token}` } })
     const { data: login } = await api.post("/auth/customer/emailpass", { email, password })
     const headers = { ...store, authorization: `Bearer ${login.token}` }
@@ -214,6 +249,9 @@ export function makeCheckoutHelpers({ api, getContainer }: { api: Api; getContai
     storeHeaders,
     superAdminHeaders,
     registerCustomer,
+    verifyEmail,
+    verificationCodeFor,
+    ensureCodeSubscription,
     checkout,
     postNotice,
     postPaymentInfo,

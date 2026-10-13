@@ -58,7 +58,7 @@
 | `FILE_S3_PUBLIC_URL` | 同上 | 同上 |
 | `AFFILIATE_PORTAL_HMAC_SECRET` 🔒 | 分潤夥伴免登入唯讀成效頁的簽章 | 本專案定義 |
 | `INTEGRATION_API_TOKEN` 🔒 | 團購系統（tuangou-admin）讀取訂單／GMV 的唯讀權杖 | 本專案定義 |
-| `EMAIL_PROVIDER` | 交易信（訂單確認、出貨通知）服務 | TODO(需查證：Aki 選定寄信服務) |
+| `EMAIL_PROVIDER` | 寄信服務（會員 Email 驗證信；之後含訂單確認、出貨通知）。未設定＝不寄信（Email／LINE 註冊回 503，fail closed）；`log`＝僅開發／測試，把驗證連結寫進日誌（正式環境設定會啟動失敗）；其他值在 U-09 選定並實作前會啟動失敗 | 本專案定義（P5-01 審查 auth-2）；TODO(需查證：Aki 選定寄信服務 U-09) |
 
 ## apps/storefront（Next.js，Vercel）
 

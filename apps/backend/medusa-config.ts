@@ -1,6 +1,7 @@
 import { readFileSync } from "fs"
 import { ContainerRegistrationKeys, MedusaError, Modules, loadEnv, defineConfig } from "@medusajs/framework/utils"
 import { authProvidersFromEnv } from "./src/lib/auth/config"
+import { emailDeliveryFromEnv } from "./src/lib/email/config"
 import {
   ecpayInvoiceConfigured,
   ecpayInvoiceOptionsFromEnv,
@@ -104,6 +105,8 @@ const paymentModules = process.env.ECPAY_ENV
 if (ecpayInvoiceConfigured()) {
   ecpayInvoiceOptionsFromEnv()
 }
+// E-mail delivery (verification codes, P5-01 review auth-2): a bad EMAIL_PROVIDER stops the boot.
+emailDeliveryFromEnv()
 
 const fulfillmentModules = process.env.ECPAY_LOGISTICS_MERCHANT_ID
   ? [

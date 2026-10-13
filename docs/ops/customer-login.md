@@ -6,18 +6,34 @@
 
 | 方式 | 啟用條件 | 流程 |
 |---|---|---|
-| Email＋密碼 | 永遠啟用 | `POST /auth/customer/emailpass/register` → `POST /store/customers` → `POST /auth/customer/emailpass` |
+| Email＋密碼 | 永遠啟用 | `POST /auth/customer/emailpass/register` → **驗證 Email（§2）** → `POST /store/customers` → `POST /auth/customer/emailpass` |
 | Google | `GOOGLE_OAUTH_CLIENT_ID`、`GOOGLE_OAUTH_CLIENT_SECRET` 同時設定 | `POST /auth/customer/google` 回傳 `location` → 瀏覽器到 Google → 回到前台 `/auth/callback/google?code&state` → 前台呼叫 `POST /auth/customer/google/callback?code&state` 取得 token |
 | LINE | `LINE_LOGIN_CHANNEL_ID`、`LINE_LOGIN_CHANNEL_SECRET` 同時設定 | 同上，路徑換成 `line`；前台頁面 `/auth/callback/line` |
 
 只設一半的金鑰、或沒有 `STOREFRONT_URL`，後端會拒絕啟動。後台員工只能用 Email＋密碼登入。
 
-## 2. 第一次用 Google／LINE 登入（前台 P7 要做）
+## 2. 建立會員前要先證明 Email 是自己的（審查 auth-2）
 
-1. callback 取得的 token 還沒有對應會員（`actor_id` 是空的）。
-2. 前台呼叫 `POST /store/customers`（帶這個 token）建立會員。**Email 必填**（Medusa 2.21.2 的規定）。LINE 不提供 Email，所以前台要先請顧客填 Email。
-3. 再呼叫 `POST /auth/token/refresh` 換一個帶會員身分的 token。
-4. 之後同一個 Google／LINE 帳號登入，會直接回到同一位會員。
+Medusa 2.21.2 本身不檢查 Email 是誰的：任何人都能用別人的 Email 建會員，之後那個人用同一個 Email 以訪客身分下單時，訂單（姓名、地址、電話）會被掛到冒用者帳號下。所以 `POST /store/customers` 一定要先過這一關：
+
+| 登入方式 | 怎麼證明 |
+|---|---|
+| Google | 不用另外驗證：Google 只給已驗證的 Email。直接用 Google 帳號的 Email 建會員（填別的 Email 一樣要驗證） |
+| Email＋密碼 | 只能用登入用的那個 Email，而且要驗證 |
+| LINE | LINE 不提供 Email（或不保證已驗證），一律要驗證 |
+
+驗證流程（前台 P7 要做）：
+1. 帶著登入取得的 token 呼叫 `POST /auth/verification/request`，body `{ "entity_id": "<email>", "entity_type": "email" }`。
+2. 系統寄出驗證信，連結是 `STOREFRONT_URL/account/verify-email#code=…`（驗證碼放在 `#` 後面，不會送到伺服器或 Referer）。
+3. 前台的 `/account/verify-email` 頁**必須在同一個帳號登入的狀態下**呼叫 `POST /auth/verification/confirm`，body `{ "code": "…" }`。用別的帳號、或沒登入，都會被拒絕（防止有人用自己的帳號申請、騙別人點連結）。在另一台裝置或 LINE 內建瀏覽器打開時，請顧客先登入。
+4. 呼叫 `POST /store/customers` 建會員（Email 一律存成小寫）。
+5. 呼叫 `POST /auth/token/refresh` 換一個帶會員身分的 token。之後同一個 Google／LINE 帳號登入，會直接回到同一位會員。
+
+限制：同一個帳號 1 分鐘只能申請 1 次；同一個 Email 1 小時最多 5 次（429）。
+
+**還沒有寄信服務（U-09）時**：`EMAIL_PROVIDER` 沒設定，申請驗證會回 503「目前無法寄出驗證信，請改用 Google 登入或稍後再試。」，後台每天出現一則「會員驗證信無法寄出」提醒。**也就是說，正式站在 U-09 完成前，只有 Google 能註冊新會員。**
+
+已經有人用某個 Email 註冊了 Email＋密碼帳號、卻沒驗證時，本人註冊會看到「Identity with email already exists」：前台要提供「忘記密碼」讓本人取回。
 
 同一位顧客用 Email 註冊過、又用 LINE 登入時，系統**不會自動合併**成同一個會員。合併由客服在本人申請後處理（membership.md §3.3）。
 

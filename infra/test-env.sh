@@ -37,6 +37,9 @@ export ECPAY_LOGISTICS_SENDER_CELLPHONE="0912345678"
 # Express/Create is answered by a local stub started in the logistics integration spec.
 export ECPAY_LOGISTICS_API_BASE_URL="http://127.0.0.1:56391"
 
+# Verification e-mails are written to the log in tests (EMAIL_PROVIDER=log is refused in production).
+export EMAIL_PROVIDER=log
+
 # E-invoicing stays OFF here; integration-tests/http/ecpay-invoice.spec.ts turns it on for
 # itself (stub on 127.0.0.1:56392) so other suites' orders are never invoiced.
 
