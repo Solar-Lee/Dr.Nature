@@ -181,7 +181,7 @@ export async function reconcileEcpayDay(container: MedusaContainer, day: string)
         tag
       )
       if (outcome !== "captured") {
-        alert(`${row.merchantTradeNo} (TradeNo ${row.tradeNo}, NT$${row.amount}) paid at ECPay but not captured in Medusa (${outcome}): refund manually`)
+        alert(`${row.merchantTradeNo} (TradeNo ${row.tradeNo}, NT$${row.amount}) paid at ECPay but not kept on a live order in Medusa (${outcome}): refund manually`)
         return
       }
       report.recovered.push(row.merchantTradeNo)

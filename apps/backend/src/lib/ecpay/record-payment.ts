@@ -15,7 +15,9 @@
 //     signature, trade number, session id, amount);
 //  4. processPaymentWorkflow (authorize -> capture; completes the cart if needed);
 //  5. confirm the payment is captured and the cart became an order, else throw (callers
-//     retry: ECPay re-sends the notice; the reconcile jobs run again).
+//     retry: ECPay re-sends the notice; the reconcile jobs run again);
+//  6. an admin cancel that committed meanwhile (it takes no lock): captured on a canceled order
+//     and not refunded -> flagged + [ECPAY-ALERT], outcome paid_after_cancel.
 // Callers verify the proof's signature and bind it to the session BEFORE calling this.
 import type { MedusaContainer } from "@medusajs/framework/types"
 import { BigNumber, ContainerRegistrationKeys, MedusaError, PaymentActions } from "@medusajs/framework/utils"
@@ -23,6 +25,7 @@ import { processPaymentWorkflow } from "@medusajs/medusa/core-flows"
 import { attachEcpayNoticeWorkflow } from "../../workflows/ecpay/attach-ecpay-notice"
 import { flagPaidAfterCancelWorkflow } from "../../workflows/ecpay/flag-paid-after-cancel"
 import { markOrderMetadataWorkflow } from "../../workflows/ecpay/mark-order-metadata"
+import { flagOpenCaptures, openCapturesOnCanceledOrder } from "./cancel-race"
 import { withCollectionLock } from "./collection-lock"
 
 export type VerifiedPayment = {
@@ -108,6 +111,15 @@ export async function recordVerifiedPaymentHeld(container: MedusaContainer, p: V
   })
   if (!captured.some((r) => r?.captured_at)) {
     throw new MedusaError(MedusaError.Types.UNEXPECTED_STATE, "payment not captured after processing")
+  }
+  // An admin cancel (no collection lock) may have committed after the check above, its refund
+  // step having read no capture (lib/ecpay/cancel-race.ts).
+  if (order) {
+    const open = (await openCapturesOnCanceledOrder(container, order.id)).filter((c) => c.payment_session_id === p.session.id)
+    if (open.length) {
+      await flagOpenCaptures(container, order.id, open, tag)
+      return "paid_after_cancel"
+    }
   }
   const { data: cartLinks } = await query.graph({
     entity: "cart_payment_collection",

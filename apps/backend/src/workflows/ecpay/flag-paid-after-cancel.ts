@@ -1,5 +1,6 @@
 // Records on a canceled order that ECPay reports it paid afterwards, so staff can refund
-// it in the ECPay back office (P4-03). The payment is deliberately not captured in Medusa.
+// it in the ECPay back office (P4-03). The payment is not captured in Medusa, except when an
+// admin cancel raced the capture (lib/ecpay/cancel-race.ts): then it is captured, unrefunded.
 import {
   createStep,
   createWorkflow,
