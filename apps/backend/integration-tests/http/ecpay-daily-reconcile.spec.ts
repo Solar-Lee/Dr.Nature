@@ -4,8 +4,10 @@
 // every discrepancy. Not provable here: the production IP whitelist and real file timing.
 // Run: cd apps/backend && ../../infra/test-env.sh pnpm run test:integration:http
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import devAddTestStock from "../../src/scripts/dev-add-test-stock"
 import { reconcileEcpayDay, taipeiDay } from "../../src/jobs/ecpay-daily-reconcile"
+import { repayOrder } from "../../src/lib/ecpay/repay"
 import { resetTradeQueryPause } from "../../src/lib/ecpay/trade-query"
 import { MAC, MERCHANT_ID, addTestShipping, makeCheckoutHelpers, runAllSeeds } from "../helpers/ecpay-checkout"
 import { makeTradeStub } from "../helpers/ecpay-trade-stub"
@@ -99,6 +101,53 @@ medusaIntegrationTestRunner({
       expect((await h.postNotice(h.paidNotice(c.sessionData, c.session, { PaymentDate: ecpayDate(yesterday, "23:50:00") }))).data).toEqual("1|OK")
       const r = await run()
       expect(r.alerts.join()).not.toContain(c.sessionData.merchant_trade_no)
+    })
+
+    it("paid in the file for an order canceled meanwhile: alerted (paid_after_cancel), not counted as recovered", async () => {
+      const c = await h.checkout({ choosePayment: "ATM" })
+      const admin = await h.superAdminHeaders(`dr-${c.completion.order.id}@drn.test`)
+      expect((await api.post(`/admin/orders/${c.completion.order.id}/cancel`, {}, { headers: admin, validateStatus: () => true })).status).toEqual(200)
+      stub.state.fileRows = [{ merchantTradeNo: c.sessionData.merchant_trade_no, amount: c.sessionData.amount, method: "ATM" }]
+      stub.trades.set(c.sessionData.merchant_trade_no, { status: "1", amount: c.sessionData.amount, paymentType: "ATM_LAND" })
+      const r = await run()
+      expect(r.recovered).toEqual([])
+      expect(r.alerts.join()).toContain(`${c.sessionData.merchant_trade_no}`)
+      expect(r.alerts.join()).toContain("paid_after_cancel")
+      expect(await h.capturedPayments(c.session.id)).toHaveLength(0)
+    })
+
+    it("paid in the file on a second trade of an already paid (re-paid) order: alerted (paid_twice), not recovered", async () => {
+      const c = await h.checkout()
+      const s2 = ((await repayOrder(getContainer(), { orderId: c.completion.order.id, email: "buyer@drn.test" }, { now: new Date(Date.now() + 41 * 60_000) })).body as any).payment_session
+      expect((await h.postNotice(h.paidNotice(c.sessionData, c.session, { PaymentDate: ecpayDate(today()) }))).data).toEqual("1|OK")
+      stub.state.fileRows = [
+        { merchantTradeNo: c.sessionData.merchant_trade_no, amount: c.sessionData.amount },
+        { merchantTradeNo: s2.data.merchant_trade_no, amount: s2.data.amount },
+      ]
+      stub.trades.set(s2.data.merchant_trade_no, { status: "1", amount: s2.data.amount })
+      const r = await run()
+      expect(r).toMatchObject({ ok: 1, recovered: [] })
+      expect(r.alerts).toEqual([expect.stringContaining(`${s2.data.merchant_trade_no} (TradeNo`)])
+      expect(r.alerts[0]).toContain("paid_twice")
+      expect(await h.capturedPayments(s2.id)).toHaveLength(0)
+    })
+
+    const pg = () => getContainer().resolve(ContainerRegistrationKeys.PG_CONNECTION)
+
+    it("a capture whose session is older than the session window is still checked (sessions looked up by id)", async () => {
+      const c = await h.checkout()
+      expect((await h.postNotice(h.paidNotice(c.sessionData, c.session, { PaymentDate: ecpayDate(today()) }))).data).toEqual("1|OK")
+      await pg().raw("update payment_session set created_at = created_at - interval '20 days' where id = ?", [c.session.id])
+      const r = await run()
+      expect(r.alerts.join()).toContain(`${c.sessionData.merchant_trade_no} is captured in Medusa but ECPay does not list it`)
+    })
+
+    it("a captured ECPay payment whose session has no trade number alerts instead of being skipped", async () => {
+      const c = await h.checkout()
+      expect((await h.postNotice(h.paidNotice(c.sessionData, c.session, { PaymentDate: ecpayDate(today()) }))).data).toEqual("1|OK")
+      await pg().raw("update payment_session set data = data - 'merchant_trade_no' where id = ?", [c.session.id])
+      const r = await run()
+      expect(r.alerts.join()).toContain(`(${c.session.id}) has no ECPay trade number`)
     })
 
     it("ECPay's error row (one file per minute) is reported, not read as 'no trades'", async () => {

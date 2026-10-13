@@ -4,10 +4,14 @@
 //  - paid at ECPay, captured in Medusa                 -> ok
 //  - paid at ECPay, session found but not captured     -> one signed QueryTradeInfo to confirm,
 //    then recordVerifiedPayment (same path as the ReturnURL route); this catches offline
-//    payments (ATM / CVS / barcode) whose notice was lost, which must not be polled (P4-10)
-//  - paid at ECPay, no session (replaced by a re-pay, or unknown) -> [ECPAY-ALERT]
+//    payments (ATM / CVS / barcode) whose notice was lost, which must not be polled (P4-10).
+//    Only a capture counts as recovered; any other outcome (paid after the order was canceled,
+//    paid twice on a re-paid order) is money without a sale -> [ECPAY-ALERT]
+//  - paid at ECPay, no session (replaced before checkout, or unknown) -> [ECPAY-ALERT]
 //  - amount differs                                    -> [ECPAY-ALERT], nothing recorded
-//  - captured in Medusa that day but not paid in the file -> [ECPAY-ALERT]
+//  - captured in Medusa that day but not paid in the file -> [ECPAY-ALERT]; the payments'
+//    sessions are looked up by id (not the created_at window), and a captured ECPay payment
+//    whose session has no trade number is an alert too, never skipped
 // One file per run (ECPay allows one per IP per minute). Production needs the server IP
 // whitelisted in the ECPay vendor back office (DEV_PLAN U-15).
 import type { MedusaContainer } from "@medusajs/framework/types"
@@ -125,17 +129,29 @@ export async function reconcileEcpayDay(container: MedusaContainer, day: string)
   }
   const { data: dayPayments } = await query.graph({
     entity: "payment",
-    fields: ["payment_session_id", "captured_at", "provider_id"],
+    fields: ["id", "payment_session_id", "captured_at", "provider_id"],
     filters: { provider_id: ECPAY_PROVIDER_ID, captured_at: { $gte: dayStart, $lt: new Date(dayStart.getTime() + DAY_MS) } },
   })
-  for (const p of dayPayments as { payment_session_id: string }[]) {
-    const s = sessions.find((x) => x.id === p.payment_session_id)
+  const captures = dayPayments as { id: string; payment_session_id?: string | null }[]
+  // By id: a payment's session can be older than the window above (an old trade kept by re-pay,
+  // a barcode paid late), and skipping it would hide exactly the capture this check is for.
+  const sessionIds = [...new Set(captures.map((p) => p.payment_session_id).filter((id): id is string => !!id))]
+  const { data: captureSessions } = sessionIds.length
+    ? await query.graph({ entity: "payment_session", fields: ["id", "status", "payment_collection_id", "data"], filters: { id: sessionIds } })
+    : { data: [] }
+  const sessionById = new Map((captureSessions as SessionRow[]).map((s) => [s.id, s]))
+  for (const p of captures) {
+    const s = p.payment_session_id ? sessionById.get(p.payment_session_id) : undefined
     const trade = String(s?.data?.merchant_trade_no ?? "")
+    if (!trade) {
+      alert(`payment ${p.id} is captured in Medusa on ${day} but its session (${p.payment_session_id ?? "none"}) has no ECPay trade number: check manually`)
+      continue
+    }
     const paidOn = paymentDay(s)
     if (paidOn && paidOn !== day) {
       continue // listed (or missing) in that day's file
     }
-    if (trade && !listed.has(trade) && !report.recovered.includes(trade)) {
+    if (!listed.has(trade) && !report.recovered.includes(trade)) {
       alert(`${trade} is captured in Medusa but ECPay does not list it as paid on ${day}`)
     }
   }
@@ -164,6 +180,10 @@ export async function reconcileEcpayDay(container: MedusaContainer, day: string)
         },
         tag
       )
+      if (outcome !== "captured") {
+        alert(`${row.merchantTradeNo} (TradeNo ${row.tradeNo}, NT$${row.amount}) paid at ECPay but not captured in Medusa (${outcome}): refund manually`)
+        return
+      }
       report.recovered.push(row.merchantTradeNo)
       logger.warn(`${tag}: paid at ECPay (${row.paymentMethod}) but missing in Medusa; recorded (${outcome})`)
     } catch (e) {
