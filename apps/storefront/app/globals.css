@@ -262,7 +262,7 @@ p {
     display: grid;
     gap: 2px;
   }
-  .sidenav a {
+  .sidenav nav a {
     display: flex;
     gap: 8px;
     align-items: baseline;
@@ -413,12 +413,20 @@ a:hover > .arrow {
 /* ---------- home: 01 hero ---------- */
 .hero {
   position: relative;
-  min-height: calc(100dvh - 30px);
+  /* one viewport, like the prototype: copy on top, bottle in the middle, wordmark anchored at the bottom */
+  height: calc(100dvh - 30px);
+  min-height: 600px;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  padding: 28px var(--gutter) 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 24px var(--gutter) 0;
   overflow: hidden;
   border-bottom: 1px solid var(--line);
+}
+@media (max-width: 899px) {
+  .hero {
+    height: auto;
+    min-height: calc(100dvh - 30px);
+  }
 }
 .hero-top {
   display: grid;
@@ -462,9 +470,14 @@ a:hover > .arrow {
 }
 .hero-stage {
   position: relative;
-  min-height: 46svh;
+  min-height: 0;
   display: grid;
   place-items: center;
+}
+@media (max-width: 899px) {
+  .hero-stage {
+    min-height: 46svh;
+  }
 }
 .hero-video {
   position: absolute;
@@ -482,14 +495,42 @@ a:hover > .arrow {
   letter-spacing: 0.06em;
   opacity: 0.75;
 }
-.hero-stage .stage3d {
+.stage3d {
   position: relative;
+}
+.hero-stage .stage3d {
   z-index: 1;
   width: min(60vw, 520px);
   aspect-ratio: 1;
 }
-.hero-stage .stage3d.tilt {
-  transform: rotate(-8deg);
+@media (max-width: 899px) {
+  .hero-stage .stage3d.tilt {
+    transform: rotate(-8deg);
+  }
+}
+@media (min-width: 900px) {
+  /* Desktop, as in the prototype: the bottle floats over the hero (right of the copy) and overlaps
+     the wordmark; it takes no row of its own, so the wordmark stays on the first screen. */
+  .hero-stage {
+    position: static;
+  }
+  .hero-stage .stage3d {
+    /* explicit size: an absolutely positioned box with width:auto would shrink to the canvas's own
+       intrinsic size (circular with the renderer's ResizeObserver) */
+    position: absolute;
+    top: 12%;
+    left: 50%;
+    width: min(72vh, 600px);
+    height: min(72vh, 600px);
+    max-height: none;
+    transform: translateX(-14%);
+  }
+  .hero-stage .stage3d.tilt {
+    transform: translateX(-14%) rotate(-8deg);
+  }
+  .hero-video {
+    inset: 34% 0 0;
+  }
 }
 .giant {
   font-family: var(--latin);
@@ -650,9 +691,12 @@ a:hover > .arrow {
 }
 @media (min-width: 900px) {
   .habits {
-    grid-template-columns: 0.55fr 1.45fr;
+    grid-template-columns: 0.75fr 1.25fr;
     align-items: end;
   }
+}
+.habits h2 {
+  font-size: clamp(1.7rem, 1.2rem + 1.8vw, 2.7rem);
 }
 .scenes {
   display: flex;

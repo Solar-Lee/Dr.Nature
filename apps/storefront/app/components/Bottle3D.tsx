@@ -203,7 +203,7 @@ export function Bottle3D({ num, name, sub = "60 顆膠囊 · DAILY FLORA", class
   }, [num, name, sub, tilt, scale]);
 
   return (
-    <div ref={ref} className={className} style={{ touchAction: "pan-y", cursor: "grab", position: "relative" }} aria-label={`${name} 3D 瓶身`} role="img">
+    <div ref={ref} className={className} style={{ touchAction: "pan-y", cursor: "grab" }} aria-label={`${name} 3D 瓶身`} role="img">
       {!ready && (
         <div className="slot" style={{ position: "absolute", inset: "12% 20%", border: "none", background: "transparent" }}>
           <span>
