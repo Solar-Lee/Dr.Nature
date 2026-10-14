@@ -74,10 +74,15 @@ Mac mini（Docker Desktop；Aki 登入後 LaunchAgent 啟動）
    只回報 `missing=0 forbidden=0`，**不要貼任何值**。
 6. **Cloudflare**（唯讀回報 Bot Fight Mode、Browser Integrity Check、custom rules 條數、rate limiting 額度、Under Attack；帳號開 2FA；刪除 `api.dr.nature` 的 A 記錄）。等 CODE 回報「遷移成功、本機煙霧測試通過」之後：
    - Zero Trust › Access：`drn-api-admin`（整個 `<API_HOST>`，Allow，只放 Aki，24h）；`drn-api-public`（`<API_HOST>/hooks/ecpay/*` 與 `/health`，Bypass，Everyone）。
-   - Networking › Tunnels：建立 `drn-tunnel`（環境選 Docker），只複製 `eyJ` 開頭的 token，在 Mac 終端機執行：
+   - Networking › Tunnels：建立 `drn-tunnel`（環境選 Docker），只複製 `eyJ` 開頭的 token。在 **macOS 的 Terminal.app**（不是 Claude Code 的終端機面板：那裡 `pbpaste` 讀不到剪貼簿，2026-10-14 實測回 0 bytes）執行：
      ```bash
-     (umask 077; printf 'TUNNEL_TOKEN=%s\n' "$(pbpaste)" > ~/drn/tunnel.env); pbcopy </dev/null
+     (umask 077; printf 'TUNNEL_TOKEN=%s\n' "$(pbpaste)" > ~/drn/tunnel.env); pbcopy </dev/null; grep -c '^TUNNEL_TOKEN=eyJ' ~/drn/tunnel.env
      ```
+     或在任何終端機用隱藏輸入貼上（zsh）：
+     ```bash
+     (umask 077; read -rs 'token?paste the eyJ token, then press Enter: '; printf 'TUNNEL_TOKEN=%s\n' "$token" > ~/drn/tunnel.env); grep -c '^TUNNEL_TOKEN=eyJ' ~/drn/tunnel.env
+     ```
+     兩者都要印出 `1`。
    - Add route › Published application：`<API_HOST>` → `http://drn-backend:9000`；到 DNS 確認 CNAME 是橘雲。
    - WAF custom rule `drn-ecpay-callback-skip`（第一條）：`(http.host eq "<API_HOST>" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/hooks/ecpay/"))` → Skip（managed rules、rate limiting、其餘 custom rules）。TODO(需查證)：運算式在 Free 方案的可用函式，建立時以後台提示為準。
    - 通知：Tunnel Health、Tunnel Creation／Deletion（Email）。
