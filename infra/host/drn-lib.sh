@@ -61,11 +61,15 @@ drn_pg_sql() {
   printf '%s\n' "$sql" | "$drn_docker" exec -i "$container" sh -c 'psql -AtX -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 }
 
+# Postgres image used by every one-off container (restore drill, uploads backup); must equal the
+# drn-postgres image in infra/docker-compose.prod.yml (checked by scripts/__tests__/host-files.test.mjs).
+drn_pg_image="postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+
 # Business-table fingerprint (C11): counts and newest updated_at of the tables a shopper or ECPay
 # can write; 12 hex chars. Table names per Medusa 2.21.2 migrations.
 drn_fingerprint() {
   local container="${1:-drn-postgres}"
-  drn_pg_sql "select 'order',count(*),coalesce(max(updated_at)::text,'') from \"order\"
+  drn_pg_sql "/* drn:fingerprint */ select 'order',count(*),coalesce(max(updated_at)::text,'') from \"order\"
 union all select 'payment',count(*),coalesce(max(updated_at)::text,'') from payment
 union all select 'payment_collection',count(*),coalesce(max(updated_at)::text,'') from payment_collection
 union all select 'payment_session',count(*),coalesce(max(updated_at)::text,'') from payment_session
@@ -81,3 +85,17 @@ drn_health() { "$drn_docker" inspect -f '{{if .State.Health}}{{.State.Health.Sta
 
 # Edge profile flag.
 drn_edge_enabled() { [ -e "$HOME/drn/state/edge-enabled" ]; }
+
+# Anchors of a database (backup manifest and restore drill compare them). One row:
+#   product|public tables|finished drn-* scripts|unfinished scripts|order|customer|payment
+drn_anchors() {
+  local container="${1:-drn-postgres}"
+  drn_pg_sql "/* drn:anchors */ select (select count(*) from product),
+ (select count(*) from information_schema.tables where table_schema = 'public'),
+ (select count(*) from script_migrations where finished_at is not null and script_name like 'drn-%'),
+ (select count(*) from script_migrations where finished_at is null),
+ (select count(*) from \"order\"), (select count(*) from customer), (select count(*) from payment)" "$container"
+}
+
+# Reads one key from a backup manifest (key=value lines).
+drn_manifest_get() { awk -F= -v k="$2" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$1"; }

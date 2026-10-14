@@ -1,9 +1,33 @@
 #!/bin/bash
 # Fake drn-docker for scripts/__tests__/*.test.mjs: logs every call to $FAKE/calls.log and answers
-# from files in $FAKE. Never talks to Docker.
+# from files in $FAKE. Never talks to Docker. Any command naming a container that contains "nope"
+# fails like a missing container.
 F="${FAKE:?FAKE dir required}"
 echo "$*" >> "$F/calls.log"
+all="$*"
 last="${*: -1}"
+case "$all" in *nope*) echo "Error: No such container" >&2; exit 1 ;; esac
+case "$all" in
+  "exec "*"pg_dumpall"*) echo "-- fake globals"; exit 0 ;;
+  "exec "*"pg_dump "*) cat "$F/dump" 2>/dev/null || printf 'PGDMP-fake'; exit 0 ;;
+  "exec -i "*"pg_restore --list"*) cat >/dev/null; cat "$F/toc" 2>/dev/null; exit 0 ;;
+  "exec -i "*"pg_restore "*) cat >/dev/null; exit "$(cat "$F/restore-exit" 2>/dev/null || echo 0)" ;;
+  "exec "*"pg_isready"*) exit "$(cat "$F/ready-exit" 2>/dev/null || echo 0)" ;;
+  "exec -i "*"psql"*)
+    sql="$(cat)"
+    container="$3"
+    case "$sql" in
+      *"drn:anchors"*) cat "$F/anchors-$container" 2>/dev/null || cat "$F/anchors" 2>/dev/null || echo "0|0|0|0|0|0|0" ;;
+      *"drn:fingerprint"*) cat "$F/fingerprint-rows" 2>/dev/null || echo "order|0|" ;;
+      *"finished_at is null"*) cat "$F/unfinished" 2>/dev/null || echo 0 ;;
+      *"finished_at is not null"*) cat "$F/finished" 2>/dev/null ;;
+      *) cat "$F/sql-rows" 2>/dev/null ;;
+    esac
+    exit 0 ;;
+  "run -d "*) echo "fakecontainerid"; exit "$(cat "$F/run-d-exit" 2>/dev/null || echo 0)" ;;
+  "run --rm --network none -v "*" tar "*) tar -C "$F/uploads" -cf - . | gzip -c; exit 0 ;;  # bsdtar -z pads after gzip; busybox tar in the image does not
+  "stop "*) exit 0 ;;
+esac
 case "$1 $2" in
   "info "*|"info") exit 0 ;;
   "compose "*) exit "$(cat "$F/compose-exit" 2>/dev/null || echo 0)" ;;
@@ -18,13 +42,6 @@ case "$1 $2" in
       *) echo "" ;;
     esac ;;
   "run --rm") cat "$F/run-out" 2>/dev/null; exit "$(cat "$F/run-exit" 2>/dev/null || echo 0)" ;;
-  "exec -i")
-    sql="$(cat)"
-    case "$sql" in
-      *"finished_at is null"*) cat "$F/unfinished" 2>/dev/null || echo 0 ;;
-      *"finished_at is not null"*) cat "$F/finished" 2>/dev/null ;;
-      *) cat "$F/sql-rows" 2>/dev/null ;;
-    esac ;;
   "exec "*) exit "$(cat "$F/exec-exit" 2>/dev/null || echo 0)" ;;
   *) exit 0 ;;
 esac
