@@ -7,7 +7,7 @@ set -euo pipefail
 umask 077
 src="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 dir="$HOME/drn"
-install -d -m 700 "$dir" "$dir/bin" "$dir/docker-config" "$dir/backups" "$dir/backups/daily" "$dir/backups/weekly" \
+install -d -m 700 "$dir" "$dir/bin" "$dir/docker-config" "$dir/cloudflared" "$dir/backups" "$dir/backups/daily" "$dir/backups/weekly" \
   "$dir/backups/pre" "$dir/backups/tmp" "$dir/logs" "$dir/state" "$dir/state/monitor" "$dir/run" "$dir/drill"
 
 # Client config only when absent (nothing else ever edits it).

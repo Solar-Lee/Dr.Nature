@@ -1,7 +1,7 @@
 # [P12-02] Dr.Nature backend on the Mac mini (DEV_PLAN A7; CLAUDE.md: every resource prefixed
 # drn). Runs on Docker Desktop through ~/drn/bin/drn-docker (fixed DOCKER_HOST and DOCKER_CONFIG).
 # On the host: ~/drn/docker-compose.prod.yml next to ~/drn/.env (written by Aki with
-# drn-gen-env.sh, never in chat; names in docs/ENV.md) and ~/drn/tunnel.env (TUNNEL_TOKEN).
+# drn-gen-env.sh, never in chat; names in docs/ENV.md) and ~/drn/cloudflared/ (tunnel files).
 #   ~/drn/bin/drn-compose up -d --wait            (= drn-docker compose -p drn -f this file)
 # Rules:
 #  - `compose config` only with -q (the rendered config contains the secrets from .env).
@@ -98,13 +98,15 @@ services:
 
   drn-cloudflared:
     # Entrypoint of the image is ["cloudflared","--no-autoupdate"] (verified 2026-10-14 with
-    # image inspect), so the command is just `tunnel run`; the token comes from TUNNEL_TOKEN in
-    # tunnel.env (600). The tunnel's published route points at http://drn-backend:9000.
+    # image inspect). Locally-managed tunnel: credentials and ingress rules live in
+    # ~/drn/cloudflared (600, written by drn-tunnel-setup.sh after `cloudflared tunnel login`),
+    # mounted read-only; no token passes through the clipboard or the environment.
     image: cloudflare/cloudflared:2026.10.0@sha256:9b49eed8f62806d5d45ddf59ecefb5710429598ea6d3fcccd2af938f621b2b07
     container_name: drn-cloudflared
     profiles: [edge]
-    command: ["tunnel", "run"]
-    env_file: tunnel.env
+    command: ["tunnel", "--config", "/home/nonroot/.cloudflared/config.yml", "run"]
+    volumes:
+      - ./cloudflared:/home/nonroot/.cloudflared:ro
     restart: unless-stopped
     networks: [drn_edge]
     depends_on:

@@ -82,14 +82,14 @@ test("postgres and redis get oom_score_adj -500; every service has a memory limi
   for (const name of Object.keys(svc)) assert.match(svc[name], /mem_limit: \d+m/, name);
 });
 
-test("cloudflared: profile edge, only drn_edge, token via env_file, waits for a healthy backend", () => {
+test("cloudflared: profile edge, only drn_edge, credentials mounted read-only, waits for a healthy backend", () => {
   const c = svc["drn-cloudflared"];
   assert.match(c, /profiles: \[edge\]/);
   assert.match(c, /networks: \[drn_edge\]/);
-  assert.match(c, /env_file: tunnel\.env/);
-  assert.match(c, /command: \["tunnel", "run"\]/);
+  assert.match(c, /- \.\/cloudflared:\/home\/nonroot\/\.cloudflared:ro/);
+  assert.match(c, /command: \["tunnel", "--config", "\/home\/nonroot\/\.cloudflared\/config\.yml", "run"\]/);
   assert.match(c, /drn-backend:\n\s+condition: service_healthy/);
-  assert.doesNotMatch(c, /TUNNEL_TOKEN=|--token/);
+  assert.doesNotMatch(c, /TUNNEL_TOKEN|--token|env_file/);
 });
 
 test("backend joins drn_net and drn_edge; worker only drn_net (anchor) and has no healthcheck disable", () => {
