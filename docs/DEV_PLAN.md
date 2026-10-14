@@ -119,7 +119,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-18 | 付款規則決定（詳見 [reviews/2026-10-13-p4-p5-review.md](reviews/2026-10-13-p4-p5-review.md)「要 Aki 決定」）：① ATM／超商代碼過期後要不要保留重新付款的時間（目前期限一到就自動取消）② 每張訂單最多 5 筆綠界交易 ③ Apple Pay 未付款改為 180 分鐘取消（原 24 小時）、信用卡仍預設 180 分鐘 ④ 信用卡被拒後 40 分鐘才能重新付款 | P4-09 定案 |
 | U-19 | 問綠界：① 信用卡付款頁最長開多久 ② QueryTradeInfo 能否看出「已取號」 ③ TradeNoAio 對帳檔最大日期範圍 | P4-09 縮短等待、P4-07 多日對帳 |
 | U-20 | ~~核准 Mac mini 守則與部署決定~~ ✅ 2026-10-14 Aki：「D1–D25 照建議，開始主機端步驟」 | P12 全部主機端步驟 |
-| U-21 | Mac mini 設定：電源（不睡眠、斷電後自動開機）、關閉自動安裝 macOS 更新、Docker Desktop「登入時自動啟動」、網路線、路由器不轉發、UPS | P12-06、P12-19 |
+| U-21 | Mac mini 設定：~~電源（不睡眠、斷電後自動開機）~~、關閉自動安裝 macOS 更新、Docker Desktop「登入時自動啟動」、網路線、路由器不轉發、UPS。2026-10-14 Aki 執行 `sudo pmset -a sleep 0 disksleep 0 autorestart 1 womp 1 powernap 0`，`pmset -g custom` 查證 sleep 0／disksleep 0／autorestart 1／womp 1／powernap 0（此前 10-14 15:06–15:25 曾閒置睡眠，期間 API 斷線）。**仍待：`AutomaticallyInstallMacOSUpdates` 讀到 1（自動安裝仍開）、Docker Desktop 自動啟動未確認** | P12-06、P12-19 |
 | U-22 | ~~在主機執行 `drn-gen-env.sh <API_HOST>` 產生正式 `.env`~~ ✅ 2026-10-14（env-check missing=0 forbidden=0） | P12-06 |
 | U-23 | Cloudflare：帳號 2FA、~~刪舊 A 記錄~~、~~**Access 兩個應用**~~、~~WAF skip 規則~~、~~Tunnel 通知~~（2026-10-14 Aki 在對話逐項核准，CODE 在後台建立，ingress 已改 public）；Healthchecks 5 個檢查、UptimeRobot、age 金鑰、R2 bucket 與 rclone；步驟見 [ops/deploy-backend.md](ops/deploy-backend.md) §2。~~Tunnel 與 token~~ ✅ 2026-10-14 Aki 在瀏覽器 Authorize，tunnel 與 route 由 CODE 建立 | P12-04、P12-08、P12-20 |
 
