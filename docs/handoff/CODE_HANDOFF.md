@@ -1,6 +1,8 @@
-# CODE 交接：換到 Mac mini 接續（2026-10-13）
+# CODE 交接：換到 Mac mini 接續（2026-10-13；2026-10-14 更新）
 
-給在 Mac mini 上新開的 Claude Code 工作階段。依序讀：`CLAUDE.md`（絕對禁令）→ 本檔 → [DEV_PLAN.md](../DEV_PLAN.md)。本檔取代舊工作階段的本機記憶（那份記憶留在舊電腦，不會跟著 repo 過來）。
+給在 Mac mini 上新開的 Claude Code 工作階段。依序讀：`CLAUDE.md`（絕對禁令，含 §1b Mac mini 草案）→ 本檔 → [DEV_PLAN.md](../DEV_PLAN.md) P12 → [ops/deploy-backend.md](../ops/deploy-backend.md)。本檔取代舊工作階段的本機記憶。
+
+**2026-10-14 狀態**：Mac mini 工作階段已完成 P12 的所有 repo 端任務（程式修正、compose、主機腳本、備份／監看／部署腳本與測試、映像建置與本機演練）。正式站尚未啟動：卡在只有 Aki 能做的事（核准 CLAUDE.md §1b、產生 `.env`、Cloudflare Tunnel／Access／DNS、Docker Desktop 自動啟動、電源設定）。清單在 [ops/deploy-backend.md](../ops/deploy-backend.md) §1–§2。
 
 ## 1. Aki 的最新決定（2026-10-13 18:40 前後）
 
@@ -8,7 +10,7 @@
 |---|---|
 | U-04 暫不升級 | 不用 Supabase Pro，也沒有 Vercel 團隊。Supabase 組織「Alex-Lee's Org」是 Free 方案，已有 2 個其他系統的專案 |
 | U-05 已完成 | `api.dr.nature.smilelife.tw` A → 151.145.69.134（DNS only），2026-10-13 已查證可解析。**若改走 Mac mini＋Cloudflare Tunnel，這筆記錄要改**（見 §4） |
-| **正式主機改為 Mac mini M4**（24 GB 以上 RAM／512 GB 以上 SSD） | 取代 DEV_PLAN A3 的「VPS＋Supabase」。資料庫先自架在 Mac mini（`drn-postgres`），之後可搬到 Supabase |
+| **正式主機改為 Mac mini M4**（實測 **16 GB** RAM／**460 GB** SSD，約 189 GB 可用；macOS 26.4） | 取代 DEV_PLAN A3 的「VPS＋Supabase」。資料庫自架在 Mac mini（`drn-postgres`），容器執行環境是 **Docker Desktop 29.6.1**（Aki 2026-10-13 安裝；原計畫的 Colima 不用） |
 | Claude Code 在 Mac mini 上開新工作階段接手 | 開發、建置、正式站都在 Mac mini |
 | MVP 範圍 | **只上後端**：Medusa API＋管理後台（/app）、綠界**沙箱**回呼（金流、物流、發票）可從公開 HTTPS 收到、排程、備份與還原演練、告警可見。前台維持「官網準備中」暫時頁。理由：設計交付物 D-01～D-10 全部未開始，產品命名閘門 G2 未過，不能公開商品頁 |
 
@@ -34,24 +36,19 @@
 | `4. Design reference/` 影片 | 用 Git LFS，clone 前先 `git lfs install` |
 | 舊電腦上的本機開發 `.env` | 不存在；本機開發與測試的環境變數來自 `infra/dev-env.sh`、`infra/test-env.sh` |
 
-## 4. 下一步：在 Mac mini 上
+## 4. 下一步：在 Mac mini 上（2026-10-14 更新）
 
-### 4.1 準備環境（每個版本號都先查證，CLAUDE.md §3）
-1. 安裝：Xcode Command Line Tools、git、git-lfs、Node 22（與 CI 相同主版本）、pnpm 9.15.9（`corepack`）、容器執行環境（Docker Desktop 或 OrbStack，選定前查證兩者在 Apple Silicon 開機自動啟動、資源限制、compose 支援）。
-2. `git clone https://github.com/Solar-Lee/Dr.Nature.git` → `pnpm install --frozen-lockfile`。
-3. 啟動開發用 Postgres／Redis：`docker compose -f infra/docker-compose.dev.yml up -d`（Postgres 在 localhost:55432）。
-4. **先跑 `bash scripts/test-all.sh`，離場碼 0 才能往下做**。這也證明 Mac mini 的環境與舊電腦一致。
+### 4.1 環境（已完成）
+Node 22.23.2（mise）、pnpm 9.15.9、Docker Desktop 29.6.1。`bash scripts/test-all.sh` 在 2026-10-14 的每個里程碑提交都回 0（開發資料庫是 Docker Desktop 上的 `drn-dev`，`127.0.0.1:55432`／`56379`）。注意：從舊電腦複製來的 `node_modules` 帶 `com.apple.quarantine`，原生模組載不起來；刪掉後 `pnpm install --frozen-lockfile` 重裝即可。
 
-### 4.2 重新規劃正式部署（Mac mini 版）
-用 workflow 重跑「研究 → 三份競爭方案 → 評審 → 批評與修訂迴圈」，事實換成 Mac mini。舊工作階段的規劃流程在研究階段就被停下，沒有可沿用的結論。要決定與查證的重點：
+### 4.2 部署（repo 端全部完成，主機端等 Aki）
+計畫由 2026-10-13 的 workflow（研究 → 三份方案 → 評審 → 批評迴圈）產出，再依 Docker Desktop 改寫。已交付：
+- 程式：P12-14（DB TLS 規則）、P12-15（上傳檔）、P12-16（ENV 白名單）、P12-24（缺 REDIS_URL 拒啟）、P12-20a（排程心跳）、P12-10a（公開網址演練腳本）。
+- 基礎設施：P12-02 compose（Mac mini 版，含 cloudflared 與 drill override）、P12-17 `.env` 產生腳本、P12-18 主機套件（`infra/host/`：drn-docker 包裝、compose 包裝、維護旗標、開機啟動、ALERT 掃描、遷移檢查、演練旗標、版本帳本、安裝器、LaunchAgent 範本）、P12-03 建置腳本與 lockfile 比對、P12-08／P12-21 備份與還原演練、P12-20 監看、P12-11 部署與回滾、P12-01 盤點、P12-28 探測。每支都有 `scripts/__tests__/*.test.mjs` 與反向測試。
+- 本機演練（改名為 `drn-rh-*`，不碰正式名稱）：映像 `drn-backend:16f67fa49828` 建置與六項檢查通過；兩步遷移、`drn-check-migrations`、四個容器 healthy、煙霧測試、真實備份與還原演練全部通過。
+- 文件：[ops/deploy-backend.md](../ops/deploy-backend.md)（決定 D1–D25、Aki 步驟、CODE 步驟、SOP）、[ops/backup-restore.md](../ops/backup-restore.md)、[ops/alerts.md](../ops/alerts.md)、[ops/edge-cloudflare.md](../ops/edge-cloudflare.md)、[ops/pii-incident.md](../ops/pii-incident.md)、[research/mac-mini-deploy-2026-10-13.md](../research/mac-mini-deploy-2026-10-13.md)。
 
-- **對外連線**：建議 Cloudflare Tunnel（`smilelife.tw` 已在 Cloudflare 免費方案）。不用固定 IP，也不用開路由器 port。Tunnel 的 token 是憑證：由 Aki 在 Cloudflare 後台建立並自己安裝到 Mac mini。`api.dr.nature.smilelife.tw` 要從 A 記錄改成指向 Tunnel、且開代理的記錄。做法查證官方文件後再定（TODO(需查證)）。
-- **常開與自動恢復**：關閉睡眠、停電後自動開機、登入後自動啟動容器執行環境與容器（`restart: unless-stopped`）、作業系統更新的時間。全部查證 macOS 目前版本的設定方式。
-- **容器**：compose 專案 `drn`；`drn-backend`（server＋Admin）、`drn-worker`、`drn-postgres`、`drn-redis`；網路 `drn_net`；資料卷 `drn_pgdata`、`drn_redisdata`；資料庫與 Redis 不對外發佈 port。映像直接在 Mac mini 建置，不需要映像倉庫。
-- **Medusa 正式模式**要查證（2.21.2 原始碼）：server／worker 分工、Admin 建置時是否需要後端網址、正式需要的環境變數、健康檢查路徑、兩步驟遷移（`pnpm run migrate`）、哪些種子腳本可以用在正式環境（`dev-add-test-stock` 只能用在開發與測試）、第一個管理員用邀請方式建立（代理不經手密碼）。
-- **綠界沙箱回呼**：列出所有回呼路徑（`src/api/hooks/ecpay/*`、物流、發票）與組網址的環境變數，上線後跑一次完整的沙箱付款。
-- **備份**：每晚 `pg_dump`、保留天數，加一份機器以外的副本（外接碟或 Aki 的私人雲端；**顧客個資絕不能放公開位置**，GitHub 公開 repo 不行），並實際做一次還原演練。
-- **暫時頁**：決定 `dr.nature.smilelife.tw` 留在 VPS，或也改走 Tunnel。若改走 Tunnel，VPS 上的 `drn.conf`、`/var/www/drn`、憑證要照 CLAUDE.md §1 的方式移除（刪 symlink → `nginx -t` → `reload`），而且需要 `docs/private/` 與 SSH 金鑰。
+下一個工作階段的順序：等 Aki 核准 D1–D25 → P12-01 盤點 → `install.sh` → Aki 產生 `.env` → `drn-build.sh` → P12-06 首次啟動 → 探測基準 → Aki 的 Cloudflare 設定 → P12-04 啟用 edge → 啟用 LaunchAgents → P12-20／19／10／11 演練 → P12-09 盤點比對。每一步的指令都在 deploy-backend.md §3。
 
 ## 5. 已知陷阱（舊工作階段踩過的）
 
@@ -64,13 +61,20 @@
   - `test-all.sh` 執行期間不要改原始碼：jest 是延遲載入，會讀到改到一半的檔案。
 - **反向測試協定**（CLAUDE.md §4）：用 `scripts/mutate.py` 在另一個 git worktree 裡做（見檔頭用法）。「沒有任何測試執行」一律判為無效，不算轉紅。弄壞後仍然綠，通常是少了斷言，要補測試，不是放過。競態可以在整合規格裡用 `jest.mock` 包住真正的模組、在指定時間點插入動作，讓結果固定（範例：`integration-tests/http/ecpay-cancel-race.spec.ts`）。
 - **磁碟**：舊電腦曾因本機 `docker build` 把磁碟塞滿、Docker 當掉。建映像前先確認剩餘空間；**任何全域清理指令（prune）都要先問 Aki**。
+- **Docker Desktop 上的 Docker CLI**：Aki 的 `~/.docker/config.json` 有 `credsStore=desktop`，但 `docker-credential-desktop` 不在 PATH 上，直接用 `docker` 拉映像會失敗；一律經 `~/drn/bin/drn-docker`（自己的 `DOCKER_CONFIG`，`unset DOCKER_CONTEXT`，因為 `DOCKER_CONTEXT` 會覆蓋 `DOCKER_HOST`）。Unix socket 路徑上限 104 位元組，包裝會把 symlink 解成真實路徑。
+- **Medusa 遷移的 SSL**：`db:migrate` 的鎖連線用 Medusa 自己的預設 driver options，對非 localhost 主機會開 SSL，`drn-postgres` 沒有 TLS → 10 秒逾時。`DATABASE_URL` 必須帶 `?sslmode=disable`（`drn-gen-env.sh` 已寫入）。
+- **容器可連到主機**：Docker Desktop 的 `host.docker.internal` 讓容器連得到主機上所有監聽埠，包括只綁 127.0.0.1 的服務（`drn-probe.sh` 實測）。沒有 VM 端防火牆可用；是 Aki 的決定 D24。
+- **zsh 細節**：`$T` 不會自動斷詞（跑 `node --test …` 要寫成函式）；`timeout` 不存在；`echo =====` 會被當成 `=cmd` 展開。反向測試每一條都要印出「變異已套用」的證據，否則離場碼 127 也會看起來像轉紅。
+- **TCC**：讀 `~/Library/Group Containers/group.com.docker/settings-store.json` 可能卡在權限對話框；Docker Desktop 的設定請 Aki 看 GUI。
 - **綠界**：先成立訂單再付款。ReturnURL 通知經過 CheckMacValue 驗證、且綁定交易編號、session 與金額，才算付款證明。退款目前記為 manual_pending，SOP 在 [ops/ecpay-manual-refund.md](../ops/ecpay-manual-refund.md)。只用官方公開的沙箱值。
 - **寄信**：U-09 選定前，正式站只能用 Google 註冊新會員，而 Google OAuth 也還沒設定（U-17）。
 
-## 6. 等 Aki 的事（詳見 DEV_PLAN §6）
+## 6. 等 Aki 的事（詳見 DEV_PLAN §6 與 ops/deploy-backend.md §1–§2）
 
-U-01 輪替外露的 LINE 憑證、U-02 綠界正式特店、U-09 寄信服務、U-12 研發長書面同意、U-15 貨本、U-16 綠界 IP 白名單（主機換成 Mac mini 後，要填的是 Mac mini 對外的 IP，或改用其他方式，需查證）、U-17 LINE／Google 回呼網址、U-18 付款規則、U-19 要問綠界的事、G2 命名、G5 品牌故事、P0-10 用一個故意弄壞的 PR 驗證 CI 會轉紅。
+**部署直接相關**：核准 CLAUDE.md §1b 與 D1–D25；電源與更新設定；Docker Desktop 登入時自動啟動；`drn-gen-env.sh`；Cloudflare（2FA、刪 A 記錄、Access、Tunnel token、route、WAF、通知）；第一位管理員邀請；Healthchecks／UptimeRobot／age／R2；UPS；演練時在場（整機重開、綠界付款、回滾核准）；每批 `git push`。
+
+其餘：U-01 輪替外露的 LINE 憑證、U-02 綠界正式特店、U-09 寄信服務、U-12 研發長書面同意、U-15 貨本、U-16 綠界 IP 白名單（主機換成 Mac mini 後，要填的是 Mac mini 對外的 IP，或改用其他方式，需查證）、U-17 LINE／Google 回呼網址、U-18 付款規則、U-19 要問綠界的事、G2 命名、G5 品牌故事、P0-10 用一個故意弄壞的 PR 驗證 CI 會轉紅。
 
 ## 7. 新工作階段建議的第一句話
 
-> 讀 CLAUDE.md、docs/handoff/CODE_HANDOFF.md、docs/DEV_PLAN.md，在這台 Mac mini 上準備環境並跑通 test-all，再用 workflow 規劃並執行 MVP 正式站部署（Mac mini 為正式主機）。
+> 讀 CLAUDE.md、docs/handoff/CODE_HANDOFF.md、docs/DEV_PLAN.md P12、docs/ops/deploy-backend.md。Aki 已核准 D1–D25（或列出修改），請從 P12-01 盤點開始，依 deploy-backend.md §3 執行到 P12-09，每一步照 DEV_PLAN 的驗收欄驗收。

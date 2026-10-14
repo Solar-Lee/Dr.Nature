@@ -14,7 +14,7 @@
 1. 正式站 `https://dr.nature.smilelife.tw` 可完成「瀏覽 → 加入購物車 → 綠界付款 → 超商取貨／宅配 → 開立電子發票 → 訂單通知（Email＋簡訊）」全流程，並有一筆真實訂單驗證過（之後退款）。
 2. 三款益生菌商品頁的所有文案通過 `docs/compliance/claims.md` 檢核。
 3. 團購系統已能對 Dr.Nature 開團、歸因、結算。
-4. 主機上 58 個既有容器、65 個 nginx 站台在部署前後完全一致。
+4. 主機上非 drn 的資源在部署前後完全一致：VPS 的 58 個容器與 65 個 nginx 站台（暫時頁，已驗證），以及 Mac mini 上非 drn 的容器、資料卷、網路、監聽埠、LaunchAgent（`infra/host/drn-inventory.sh compare` → unexpected=0）。
 
 ## 2. 已定案的決策（2026-10-13，Aki 核准）
 
@@ -26,7 +26,7 @@
 | A4 | 設計交接走 GitHub repo：DESIGN 產出放 `design/` | 單一真實來源、可版控 |
 | A5 | **不重造既有系統**：團購招商／寄樣／結算 → tuangou-admin（新增品牌 `drnature`）；全通路客服 → OmniCS（站內嵌 widget）；廣告 → DigiAds；站外 SEO → Dr.Grey | 這些系統已在正式環境運作（盤點見 §4） |
 | A6 | 物流：**綠界 C2C 店到店**（7-ELEVEN／全家／萊爾富）；**全館免運**（運費 NT$0） | 起步免月租、門市覆蓋廣；免運降低結帳摩擦 |
-| A7 | **2026-10-13 18:40 改定**：正式主機改為 **Mac mini M4**（24 GB 以上／512 GB 以上），取代 A3 的「VPS＋Supabase」；資料庫先自架 `drn-postgres`（之後可搬 Supabase）；對外建議 Cloudflare Tunnel（待查證後定案）；MVP 只上後端，前台維持暫時頁；Claude Code 改在 Mac mini 接手。交接：[handoff/CODE_HANDOFF.md](handoff/CODE_HANDOFF.md) | U-04 暫不升級；VPS 磁碟只剩約 5 GB 且與 57 個其他容器共用 |
+| A7 | **2026-10-13 18:40 改定**：正式主機改為 **Mac mini M4**（實測 16 GB／460 GB，macOS 26.4；容器執行環境 **Docker Desktop 29.6.1**），取代 A3 的「VPS＋Supabase」；資料庫自架 `drn-postgres`；對外走 Cloudflare Tunnel（研究已查證，待 Aki 設定）；MVP 只上後端，前台維持暫時頁；Claude Code 在 Mac mini 接手。交接：[handoff/CODE_HANDOFF.md](handoff/CODE_HANDOFF.md)；runbook：[ops/deploy-backend.md](ops/deploy-backend.md)（決定 D1–D25 待 Aki 核准） | U-04 暫不升級；VPS 磁碟只剩約 5 GB 且與 57 個其他容器共用 |
 
 ## 3. 系統架構
 
@@ -36,12 +36,13 @@
   ├─▶ Vercel：apps/storefront（Next.js）  https://dr.nature.smilelife.tw
   │       │  伺服器端呼叫（publishable key）
   │       ▼
-  ├─▶ VPS nginx（新增 drn.conf）  https://api.dr.nature.smilelife.tw
+  ├─▶ Cloudflare Tunnel → Mac mini（Docker Desktop；A7）  https://<API_HOST>（D12 建議 drn-api.smilelife.tw）
+  │       ├─ drn-cloudflared（只接 drn_edge）
   │       ├─ drn-backend  127.0.0.1:3961  Medusa server + Admin（/app）
   │       ├─ drn-worker   （不對外）       排程、訂閱者、通知
-  │       └─ drn-redis    （僅 drn_net）
-  │
-  ├─ Supabase（新專案 drn-prod）：Postgres、Storage（S3 相容，商品圖）
+  │       ├─ drn-postgres （僅 drn_net）   資料卷 drn_pgdata；每晚 pg_dump，age 加密後上 R2
+  │       └─ drn-redis    （僅 drn_net）   AOF
+  │   （舊：VPS nginx＋Supabase，A3 已由 A7 取代）
   ├─ ECPay：付款／物流／發票 ⇄ 後端 webhook /hooks/ecpay/*
   ├─ 簡訊商：後端 Notification provider（SMS）
   ├─ OmniCS：/widget.js 站內客服；LINE／FB／IG／Email 統一收件匣
@@ -60,7 +61,7 @@ packages/tokens     由 design/tokens/tokens.json 產生 CSS 變數與 Tailwind 
 content/            所有文字的單一真實來源（品牌、產品、法規標示）
 design/             DESIGN 交付物
 e2e/                Playwright
-infra/              docker-compose.prod.yml、nginx drn.conf、部署與備份腳本
+infra/              docker-compose.prod.yml、drill 覆寫檔、backend.Dockerfile、host/（Mac mini 主機腳本與 LaunchAgent 範本）、nginx drn.conf（VPS 暫時頁）
 docs/               計畫、研究、法規、交接；docs/private/（gitignored，主機盤點）
 ```
 
@@ -82,7 +83,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 
 | 閘門 | 內容 | 誰決定 | 狀態 |
 |---|---|---|---|
-| G1 | 部署架構 | Aki | ✅ 混合式（2026-10-13） |
+| G1 | 部署架構 | Aki | ✅ 混合式（2026-10-13）→ A7 Mac mini＋Docker Desktop＋Cloudflare Tunnel（2026-10-13 18:40）；主機守則 CLAUDE.md §1b 與決定 D1–D25 待核准 |
 | G2 | 產品名稱與功效用詞（日日順／晶亮／舒敏 是否保留；一般食品或申請健康食品） | Aki（CODE 依法規研究提案） | ⏳ 提案已出：[product/naming-proposal.md](product/naming-proposal.md) |
 | G3 | LINE OA webhook 歸屬：① 招商期給 `drnature_bot`（團購既有模式，鏡射到 tuangou 即時收件匣）② 給 OmniCS（消費者客服）③ 寫轉發器同時送兩邊 | Aki | ✅ ① 給團購招商機器人 `drnature_bot`（2026-10-13）；消費者上市前再評估 |
 | G4 | 視覺方向三選一（D-01）、Monogram 三選一（D-02） | Aki | ⬜ |
@@ -102,7 +103,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-02 | 申請綠界特店（金流＋物流＋電子發票），取得正式金鑰後親手寫入主機 `.env` | P4 正式切換 |
 | U-03 | 選定簡訊商（建議三竹 Mitake 或 Every8d）並開通帳號 | P8 簡訊 |
 | U-04 | Vercel：建立或指定團隊（商用需 Pro）；Supabase：核准建立新專案 `drn-prod`（Pro，避免閒置暫停）。**2026-10-13 查：Supabase 組織「Alex-Lee's Org」是 Free 方案，已有 2 個運作中的專案（kol-groupbuy-system、natrees-line-oa），再建一個會碰到免費方案的上限，且免費專案閒置會暫停 → 需要 Aki 把組織升級 Pro，或另開一個 Pro 組織給 drn-prod** | P0-08、P0-09、P12-06 **2026-10-13 Aki：暫不升級（見 A7）** |
-| U-05 | DNS：`dr.nature.smilelife.tw` 改 CNAME 到 Vercel；新增 `api.dr.nature.smilelife.tw` A 記錄 → 151.145.69.134（DNS only，不走代理） | P12 **2026-10-13：api A 記錄已建立並生效；正式主機改 Mac mini 後，依 Tunnel 方案改記錄（A7）** |
+| U-05 | DNS：`dr.nature.smilelife.tw` 改 CNAME 到 Vercel；新增 `api.dr.nature.smilelife.tw` A 記錄 → 151.145.69.134（DNS only，不走代理） | P12 **2026-10-13：api A 記錄已建立並生效。A7 後：刪除這筆 A 記錄，改為 `<API_HOST>`（D12 建議 `drn-api.smilelife.tw`）的 Tunnel CNAME（橘雲）；步驟見 [ops/deploy-backend.md](ops/deploy-backend.md) §2** |
 | U-06 | GS1 Taiwan 申請商品條碼（EAN-13），三個 SKU 各一 | P2 包裝定稿 |
 | U-07 | 食品業者登錄字號（非登）、產品責任險、委託製造廠資料（廠名、地址、許可） | 標示定稿 |
 | U-08 | 菌株資料：每款的菌種學名、菌株編號、每顆含菌數、原料供應商文件、檢驗報告 | 產品文案、標示 |
@@ -113,10 +114,14 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-13 | 綠界物流寄件人：**個人姓名**（2-5 個中文字；C2C 未取件退回寄件門市須出示身分證領取，綠界規定勿填公司名，developers.ecpay.com.tw/8809/）＋手機；並向綠界確認 C2C 合約是否含黑貓宅配 | P4-05 正式切換、宅配上架 |
 | U-14 | 綠界**正式**發票後台：【發票通知方式設定】開啟開立、作廢、中獎通知（Email）給買受人（測試環境不寄，無法替你驗證）；確認是否開通超商 kiosk 列印中獎發票 | 發票上線（要點第二十四點中獎通知義務） |
 | U-15 | 每瓶貨本（COGS）、首批產量、贈品成本（GTM 與會員制的毛利 50% 閘門、R5 都要用） | P1-07、P5-02、P5-07 定案 |
-| U-16 | 綠界廠商後台：把正式主機對外 IP 加入 TradeNoAio（對帳檔下載）的 IP 白名單 | P4-07 正式對帳 |
+| U-16 | 綠界廠商後台：把正式主機對外 IP 加入 TradeNoAio（對帳檔下載）的 IP 白名單。**Mac mini 在家用網路，對外 IP 不固定；沙箱期不受影響，正式切換前另案處理** | P4-07 正式對帳 |
 | U-17 | LINE Developers：Login channel 的 Callback URL、連結官方帳號（加好友提示）、（選擇性）申請 Email 權限；Google Cloud：OAuth 重新導向 URI。網址見 [ops/customer-login.md](ops/customer-login.md) §4 | P5-01 正式登入 |
 | U-18 | 付款規則決定（詳見 [reviews/2026-10-13-p4-p5-review.md](reviews/2026-10-13-p4-p5-review.md)「要 Aki 決定」）：① ATM／超商代碼過期後要不要保留重新付款的時間（目前期限一到就自動取消）② 每張訂單最多 5 筆綠界交易 ③ Apple Pay 未付款改為 180 分鐘取消（原 24 小時）、信用卡仍預設 180 分鐘 ④ 信用卡被拒後 40 分鐘才能重新付款 | P4-09 定案 |
 | U-19 | 問綠界：① 信用卡付款頁最長開多久 ② QueryTradeInfo 能否看出「已取號」 ③ TradeNoAio 對帳檔最大日期範圍 | P4-09 縮短等待、P4-07 多日對帳 |
+| U-20 | **核准 Mac mini 守則與部署決定**：CLAUDE.md §1b、[ops/deploy-backend.md](ops/deploy-backend.md) §1 的 D1–D25（重點 D2 Docker Desktop、D12 主機名稱、D24 容器連主機的處置） | P12 全部主機端步驟 |
+| U-21 | Mac mini 設定：電源（不睡眠、斷電後自動開機）、關閉自動安裝 macOS 更新、Docker Desktop「登入時自動啟動」、網路線、路由器不轉發、UPS | P12-06、P12-19 |
+| U-22 | 在主機執行 `drn-gen-env.sh <API_HOST>` 產生正式 `.env`（值不經過對話），回報 `missing=0 forbidden=0` | P12-06 |
+| U-23 | Cloudflare：帳號 2FA、刪舊 A 記錄、Access 兩個應用、Tunnel 與 token 寫入 `~/drn/tunnel.env`、route、WAF skip 規則、通知；Healthchecks 5 個檢查、UptimeRobot、age 金鑰、R2 bucket 與 rclone；步驟見 [ops/deploy-backend.md](ops/deploy-backend.md) §2 | P12-04、P12-08、P12-20 |
 
 ## 7. 任務清單（最小執行單位）
 
@@ -278,24 +283,41 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P11-06 | 資安：HawkScan DAST、相依套件稽核、webhook 驗章測試、速率限制 | C | P4、P8 | 零 High；webhook 竄改測試全部被拒 | — | ⛔ |
 | P11-07 | 假綠稽核（false-green-audit 流程）：確認每道閘門壞了會紅 | C | P11-01～06 | 稽核報告列出已證明／未證明項目 | — | ⛔ |
 
-### P12 部署
+### P12 部署（Mac mini＋Docker Desktop，2026-10-14 改寫）
 
-> 2026-10-13 起依 A7 重新規劃：正式主機改為 Mac mini，下列 P12-02～P12-11 以「VPS＋Supabase」寫成，要在 Mac mini 新工作階段改寫後再執行（見 [handoff/CODE_HANDOFF.md](handoff/CODE_HANDOFF.md) §4）。P12-12 暫時頁仍在 VPS。
+> 計畫來源：2026-10-13 的部署 workflow（研究→三份方案→評審→批評迴圈），依 Aki 已安裝的 Docker Desktop 改寫；決定 D1–D25 與 Aki／CODE 的步驟在 [ops/deploy-backend.md](ops/deploy-backend.md)。**repo 端全部完成；主機端等 U-20～U-23**。2026-10-14 的本機演練用改名的 `drn-rh-*` 堆疊（不碰正式名稱）。每個 `✅` 都在該列註明驗收證據；主機端未做的部分標 ⛔ 並寫明等誰。
 
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
-| P12-01 | 部署前重新盤點，與 `docs/private/server-inventory.md` 比對；`drn` 名稱零重名；port 3961 未占用 | C | — | 差異報告（預期：無 drn 資源） | — | ⬜ |
-| P12-02 | `infra/docker-compose.prod.yml`：`drn-backend`（127.0.0.1:3961）、`drn-worker`、`drn-redis`（`redis:7-alpine`，不發佈 port），網路 `drn_net`，記憶體上限（backend 1.5G、worker 1G、redis 256M），log 輪替（max-size 10m×3） | C | P3 | `docker compose config` 無錯；本機以同檔啟動 healthy | `git revert` | 🟡 草稿已寫：`infra/docker-compose.prod.yml`、`infra/backend.Dockerfile`（pnpm-lock 凍結安裝、`pnpm deploy --prod`、Node 22.22.3 依 digest 釘選）、`.dockerignore`（白名單）、runbook [ops/deploy-backend.md](ops/deploy-backend.md)；`docker compose config` 通過。**本機映像建置未完成**：2026-10-13 Mac 磁碟滿而中止（需約 10 GB 空間） |
-| P12-03 | 映像在 Mac（arm64，與主機同架構）建置 → `docker save \| gzip` → 傳主機 → `docker load`；主機上不 build；換版時**先停舊 `drn-worker` 再啟新版**（Redis 事件匯流排上舊 worker 會吃掉新訂閱者的事件，見 docs/research/ecpay-invoice-p4-06.md §5） | C | P12-02 | 主機 `docker images` 出現 `drn-backend:<tag>`；磁碟剩餘 ≥ 4 GB，否則停手 | `docker rmi drn-backend:<tag>` | ⬜ |
-| P12-04 | 新增 `/etc/nginx/sites-available/drn.conf`（只含 `api.dr.nature.smilelife.tw`）→ symlink → `nginx -t` → `reload` | C | U-05 | `nginx -t` 成功；其他 65 個站台設定檔 md5 前後一致 | 刪 symlink＋`nginx -t`＋`reload` | ⬜ |
-| P12-05 | 憑證：`certbot certonly --webroot -d api.dr.nature.smilelife.tw`（不讓 certbot 改其他站台） | C | P12-04 | `curl -I https://api.dr.nature.smilelife.tw/health` → 200 | `certbot delete --cert-name …` | ⬜ |
-| P12-06 | 資料庫遷移與種子（對 Supabase `drn-prod`）：**分兩步** `medusa db:migrate --skip-scripts` → `medusa db:migrate:scripts`（2.21.2 的 db:migrate 在 script 失敗時仍回 0），一律從 `.medusa/server` 執行 | C | P0-08 | 兩步離場碼皆 0；`script_migrations` 中 drn-0001～0004 的 `finished_at` 皆非空；Store API 回商品 | Supabase 時間點還原 | ⬜ |
-| P12-07 | Vercel 正式部署＋網域 `dr.nature.smilelife.tw` | C＋U | U-05、P0-09 | `curl -I https://dr.nature.smilelife.tw` → 200，憑證 CN 正確（不再是 jadedrop） | Vercel 回上一版／移除網域 | ⬜ |
-| P12-08 | 備份：Supabase 每日備份確認；`drn-redis` 無需備份（僅 session） | C | P12-06 | Supabase 後台看到最近備份 | — | ⬜ |
-| P12-09 | 部署後檢查：既有容器清單、nginx 站台、排程與部署前完全一致（除新增 drn 資源） | C | P12-07 | diff 腳本輸出僅 drn 相關新增 | 依各任務回滾 | ⬜ |
-| P12-10 | 正式站 smoke（只讀）＋一筆真實訂單（Aki 付款後退款） | C＋U | P12-09、U-02 | P11-02 對正式站全綠；真實訂單走完並退款成功 | — | ⬜ |
-| P12-11 | 回滾演練一次（Vercel 回上一版；後端換回上一個映像 tag） | C | P12-10 | 演練紀錄 | — | ⬜ |
-| P12-12 | 暫時頁：`dr.nature.smilelife.tw`（DNS 已指向主機）由主機 nginx 提供靜態「官網準備中」頁＋TLS，取代目前誤顯示的 JADEDROP 站；前台上線（P12-07）時移除（Aki 2026-10-13 選定） | C | P12-01 | `curl -I https://dr.nature.smilelife.tw` → 200、憑證 CN＝dr.nature.smilelife.tw；`nginx -t` 成功；其他 65 個站台設定檔與 nginx.conf 的 md5 前後一致；容器仍 58 個 | 刪 symlink＋`nginx -t`＋`reload`；`certbot delete --cert-name dr.nature.smilelife.tw`；刪 `/var/www/drn` | ✅ 2026-10-13 上線：`https://dr.nature.smilelife.tw` → 200，憑證 CN＝dr.nature.smilelife.tw（Let's Encrypt，2027-01-10 到期，certbot.timer 續期＋reload hook）；HTTP → 301 HTTPS；`noindex`。主機上 nginx 只多 `drn.conf`＋symlink（md5 與 repo 相同），其他 168 個 nginx 檔 md5 不變、容器 58 個不變、crontab 不變 |
+| P12-00 | Mac mini 主機守則 CLAUDE.md §1b（D1）；A7／CODE_HANDOFF 事實改成 16 GB／460 GB／Docker Desktop；runbook 與 ops 文件 | C 起草、U 核准 | — | `grep -c '^## 1b' CLAUDE.md` → 1；舊的記憶體與磁碟規格數字（24／512）在 DEV_PLAN 與 CODE_HANDOFF 都已改掉；claims-lint 0 | git revert | 🟡 草案已提交（本提交）；**U-20 核准後改 ✅** |
+| P12-01 | 部署前盤點：`infra/host/drn-inventory.sh snapshot／compare`（正規化、規則比對） | C | P12-00 | `node --test scripts/__tests__/inventory.test.mjs` → 0；主機：`snapshot ~/drn/logs/inventory-pre.txt` 7 段、3961 無人監聽、disk ≥ 40 | git revert | ✅ 腳本與 6 支測試（750393b；4 個反向測試轉紅）；**主機快照 ⛔ 等 U-20** |
+| P12-13 | 容器執行環境：Docker Desktop（取代 Colima）；`drn-docker` 包裝固定 socket、自有 `DOCKER_CONFIG`、`unset DOCKER_CONTEXT`；Aki 設登入自動啟動 | C＋U | P12-01 | 包裝在假 HOME 無 socket → exit 2；`drn-docker compose version` 可用；pinned 映像匿名拉取成功 | 刪 ~/drn/bin | ✅ 包裝（0e5bb48）；2026-10-14 實測 compose v5.1.4、postgres／redis／cloudflared digest 拉取成功；**AutoStart 目前 False，等 U-21** |
+| P12-28 | 容器到主機的探測 `drn-probe.sh`／`.mjs`（Docker Desktop 無 VM 防火牆，只量測，處置是 D24） | C | P12-13 | probe 測試 → 0；`--control` exit 1 且含 :9999；`--dns` dns-ok；無 drn_probe_tmp 殘留 | git revert | ✅（abd0951）；實測：容器經 host.docker.internal 可連主機所有監聽埠（含 127.0.0.1 服務），清單只留主機；**D24 等 Aki 裁決** |
+| P12-14 | DB TLS 規則：只放行精確主機名 `drn-postgres`，拒絕 `?host=`／`?hostaddr=` | C | — | jest src/lib/database 4 passed；4 個變異 RED；載入期 throw ≠0；test-all 0 | git revert | ✅（d153cc0；test-all 0） |
+| P12-15 | 上傳檔：file-local、`<MEDUSA_BACKEND_URL>/static`，production 缺網址拒啟；映像預建 static | C | — | jest src/lib/file 4 passed；3 個變異 RED；映像內 static 擁有者 node | git revert | ✅（06281ff；映像檢查見 P12-03） |
+| P12-16 | ENV 白名單補列（POSTGRES_*、TUNNEL_TOKEN、telemetry、NODE_ENV、DOCKER_*、DRN_*）；check-env-names 掃 infra/host 與 compose | C | — | `node --test check-env-names` → 0；`node scripts/check-env-names.mjs` 0 error(s) | git revert | ✅（5e0d63c、f08b6d6；32 檔 82 名稱 0 error） |
+| P12-24 | production 缺 REDIS_URL 拒絕啟動（D22） | C | — | jest src/lib/runtime 3 passed；2 個變異 RED | git revert | ✅（7ee2b5f） |
+| P12-20a | 排程 `drn-job-heartbeat`（每 10 分鐘 `[JOB-HEARTBEAT]`，D23） | C | — | jest src/lib/ops 2 passed；3 個變異 RED；映像 worker 真的寫出該行 | git revert | ✅（a07f872）；演練 worker 啟動 43 秒後寫出 |
+| P12-10a | 公開網址演練守門與腳本 `ecpay-public-drill`（credit、atm、ship、status、logistics-notify、alert-selftest） | C | — | 守門 5 passed；4 個變異 RED；tsc 0；映像內有 .js | git revert | ✅（d88e606）；腳本本身只能在公開網址後執行（P12-10） |
+| P12-02 | compose Mac mini 版：drn-postgres／drn-redis（AOF）／drn_uploads／drn-cloudflared（profile edge）、digest 釘選、drill override | C | P12-16 | compose-prod 10 項文字測試；`config -q` 假值 0；卷名 drn_pgdata drn_redisdata drn_uploads | git revert | ✅（f08b6d6；4 個反向測試轉紅） |
+| P12-17 | `drn-gen-env.sh`／`drn-env-check.sh`（Aki 執行；不印值；`?sslmode=disable`） | C＋U | P12-16 | `node --test drn-gen-env` → 0；6 個反向測試 RED（1 個等價）；Aki 執行 → `missing=0 forbidden=0` | git revert；首次啟動前可 rm .env | ✅ 腳本（e5f0c38、525af09）；**U-22 ⛔** |
+| P12-18 | 主機套件 `infra/host/`（install.sh、agents.sh、drn-docker、drn-compose、drn-maint、drn-lock、drn-compose-up、drn-alertscan、drn-check-migrations、drn-drill、drn-releases、LaunchAgent 範本） | C | P12-02 | host-files 16 測試 → 0；8 個反向測試 RED；主機：`install.sh` 後 ~/drn 700、無 .env、agents 0 | git revert；rm plist | ✅ 套件（0e5bb48）；**主機安裝 ⛔ 等 U-20** |
+| P12-03 | `drn-build.sh` 建 `drn-backend:<sha12>`（不打 current）＋六項檢查；`check-image-deps.mjs` | C | P12-14～P12-18 | arm64、medusa 2.21.2、1002 packages 0 not in lockfile、admin clean、static 擁有者 node、drill 與 heartbeat .js 在映像內、`image-ok-<sha>` | `drn-docker rmi` | ✅（16f67fa；2026-10-14 在演練 HOME 建置 `drn-backend:16f67fa49828` 55.7 秒，全部檢查通過，build-mem 32 筆） |
+| P12-06 | 首次啟動：retag current、`releases first`、起 postgres／redis、兩步遷移、`drn-check-migrations`、起 backend／worker、煙霧測試 | C＋U | P12-03、U-22 | 兩步遷移 0／0；unfinished=0 drn=7/7；4 容器 healthy；無 port 發佈；/health OK；區網 curl exit 7；worker UTC；appendonly yes；static 可寫；/store/products 3 | `drn-compose down`（不加 -v） | 🟡 **演練全數通過**（`drn-rh-*`、2026-10-14；遷移 4.6 s＋2.1 s）；正式啟動 ⛔ 等 U-22 |
+| P12-05 | API 主機名稱（D12）：刪舊 A 記錄；確認邊緣憑證 | U | D12 | `dig +short api.dr.nature.smilelife.tw` 無輸出 | 加回 A 記錄 | ⛔ U-23 |
+| P12-04 | 對外連線：探測基準 → Access → Tunnel → route → WAF → 通知 → 啟用 edge → 外部驗收 → access-baseline | U＋C | P12-06、P12-05 | [ops/edge-cloudflare.md](ops/edge-cloudflare.md) 的驗收清單 | `rm edge-enabled`、停 cloudflared | ⛔ U-23 |
+| P12-22 | 第一位管理員（`medusa user --invite`，Aki 設密碼）；驗 Secure cookie | U | P12-04 | 重新整理後仍登入；cookie Secure/HttpOnly/SameSite=Lax | Admin 刪使用者 | ⛔ |
+| P12-08 | 每晚 04:15 備份（dump、globals、上傳檔、manifest、保留、age＋R2） | C＋U | P12-06 | backup 測試 9 → 0；真實演練 toc=1075；主機：kick 後 last exit 0、4 種檔案 | `agents.sh disable drn.backup` | ✅ 腳本＋真實演練（813c19c）；**啟用 ⛔ 等 U-20／U-23** |
+| P12-21 | 每週還原演練 `drn-restore-check.sh`（週日 05:00，同 digest、--network none、錨點） | C | P12-08 | 真實演練 pass（product=3 tables=153 drn=7）；fixture 錨點不符 → exit 1 | `agents.sh disable` | ✅ 腳本＋真實演練（813c19c）；**啟用 ⛔** |
+| P12-20 | 監看 `drn-monitor.sh`（heartbeat 各項、D25 自動補啟、黏住狀態、jobs 寬限、simpay、isolation、ALERT 游標、Access 漂移）；[ops/alerts.md](ops/alerts.md) | C＋U | P12-04、P12-08 | monitor 8 測試 → 0；5 個反向測試 RED；主機演練 (a)–(d) 見 alerts.md | `agents.sh disable drn.monitor` | ✅ 腳本（a2b1a25）；**啟用與演練 ⛔ 等 U-23** |
+| P12-19 | 開機自動恢復：`drn.compose-up`、Docker Desktop 重啟演練、整機重開（Aki 在場） | C＋U | P12-20 | compose-up last exit 0；重開後 10 分鐘內 4 容器 healthy、公開 /health OK | `agents.sh disable drn.compose-up` | ⛔ U-21 |
+| P12-10 | 公開網址綠界沙箱演練（ReturnURL、PaymentInfoURL 真實回呼；物流自簽通知；旗標只經 drn-drill） | C＋U | P12-22、P12-20 | status captured=true、proof_keys 含 ecpay_notice；access log 來源非 Mac IP；alertscan 0 | `drn-drill.sh simpay off` | ⛔ 等公開網址 |
+| P12-11 | 升級與回滾：`drn-deploy.sh`（帳本、pre dump、retag、遷移、指紋）、`drn-rollback.sh`（sha256、C11 指紋閘門、pre-rollback、預演、`--accept-loss`） | C＋U | P12-10、P12-21 | deploy 測試 5 → 0；4 個反向測試 RED；主機：部署後寫入一筆 → 回滾 exit 4；Aki 核准後 → 0 | 用需要的版本再 deploy | ✅ 腳本（44191d4）；**真實演練 ⛔** |
+| P12-09 | 部署後盤點 `drn-inventory.sh compare` | C | P12-11 | unexpected=0 | 依各任務 | ⛔ |
+| P12-23 | 文件：deploy-backend.md 改寫；backup-restore／alerts／edge-cloudflare／pii-incident；DEV_PLAN 更新 | C | — | `grep -cE 'Supabase\|151\.145\|certbot\|docker save' docs/ops/deploy-backend.md` → 0；4 份 ops 文件存在；test-all 0 | git revert | ✅（本提交） |
+| P12-07 | Vercel 前台 | C＋U | P7、G2 | — | — | ⏸ A7 的 MVP 不含前台 |
+| P12-12 | 暫時頁：`dr.nature.smilelife.tw`（VPS nginx 靜態頁＋TLS） | C | — | 見原列 | 見原列 | ✅ 2026-10-13 上線（憑證到 2027-01-10）；A7 不動 VPS |
+| P12-25 | G-PII 閘門：收真實個資前——獨立使用者或專用主機、管理員 MFA、源站驗 Access JWT、Redis requirepass、R2 離線演練、UPS、Time Machine 排除、D21 書面紀錄、D24 主機服務加固後重跑探測 | U＋C | P12-11 | 每項都要證據 | — | ⛔ |
 
 ### P13 上市營運
 
@@ -322,3 +344,4 @@ P5 會員／P6 Blog／P8 整合／P9 分潤 ─────┘
 - 任何 ECPay、LINE、Meta、簡訊商的**正式環境**行為，在 Aki 提供正式金鑰並手動驗一次之前，都只算「測試環境已驗證」。
 - 法規判斷以官方公告文字為準；`regulatory.md` 是研究整理，不是法律意見，送審前建議由食品法規顧問複核。
 - 印刷、瓶器、代工的交期由供應商決定，本計畫不估。
+- Mac mini 正式站：runbook 不能證明的事列在 [ops/deploy-backend.md](ops/deploy-backend.md) §7（FileVault 冷開機、cloudflared 轉送 X-Forwarded-Proto、綠界對 Cloudflare 的接受度、容器碰不到主機服務）。

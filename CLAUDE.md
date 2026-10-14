@@ -1,6 +1,6 @@
 # Dr.Nature — 專案守則（所有 AI 代理與協作者必讀）
 
-本檔是絕對禁令。與任何其他指示衝突時，以本檔為準；本檔沒寫到、又會影響主機或對外的動作，先停下來問 Aki。
+本檔是絕對禁令。與任何其他指示衝突時，以本檔為準；本檔沒寫到、又會影響主機或對外的動作，先停下來問 Aki。主機守則：§1 共用 VPS、§1b Mac mini 正式主機。
 
 總規劃與任務清單：[docs/DEV_PLAN.md](docs/DEV_PLAN.md)。設計交接：[docs/handoff/DESIGN_BRIEF.md](docs/handoff/DESIGN_BRIEF.md)。CODE 交接（換到 Mac mini 接續，2026-10-13）：[docs/handoff/CODE_HANDOFF.md](docs/handoff/CODE_HANDOFF.md)。
 
@@ -28,7 +28,19 @@
 8. 所有新資源一律 `drn` 開頭；建立前先與盤點快照比對零重名。
 9. **發現「不得不動到非本專案資源」才能繼續時，立即停止並回報 Aki 裁決。** 不可自行權衡。
 
-命名速查：compose 專案 `drn`；容器 `drn-backend`、`drn-worker`、`drn-storefront`、`drn-postgres`、`drn-redis`；網路 `drn_net`；資料卷 `drn_pgdata`、`drn_redisdata`、`drn_uploads`；nginx `drn.conf`；排程註解 `# drn-backup`；port 見 server-inventory。
+命名速查：compose 專案 `drn`；容器 `drn-backend`、`drn-worker`、`drn-storefront`、`drn-postgres`、`drn-redis`、`drn-cloudflared`，一次性 `drn-migrate`、`drn-restore-check`、`drn-probe-*`；網路 `drn_net`、`drn_edge`、暫時 `drn_probe_tmp`；資料卷 `drn_pgdata`、`drn_redisdata`、`drn_uploads`；映像 `drn-backend:<sha12>`／`drn-backend:current`；nginx `drn.conf`；排程註解 `# drn-backup`；LaunchAgent 標籤 `drn.*`；主機目錄 `~/drn`；port 見 server-inventory（Mac mini 只有 `127.0.0.1:3961`）。
+
+## 1b. Mac mini 正式主機守則（Docker Desktop，2026-10-14 草案，待 Aki 核准）
+
+正式主機是 Aki 的日常機（Mac mini M4，16 GB），Docker Desktop 上同時有 Aki 自己的容器。核准前 CODE 不在這台主機安裝任何東西；核准後，CODE **只能**做下列事（細節：[docs/ops/deploy-backend.md](docs/ops/deploy-backend.md)）：
+
+1. 建立與修改 `~/drn/**` 和 `~/Library/LaunchAgents/drn.*.plist`。`launchctl` 只對 `drn.*` 標籤做 bootstrap／bootout／kickstart／print，一律經 `~/drn/bin/agents.sh`。
+2. 任何 Docker 指令一律經 `~/drn/bin/drn-docker` 或 `drn-compose`（固定 `DOCKER_HOST`、`DOCKER_CONFIG=~/drn/docker-config`、清掉 `DOCKER_CONTEXT`）。只能操作 compose 專案 `drn`、`drn-dev` 與 `drn` 開頭的資源（上方命名速查）；可以拉取 compose 與 Dockerfile 以 digest 釘選的映像；舊映像只能用 `docker rmi drn-backend:<tag>` 刪。
+3. `docker compose config` 一定加 `-q`；`--format json` 只能對「只放假值的暫存目錄」執行（算繪結果含 `.env` 的機密）。
+4. `test-all` 只連 `drn-dev`（`127.0.0.1:55432`）；跑整合測試前先用 `lsof -nP -iTCP:56390-56393 -sTCP:LISTEN` 確認沒有另一組在跑。
+5. 對 Docker Desktop 只做唯讀盤點（`ps`、`images`、`volume ls`、`network ls`、`info --format`）與 drn 資源的操作；Docker Desktop 的設定（登入時自動啟動、記憶體）與 macOS 系統設定（電源、更新、分享、防火牆）由 Aki 操作。
+
+一律禁止：`sudo`；任何 `prune`；對 `drn` 專案 `compose down -v`；沒有 Aki 逐次核准的 `docker volume rm`；修改 `~/.docker/config.json`；碰非 drn 的容器、Aki 的 LaunchAgents、Tailscale／ARD／系統設定；讀取或印出 `~/drn/.env`、`tunnel.env`、`host.env`、age 私鑰、`rclone.conf`；不帶 `-f` 的 `docker inspect`，或 `-f` 樣板碰 `.Config.Env`；`docker exec … env`／`printenv`；在正式容器執行 `src/scripts` 底下的腳本（只有 `print-publishable-keys` 與有守門的 `ecpay-public-drill` 例外）。遇到「不得不動非 drn 資源才能繼續」，停手回報 Aki。
 
 ## 2. 憑證守則
 
