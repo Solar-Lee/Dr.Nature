@@ -30,6 +30,8 @@ case "$all" in
   "run -d "*) echo "fakecontainerid"; exit "$(cat "$F/run-d-exit" 2>/dev/null || echo 0)" ;;
   "run --rm --network none -v "*" tar "*) tar -C "$F/uploads" -cf - . | gzip -c; exit 0 ;;  # bsdtar -z pads after gzip; busybox tar in the image does not
   "stop "*) exit 0 ;;
+  "tag "*) echo "$3" > "$F/image-drn-backend:current.tagged"; cp "$F/image-$2" "$F/image-drn-backend:current" 2>/dev/null || true; exit 0 ;;
+  "exec "*"dropdb "*) exit "$(cat "$F/dropdb-exit" 2>/dev/null || echo 0)" ;;
 esac
 case "$1 $2" in
   "info "*|"info") exit 0 ;;
@@ -42,6 +44,7 @@ case "$1 $2" in
       *Health*) cat "$F/health-$last" 2>/dev/null || cat "$F/health" 2>/dev/null || echo healthy ;;
       *StartedAt*) cat "$F/started-$last" 2>/dev/null || echo "2026-10-14T00:00:00.000000000Z" ;;
       *RestartCount*) cat "$F/restarts-$last" 2>/dev/null || echo "0 false" ;;
+      *".Image}}"*) cat "$F/image-of-$last" 2>/dev/null || echo "sha256:running" ;;
       *) echo "" ;;
     esac ;;
   "run --rm") cat "$F/run-out" 2>/dev/null; exit "$(cat "$F/run-exit" 2>/dev/null || echo 0)" ;;
