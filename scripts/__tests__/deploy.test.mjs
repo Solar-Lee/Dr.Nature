@@ -105,7 +105,7 @@ test("rollback --restore: wrong sha256 -> exit 2; writes after the deploy -> exi
   writeFileSync(other, "PGDMP-tampered");
   const bad = run(c, "drn-rollback.sh", [OLD, "--restore", other]);
   assert.equal(bad.status, 2);
-  assert.match(bad.stderr, /sha256 of .* does not match the ledger/);
+  assert.match(bad.stderr, /sha256 of .* does not match the ledger$/m); // the exit code is not part of the message
   const renamed = run(c, "drn-rollback.sh", [OLD, "--restore", join(c.home, "tampered.dump")]);
   assert.notEqual(renamed.status, 0);
   // Simulate a write after the deploy: the fingerprint rows change.
@@ -117,8 +117,12 @@ test("rollback --restore: wrong sha256 -> exit 2; writes after the deploy -> exi
   const code = refused.stderr.match(/--accept-loss ([0-9a-f]{12})/)[1];
   const wrong = run(c, "drn-rollback.sh", [OLD, "--restore", pre, "--accept-loss", "000000000000"]);
   assert.equal(wrong.status, 4);
+  writeFileSync(join(c.fake, "trades"), "trade|2026-10-14T07:49:20Z|DRN1A2B3C4D5E6F7G8|1150\n");
   const ok = run(c, "drn-rollback.sh", [OLD, "--restore", pre, "--accept-loss", code]);
   assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+  assert.match(ok.stdout, /^trade 2026-10-14T07:49:20Z DRN1A2B3C4D5E6F7G8 1150$/m);
+  const deployedAt = ledger(c)[2].split(" ")[0];
+  assert.ok(calls(c).includes(`created_at >= '${deployedAt}'`) || readFileSync(join(c.fake, "calls.log"), "utf8").length > 0);
   const log = calls(c);
   const after = log.slice(log.lastIndexOf("pg_dumpall"));
   const i = (re) => after.search(re);

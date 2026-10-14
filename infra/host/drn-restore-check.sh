@@ -3,7 +3,10 @@
 # into a throwaway Postgres (same image digest as drn-postgres, --network none, 1 GiB, trust auth
 # inside the isolated container) and compares anchors with the backup's manifest, so an "empty but
 # valid" restore cannot pass (deployment review minor 37).
-#   drn-restore-check.sh [<dump>] [--container <name>]
+#   drn-restore-check.sh [<dump>] [--container <name>] [--list-trades-since <ISO-8601 UTC>]
+# --list-trades-since additionally prints, after a passing drill, every ECPay MerchantTradeNo whose
+# payment session was created at or after that time (used by drn-rollback.sh to reconcile trades
+# that a restore dropped; lines "trade <created_at> <merchant_trade_no> <amount>").
 # Default dump: the newest daily one. Pass: product count, public table count and finished drn-*
 # scripts equal the manifest; order/customer/payment lie between the before/after counts; no
 # unfinished migration script; the uploads archive passes gzip -t with >= the manifest's file count.
@@ -15,10 +18,11 @@ umask 077
 . "$HOME/drn/bin/drn-lib.sh"
 drn_load_host_env
 
-dump=""; name="drn-restore-check"
+dump=""; name="drn-restore-check"; trades_since=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --container) name="$2"; shift 2 ;;
+    --list-trades-since) trades_since="$2"; shift 2 ;;
     -*) echo "drn-restore-check: unknown option $1" >&2; exit 2 ;;
     *) dump="$1"; shift ;;
   esac
@@ -86,6 +90,10 @@ if [ "$want_files" != "-" ] && [ -n "$want_files" ]; then
 fi
 if [ "${#problems[@]}" -eq 0 ]; then
   result="pass"; anchors_ok="true"; detail="product=$r_product tables=$r_tables drn=$r_drn"
+  if [ -n "$trades_since" ]; then
+    case "$trades_since" in *"'"*) echo "drn-restore-check: bad timestamp" >&2; exit 2 ;; esac
+    drn_pg_sql "/* drn:trades */ select 'trade', to_char(created_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), data->>'merchant_trade_no', coalesce(data->>'amount','') from payment_session where provider_id = 'pp_ecpay_ecpay' and created_at >= '$trades_since'::timestamptz order by created_at" "$name" | tr '|' ' '
+  fi
 else
   detail="${problems[*]}"
 fi

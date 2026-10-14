@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const HOST = fileURLToPath(new URL("../../infra/host", import.meta.url));
 const FAKE_DOCKER = fileURLToPath(new URL("./fixtures/fake-drn-docker.sh", import.meta.url));
+const FAKE_CURL = fileURLToPath(new URL("./fixtures/fake-curl.sh", import.meta.url));
 const scripts = readdirSync(HOST).filter((f) => /^(drn-|agents\.sh$|install\.sh$)/.test(f) && !/\.(mjs|json)$/.test(f) && statSync(join(HOST, f)).isFile());
 const plists = readdirSync(join(HOST, "launchd")).filter((f) => f.endsWith(".plist"));
 const bash = (args, opts = {}) => spawnSync("bash", args, { encoding: "utf8", ...opts });
@@ -88,7 +89,11 @@ function fakeHome() {
   mkdirSync(fake);
   copyFileSync(FAKE_DOCKER, join(home, "drn/bin/drn-docker"));
   chmodSync(join(home, "drn/bin/drn-docker"), 0o700);
-  return { home, fake, env: { ...process.env, HOME: home, FAKE: fake } };
+  // Fake curl first on PATH: the real host may run the production backend on 127.0.0.1:3961.
+  mkdirSync(join(fake, "bin"));
+  copyFileSync(FAKE_CURL, join(fake, "bin/curl"));
+  chmodSync(join(fake, "bin/curl"), 0o700);
+  return { home, fake, env: { ...process.env, HOME: home, FAKE: fake, PATH: `${join(fake, "bin")}:${process.env.PATH}` } };
 }
 const runIn = (ctx, script, args = []) => bash([join(ctx.home, "drn/bin", script), ...args], { env: ctx.env });
 
@@ -137,8 +142,9 @@ test("drn-compose-up: compose failure -> exit 5 compose-up:up; up ok but no loca
   assert.match(r.stdout, /compose-up:up/);
   assert.match(readFileSync(join(ctx.fake, "calls.log"), "utf8"), /compose -p drn -f .*docker-compose.prod.yml up -d --wait/);
   writeFileSync(join(ctx.fake, "compose-exit"), "0");
+  writeFileSync(join(ctx.fake, "health"), "DOWN");
   const h = runIn(ctx, "drn-compose-up.sh");
-  assert.equal(h.status, 6); // nothing listens on 127.0.0.1:3961 in the test
+  assert.equal(h.status, 6); // fake curl reports 127.0.0.1:3961 unreachable
   assert.match(h.stdout, /compose-up:health/);
 });
 

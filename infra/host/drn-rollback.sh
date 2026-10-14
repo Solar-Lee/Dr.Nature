@@ -24,13 +24,13 @@ while [ $# -gt 0 ]; do
     *) echo "drn-rollback: unknown argument $1" >&2; exit 2 ;;
   esac
 done
-fail() { echo "drn-rollback: $*" >&2; drn_log rollback "FAIL $*"; exit "${2:-1}"; }
+fail() { echo "drn-rollback: $1" >&2; drn_log rollback "FAIL $1"; exit "${2:-1}"; }
 image="drn-backend:$old"
 "$drn_docker" image inspect -f '{{.Id}}' "$image" >/dev/null 2>&1 || fail "image $image not present"
 ledger="$drn_logs/releases.log"
 last="$(tail -n 1 "$ledger" 2>/dev/null || true)"
 [ -n "$last" ] || fail "empty release ledger"
-read -r _ action l_old l_new l_pre l_sha l_fp <<< "$last"
+read -r l_ts action l_old l_new l_pre l_sha l_fp <<< "$last"
 [ "$l_old" = "$old" ] || fail "ledger's previous version is $l_old, not $old"
 
 if [ -z "$restore" ]; then
@@ -82,9 +82,10 @@ bash "$bin/drn-check-migrations.sh" --image "$image" || fail "migration check ag
 bash "$bin/drn-releases.sh" append rollback-restore "$l_new" "$old" "$(basename "$prer")" "$(shasum -a 256 "$prer" | cut -d' ' -f1)" "$(drn_fingerprint)"
 "$bin/drn-maint" end
 
-# Reconciliation list: trades created after the deploy, from the pre-rollback dump.
-echo "merchant_trade_no created after the deploy (check them in the ECPay back office):"
+# Reconciliation list: ECPay trades created after the deploy, read from the pre-rollback dump in a
+# throwaway container (they no longer exist in the live database).
+echo "merchant_trade_no created after the deploy at $l_ts (check each in the ECPay back office):"
 bash "$bin/drn-lock.sh" release heavy
-bash "$bin/drn-restore-check.sh" "$prer" --container drn-restore-check >/dev/null 2>&1 || true
+bash "$bin/drn-restore-check.sh" "$prer" --container drn-restore-check --list-trades-since "$l_ts" | grep '^trade ' || echo "(none)"
 drn_log rollback "ok restore $l_new -> $old from $(basename "$restore"); pre-rollback $(basename "$prer")"
 echo "(list the trades with: pg_restore -t payment_session from $prer into a scratch database; see docs/ops/deploy-backend.md)"

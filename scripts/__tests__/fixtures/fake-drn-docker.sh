@@ -20,6 +20,7 @@ case "$all" in
     sql="$(cat)"
     container="$3"
     case "$sql" in
+      *"drn:trades"*) cat "$F/trades" 2>/dev/null ;;
       *"drn:anchors"*) cat "$F/anchors-$container" 2>/dev/null || cat "$F/anchors" 2>/dev/null || echo "0|0|0|0|0|0|0" ;;
       *"drn:fingerprint"*) cat "$F/fingerprint-rows" 2>/dev/null || echo "order|0|" ;;
       *"finished_at is null"*) cat "$F/unfinished" 2>/dev/null || echo 0 ;;
