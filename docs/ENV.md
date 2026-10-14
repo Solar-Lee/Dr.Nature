@@ -70,7 +70,7 @@
 
 | 名稱 | 用途 | 來源 |
 |---|---|---|
-| `DOCKER_HOST` | `drn-docker` 包裝固定指向 Docker Desktop 的 socket（`unix:///Users/aki/.docker/run/docker.sock`），不依賴 docker context | Docker CLI reference（environment variables） |
+| `DOCKER_HOST` | `drn-docker` 包裝固定指向 Docker Desktop 的 socket（`~/.docker/run/docker.sock`），不依賴 docker context | Docker CLI reference（environment variables） |
 | `DOCKER_CONTEXT` | `drn-docker` 包裝一律 `unset`：這個變數會覆蓋 `DOCKER_HOST`（Docker CLI reference），不能讓外部 shell 的設定把 drn 指令導到別的引擎 | Docker CLI reference（environment variables） |
 | `DOCKER_CONFIG` | `drn-docker` 包裝固定指向 `~/drn/docker-config`（只含 `cliPluginsExtraDirs`，沒有 `credsStore`），不碰 Aki 的 `~/.docker/config.json` | 同上 |
 | `DRN_HC_HEARTBEAT_URL` 🔒 | Healthchecks.io `drn-heartbeat` 的 ping 網址（monitor 每 5 分鐘） | 本專案定義（P12-20） |
