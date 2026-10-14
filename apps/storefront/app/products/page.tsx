@@ -1,76 +1,31 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Bottle } from "../components/Bottle";
-import { bottleNumber, lines, page, products, section } from "@/lib/content";
+import { SeriesCards } from "../components/Blocks";
+import { DISCLAIMER, HOME, SERIES, SPEC } from "@/lib/site";
 
-const p = page("products");
-export const metadata: Metadata = { title: p.title, description: p.meta_description };
+export const metadata: Metadata = { title: "產品", description: `${SERIES}：三款益生菌，每瓶 ${SPEC.capsules} 顆膠囊，效期 ${SPEC.shelfLifeYears} 年，官網售價 ${SPEC.priceText}。` };
 
 export default function Products() {
-  const intro = section("products", "intro");
-  const names = section("products", "names");
-  const general = section("products", "general-food");
-  const pending = section("products", "pending");
-  const disclaimer = lines(section("products", "disclaimer"));
   return (
     <>
       <header className="page-head">
-        <div className="wrap">
-          <h1 className="enter">{intro.heading}</h1>
-          <p className="lede enter" style={{ ["--i" as string]: 1 }}>
-            {intro.body}
-          </p>
-          <p className="muted enter" style={{ ["--i" as string]: 2 }}>
-            {names.body}
-          </p>
-        </div>
+        <span className="kicker">{SERIES}</span>
+        <h1 className="enter">{HOME.seriesTitle}</h1>
+        <p className="lede enter" style={{ ["--i" as string]: 1 }}>
+          同一個瓶子，三個編號。每瓶 {SPEC.capsules} 顆膠囊，效期 {SPEC.shelfLifeYears} 年，官網售價 {SPEC.priceText}。三款都是一般食品，不是藥品。每一款的說明，寫在它自己的頁面上，一款一頁，不加形容詞。
+        </p>
       </header>
-
-      <section className="section" style={{ paddingTop: 0 }}>
-        <div className="wrap product-grid">
-          {products.map((pr, i) => (
-            <Link
-              key={pr.handle}
-              href={`/products/${pr.handle}/`}
-              className="product-card"
-              style={{ ["--tint" as string]: `var(--tint-${i + 1})`, ["--i" as string]: i }}
-              data-reveal
-            >
-              <span className="num">{bottleNumber(pr)}</span>
-              <div className="stage">
-                <Bottle num={bottleNumber(pr)} name="60 顆膠囊" tint={(i + 1) as 1 | 2 | 3} width={i === 0 ? 170 : 120} />
-              </div>
-              <div>
-                <h3>{pr.display_name}</h3>
-                <p className="meta">{pr.short_line}</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="section" style={{ paddingTop: 0 }}>
-        <div className="wrap series">
+      <SeriesCards withHead={false} />
+      <section className="section">
+        <div className="wrap two">
           <div className="prose">
-            <h2 data-reveal>{general.heading}</h2>
-            <p data-reveal style={{ marginTop: 16 }}>
-              {general.body}
-            </p>
+            <h2>還沒確認的，先空著</h2>
+            <p style={{ marginTop: 14 }}>菌種名稱、每顆含菌數、建議食用量、原產地與製造廠等標示項目，資料確認後才補上。在那之前，標示表上寫「待確認」，不先填入推測值。</p>
           </div>
-          <div className="prose">
-            <h2 data-reveal>{pending.heading}</h2>
-            <p data-reveal style={{ marginTop: 16 }}>
-              {pending.body}
-            </p>
+          <div className="disclaimer" style={{ borderTop: 0, paddingTop: 0 }}>
+            {DISCLAIMER.map((l) => (
+              <p key={l}>{l}</p>
+            ))}
           </div>
-        </div>
-      </section>
-
-      <section className="section" style={{ paddingTop: 0 }}>
-        <div className="wrap disclaimer">
-          {disclaimer.map((l) => (
-            <p key={l}>{l}</p>
-          ))}
         </div>
       </section>
     </>

@@ -153,7 +153,7 @@
         },
         "names": {
           "heading": "品名還沒定案",
-          "body": "正式品名還沒決定，先以 A、B、C 稱呼。",
+          "body": "三款的品名：01 日日順、02 晶亮、03 安和。正式標示仍在審核中。",
           "sources": [
             "content/products/catalog.json:2",
             "content/products/catalog.json:12",
@@ -705,7 +705,7 @@
     },
     {
       "q": "三款有什麼不同？",
-      "a": "每一款的說明，寫在它自己的頁面上，一款一頁。正式品名還沒決定，目前先以 A、B、C 稱呼。",
+      "a": "每一款的說明，寫在它自己的頁面上，一款一頁。三款的品名：01 日日順、02 晶亮、03 安和。正式標示仍在審核中。",
       "sources": [
         "content/brand/story.md:154",
         "content/products/catalog.json:12",

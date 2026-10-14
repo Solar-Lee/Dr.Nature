@@ -1,0 +1,144 @@
+// Site copy for the storefront rebuilt from DESIGN's prototype (Aki's screen recordings of
+// 2026-10-13, accepted by Aki on 2026-10-14 as the complete design). Product names: Aki's decision
+// of 2026-10-14 (日日順, 晶亮 kept; the third renamed 安和 per docs/product/naming-proposal.md because
+// 「敏」 is banned by docs/compliance/claims.md). Function sentences only from claims.md §2.
+// Facts (capsules, shelf life, price, SKU) from content/products/catalog.json.
+
+export const BRAND = "Dr.Nature";
+export const SERIES = "Daily Flora 日常菌相系列";
+export const LINE_ID = "@704vmtun"; // public LINE OA bot id (brand overview, redacted copy)
+
+export type Product = {
+  handle: string;
+  num: "01" | "02" | "03";
+  name: string; // 日日順益生菌
+  short: string; // 日日順
+  en: string;
+  sku: string;
+  tint: 1 | 2 | 3;
+  /** The one function sentence allowed for this SKU (claims.md §2), or null when none is decided. */
+  claim: string | null;
+  claimNote: string;
+  pendingTag: string;
+};
+
+export const PRODUCTS: Product[] = [
+  {
+    handle: "daily",
+    num: "01",
+    name: "日日順益生菌",
+    short: "日日順",
+    en: "DAILY FLORA",
+    sku: "DN-PB-01-060C",
+    tint: 1,
+    claim: "幫助消化，使排便順暢。",
+    claimNote: "此句為食品標示及廣告法規允許的例句（claims.md §2）。",
+    pendingTag: "副標法規審核中",
+  },
+  {
+    handle: "clear",
+    num: "02",
+    name: "晶亮益生菌",
+    short: "晶亮",
+    en: "DAILY FLORA",
+    sku: "DN-PB-02-060C",
+    tint: 2,
+    claim: null,
+    claimNote: "這一款的說明，等配方路線與定位確認後再寫上。在那之前，先空著，不猜。",
+    pendingTag: "定位確認中",
+  },
+  {
+    handle: "calm",
+    num: "03",
+    name: "安和益生菌",
+    short: "安和",
+    en: "DAILY FLORA",
+    sku: "DN-PB-03-060C",
+    tint: 3,
+    claim: "調整體質。產前產後或病後之補養。",
+    claimNote: "此句為食品標示及廣告法規允許的例句（claims.md §2）。",
+    pendingTag: "副標法規審核中",
+  },
+];
+
+export const SPEC = { capsules: 60, shelfLifeYears: 2, price: 1150, priceText: "NT$ 1,150", bottle: "PB-100 · Ø45.8 × 85.7 mm" };
+
+export const NAV = {
+  primary: [
+    { href: "/rd/", label: "研發" },
+    { href: "/story/", label: "品牌故事" },
+    { href: "/journal/", label: "知識誌" },
+    { href: "/wholesale/", label: "團購合作" },
+    { href: "/account/", label: "會員" },
+  ],
+  story: [
+    { id: "s01", num: "01", label: "序" },
+    { id: "s02", num: "02", label: "我們只說" },
+    { id: "s03", num: "03", label: "三個編號" },
+    { id: "s04", num: "04", label: "日常" },
+    { id: "s05", num: "05", label: "習慣" },
+    { id: "s06", num: "06", label: "讀懂自然" },
+  ],
+  service: [
+    { href: "/faq/", label: "常見問題" },
+    { href: "/returns/", label: "退換貨政策" },
+    { href: "/privacy/", label: "隱私權政策" },
+    { href: "/terms/", label: "服務條款" },
+  ],
+};
+
+export const HOME = {
+  heroTitle: ["以科學，", "讀懂自然。"],
+  heroEn: "Nature, read by science.",
+  heroCta: "認識三款益生菌",
+  heroMeta: ["01 日日順 · 02 晶亮 · 03 安和", "60 顆膠囊 · 效期 2 年 · NT$ 1,150"],
+  s02: { a: "保健品，總是說得太多。", b1: "我們只說", b2: "標籤上寫得出來的事。" },
+  s03Kicker: "同一個瓶子，三個編號",
+  s04: { kicker: "日常", title: ["放進你", "本來就有的習慣裡。"] },
+  s05: { kicker: "習慣", title: ["好的習慣，", "不需要提醒。"], scenes: ["窗邊", "餐桌", "玄關", "書桌"] },
+  s06: { marquee: ["Nature, read by science.", "以科學，讀懂自然。"], kicker: SERIES, title: ["說得剛好的", "一瓶益生菌。"], cta: "認識三款益生菌", cta2: "讀品牌故事" },
+  seriesTitle: "三款，一個系列。",
+  seriesLink: "全部產品",
+};
+
+export const JOURNAL = {
+  title: "知識誌",
+  en: "ARCHIVE",
+  categories: ["全部", "益生菌知識", "腸道與日常作息", "用眼生活", "體質與家庭"],
+  note: "範例題目 · 發布前需法規審核",
+  posts: [
+    { slug: "storage-after-opening", cat: "益生菌知識", title: "益生菌開封後，怎麼保存比較好？" },
+    { slug: "read-the-label", cat: "益生菌知識", title: "挑選益生菌，先看包裝上的哪幾項標示" },
+    { slug: "office-day-notes", cat: "腸道與日常作息", title: "飲水、纖維與作息：寫給上班族的一日飲食筆記" },
+    { slug: "screen-day-rhythm", cat: "用眼生活", title: "螢幕時代的一日作息：休息、光線與距離" },
+    { slug: "season-change-checklist", cat: "體質與家庭", title: "換季時的居家生活保養清單" },
+    { slug: "how-to-read-strain-names", cat: "益生菌知識", title: "菌株名稱怎麼讀？從一串英文字開始" },
+  ],
+};
+
+export const LINE_BLOCK = {
+  title: "加入 LINE 好友",
+  body: "訂單通知、補貨提醒與會員消息，都在這裡。",
+  newsletterTitle: "電子報",
+  newsletterBody: "每月一封，只寄新文章與新品。",
+};
+
+export const FOOTER = {
+  social: [
+    { label: "Facebook", href: "https://www.facebook.com/share/1Js3iCU583/?mibextid=wwXIfr" },
+    { label: "Instagram", href: null, note: "連結待更正（O-06）" },
+    { label: `LINE ${LINE_ID}`, href: `https://line.me/R/ti/p/${LINE_ID}` },
+  ],
+  legal: "© 2026 Dr.Nature",
+  company: "公司名稱 · 地址 · 食品業者登錄字號：待提供（O-10）",
+};
+
+export const DISCLAIMER = ["本產品為一般食品，非藥品，不具醫療效能。", "本產品非健康食品，未經健康食品查驗登記。"];
+
+export const NOTICE = "預覽版：部分內容與標示尚未定案，非正式銷售。";
+
+export function product(handle: string): Product {
+  const p = PRODUCTS.find((x) => x.handle === handle);
+  if (!p) throw new Error(`unknown product ${handle}`);
+  return p;
+}

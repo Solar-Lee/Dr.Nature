@@ -2,11 +2,10 @@ import type { Metadata } from "next";
 import { lines, page, rd, section } from "@/lib/content";
 
 const p = page("rd");
-export const metadata: Metadata = { title: p.title, description: p.meta_description };
+export const metadata: Metadata = { title: "研發", description: p.meta_description };
 
-// 〔需 U-12 同意〕 Aki confirmed on 2026-10-14 that the director agreed to be shown to the client.
-// Only verified degree, department and year (docs/research/cro.md). No photo: the only photo on
-// file is a white-coat banner (claims.md:30). Slogan is kept off this page (slogan.md 三).
+// Only the verified degree, department and year (docs/research/cro.md); Aki confirmed on 2026-10-14
+// the director agreed to be shown. No photo: the only one on file is a white-coat banner (claims.md:30).
 export default function Rd() {
   const lead = section("rd", "rd-lead");
   const disclosure = section("rd", "disclosure");
@@ -14,14 +13,13 @@ export default function Rd() {
   return (
     <>
       <header className="page-head">
-        <div className="wrap">
-          <h1 className="enter">{lead.heading}</h1>
-        </div>
+        <span className="kicker">研發</span>
+        <h1 className="enter">研發長 鄭安生博士</h1>
       </header>
       <section className="section" style={{ paddingTop: 0 }}>
-        <div className="wrap rd">
+        <div className="wrap two">
           <div className="rd-name" data-reveal>
-            <span className="kicker">Dr.Nature 研發長</span>
+            <span className="kicker plain">Dr.Nature 研發長 · Chief Research Officer</span>
             <span className="zh">{rd.name_zh}</span>
             <span className="en">{rd.name_en}</span>
             <dl>
@@ -35,14 +33,14 @@ export default function Rd() {
           </div>
           <div className="prose">
             {body.map((l, i) => (
-              <p key={l} className={i === 0 ? "lede" : undefined} data-reveal style={{ marginTop: i ? 16 : 0 }}>
+              <p key={l} className={i === 0 ? "lede" : undefined} data-reveal style={{ marginTop: i ? 14 : 0 }}>
                 {l}
               </p>
             ))}
-            <h2 data-reveal style={{ marginTop: 40, fontSize: "1.2rem" }}>
+            <h2 data-reveal style={{ marginTop: 36, fontSize: "1.2rem" }}>
               {disclosure.heading}
             </h2>
-            <p className="muted" data-reveal style={{ marginTop: 12 }}>
+            <p className="muted" data-reveal style={{ marginTop: 10 }}>
               {disclosure.body}
             </p>
           </div>

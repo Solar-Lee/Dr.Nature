@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { RevealOnScroll } from "./reveal";
 import { SideNav, TopBar } from "./components/Nav";
-import { Footer } from "./components/Footer";
-import { site } from "@/lib/content";
+import { Footer } from "./components/Blocks";
+import { NOTICE } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: { default: site.title, template: "%s" },
-  description: site.meta_description,
-  // Preview: never indexed (nginx also sends X-Robots-Tag).
+  title: { default: "Dr.Nature｜以科學，讀懂自然。", template: "%s｜Dr.Nature" },
+  description: "Dr.Nature Daily Flora 日常菌相系列：三款益生菌，同一個瓶子，三個編號。60 顆膠囊，效期 2 年。",
   robots: { index: false, follow: false, nocache: true },
 };
 
@@ -18,18 +17,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Google Fonts serves Noto Sans TC in unicode-range slices, so only the used CJK ranges download. */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap"
-          rel="stylesheet"
-        />
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
       </head>
       <body>
         <a className="skip" href="#main">
           跳到主要內容
         </a>
         <div className="notice" role="note">
-          {site.sections.notice.body}
+          {NOTICE}
         </div>
         <TopBar />
         <div className="shell">
