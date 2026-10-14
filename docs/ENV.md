@@ -8,7 +8,7 @@
 
 | 名稱 | 用途 | 來源 |
 |---|---|---|
-| `DATABASE_URL` 🔒 | Postgres 連線字串。正式環境是自架的 `drn-postgres`（`postgres://drn:<密碼>@drn-postgres:5432/drn`，只在 `drn_net` 內部；A7）。不得帶 `host`／`hostaddr` 查詢參數（會被拒絕啟動，P12-14） | Medusa deployment docs |
+| `DATABASE_URL` 🔒 | Postgres 連線字串。正式環境是自架的 `drn-postgres`（`postgres://drn:<密碼>@drn-postgres:5432/drn?sslmode=disable`，只在 `drn_net` 內部；A7。`sslmode=disable` 必要：Medusa 遷移用的鎖連線對非 localhost 預設開 SSL，見 drn-gen-env.sh）。不得帶 `host`／`hostaddr` 查詢參數（會被拒絕啟動，P12-14） | Medusa deployment docs |
 | `DATABASE_SSL_CA_PATH` | 經網路連線的資料庫的 CA 憑證檔路徑；主機不是本機（localhost／127.0.0.1／::1）也不是精確字串 `drn-postgres` 時必填，缺少則啟動失敗（fail closed）。正式環境用 `drn-postgres` 時不設 | src/lib/database/config.ts（P3 審查 F1、P12-14） |
 | `REDIS_URL` 🔒 | `drn-redis`（僅 `drn_net` 內部） | Medusa deployment docs |
 | `JWT_SECRET` 🔒 | Medusa 驗證 | Medusa deployment docs |

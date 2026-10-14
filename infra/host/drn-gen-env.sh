@@ -1,6 +1,9 @@
 #!/bin/bash
 # [P12-17] Generates the production ~/drn/.env on the Mac mini. Run by AKI, never by an agent:
 #   bash ~/drn/bin/drn-gen-env.sh <API_HOST>        e.g. drn-api.smilelife.tw (D12)
+# DATABASE_URL carries ?sslmode=disable: drn-postgres has no TLS (it is reachable only on drn_net),
+# and Medusa 2.21.2's migration lock connection otherwise turns SSL on for every host that is not
+# localhost (@medusajs/utils load-module-database-config.js:14-30), so db:migrate timed out.
 # Secrets come from openssl rand and are written straight into the file (mode 600); nothing
 # secret is ever printed. Refuses to overwrite an existing file. ECPay values are ECPay's PUBLIC
 # stage sandbox merchants (the same public values as infra/dev-env.sh); U-02 replaces them by hand.
@@ -37,7 +40,7 @@ cat > "$tmp" <<ENV
 POSTGRES_USER=drn
 POSTGRES_PASSWORD=$pg_password
 POSTGRES_DB=drn
-DATABASE_URL=postgres://drn:$pg_password@drn-postgres:5432/drn
+DATABASE_URL=postgres://drn:$pg_password@drn-postgres:5432/drn?sslmode=disable
 JWT_SECRET=$jwt_secret
 COOKIE_SECRET=$cookie_secret
 STORE_CORS=$storefront

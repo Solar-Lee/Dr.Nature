@@ -35,7 +35,7 @@ test("generates ~/drn/.env with mode 600, prints names only, refuses to overwrit
   assert.match(r.stdout, /^POSTGRES_PASSWORD$/m);
   // Every name is whitelisted; DATABASE_URL binds drn-postgres with the generated password.
   for (const k of Object.keys(vars)) assert.ok(whitelist.has(k), `${k} not in docs/ENV.md`);
-  assert.equal(vars.DATABASE_URL, `postgres://drn:${vars.POSTGRES_PASSWORD}@drn-postgres:5432/drn`);
+  assert.equal(vars.DATABASE_URL, `postgres://drn:${vars.POSTGRES_PASSWORD}@drn-postgres:5432/drn?sslmode=disable`);
   assert.equal(vars.MEDUSA_BACKEND_URL, "https://drn-api.example.tw");
   assert.equal(vars.ADMIN_CORS, "https://drn-api.example.tw");
   assert.equal(vars.AUTH_CORS, "https://dr.nature.smilelife.tw,https://drn-api.example.tw");
