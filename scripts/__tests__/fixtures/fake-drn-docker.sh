@@ -13,6 +13,9 @@ case "$all" in
   "exec -i "*"pg_restore --list"*) cat >/dev/null; cat "$F/toc" 2>/dev/null; exit 0 ;;
   "exec -i "*"pg_restore "*) cat >/dev/null; exit "$(cat "$F/restore-exit" 2>/dev/null || echo 0)" ;;
   "exec "*"pg_isready"*) exit "$(cat "$F/ready-exit" 2>/dev/null || echo 0)" ;;
+  "exec "*"redis-cli ping"*) cat "$F/redis-ping" 2>/dev/null || echo PONG; exit 0 ;;
+  "exec "*"redis-cli info"*) cat "$F/redis-info" 2>/dev/null || echo "aof_last_write_status:ok"; exit 0 ;;
+  "exec "*" df "*) cat "$F/df" 2>/dev/null || printf 'Filesystem 1024-blocks Used Available Capacity Mounted\n/dev/x 100 10 90 10%% /var/lib/postgresql/data\n'; exit 0 ;;
   "exec -i "*"psql"*)
     sql="$(cat)"
     container="$3"
