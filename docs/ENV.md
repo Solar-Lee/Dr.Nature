@@ -4,19 +4,19 @@
 
 標記：`🔒` 機密（只在伺服器端）；`🌐` 會被打包進瀏覽器（`NEXT_PUBLIC_*`，不可放機密）；`TODO(需查證)` 為尚未對官方文件確認的項目。
 
-## apps/backend（Medusa v2，VPS 容器 `drn-backend`／`drn-worker`）
+## apps/backend（Medusa v2，Mac mini 容器 `drn-backend`／`drn-worker`）
 
 | 名稱 | 用途 | 來源 |
 |---|---|---|
-| `DATABASE_URL` 🔒 | 專屬 Supabase 專案的 Postgres 連線字串（不可共用其他專案的資料庫） | Medusa deployment docs |
-| `DATABASE_SSL_CA_PATH` | 非本機資料庫（Supabase）的 CA 憑證檔路徑；有設 DATABASE_URL 且非 localhost 時必填，缺少則啟動失敗（fail closed） | medusa-config（P3 審查 F1） |
+| `DATABASE_URL` 🔒 | Postgres 連線字串。正式環境是自架的 `drn-postgres`（`postgres://drn:<密碼>@drn-postgres:5432/drn`，只在 `drn_net` 內部；A7）。不得帶 `host`／`hostaddr` 查詢參數（會被拒絕啟動，P12-14） | Medusa deployment docs |
+| `DATABASE_SSL_CA_PATH` | 經網路連線的資料庫的 CA 憑證檔路徑；主機不是本機（localhost／127.0.0.1／::1）也不是精確字串 `drn-postgres` 時必填，缺少則啟動失敗（fail closed）。正式環境用 `drn-postgres` 時不設 | src/lib/database/config.ts（P3 審查 F1、P12-14） |
 | `REDIS_URL` 🔒 | `drn-redis`（僅 `drn_net` 內部） | Medusa deployment docs |
 | `JWT_SECRET` 🔒 | Medusa 驗證 | Medusa deployment docs |
 | `COOKIE_SECRET` 🔒 | Medusa session | Medusa deployment docs |
 | `STORE_CORS` | 前台網域 | medusa-config |
 | `ADMIN_CORS` | 後台網域 | medusa-config |
 | `AUTH_CORS` | 前台＋後台網域 | medusa-config |
-| `MEDUSA_BACKEND_URL` | 後端對外網址（`https://api.dr.nature.smilelife.tw`，待 DNS） | medusa-config |
+| `MEDUSA_BACKEND_URL` | 後端對外網址（`https://<API_HOST>`，主機名稱依 D12 由 Aki 定）；也是上傳檔公開網址的來源（`<網址>/static`，正式環境缺少則啟動失敗，P12-15） | medusa-config |
 | `MEDUSA_WORKER_MODE` | `server`／`worker` | Medusa worker mode docs |
 | `DISABLE_MEDUSA_ADMIN` | worker 容器設 `true` | Medusa worker mode docs |
 | `ECPAY_ENV` | `stage`／`prod`；未設定時不註冊 ECPay（正式環境 drn-0005 會因此失敗，不會靜默） | 本專案定義 |
@@ -50,7 +50,7 @@
 | `LINE_LOGIN_API_BASE_URL` | 僅測試／開發：LINE token／verify 改打本機替身；`NODE_ENV=production` 時設定會啟動失敗 | 本專案定義（P5-01） |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google 登入；與 SECRET 必須同時設定，否則啟動失敗。Callback：`STOREFRONT_URL` + `/auth/callback/google` | Google Cloud Console |
 | `GOOGLE_OAUTH_CLIENT_SECRET` 🔒 | Google 登入 | Google Cloud Console |
-| `FILE_S3_BUCKET` | 商品圖／上傳檔（Supabase Storage S3 相容端點，避免占用 VPS 磁碟） | Medusa S3 file provider |
+| `FILE_S3_BUCKET` | 商品圖／上傳檔的 S3 相容儲存。**MVP 未使用**：A7 改用 file-local＋資料卷 `drn_uploads`（P12-15）；前台上線前再評估 | Medusa S3 file provider |
 | `FILE_S3_REGION` | 同上 | 同上 |
 | `FILE_S3_ENDPOINT` | 同上 | 同上 |
 | `FILE_S3_ACCESS_KEY_ID` 🔒 | 同上 | 同上 |
@@ -59,6 +59,25 @@
 | `AFFILIATE_PORTAL_HMAC_SECRET` 🔒 | 分潤夥伴免登入唯讀成效頁的簽章 | 本專案定義 |
 | `INTEGRATION_API_TOKEN` 🔒 | 團購系統（tuangou-admin）讀取訂單／GMV 的唯讀權杖 | 本專案定義 |
 | `EMAIL_PROVIDER` | 寄信服務（會員 Email 驗證信；之後含訂單確認、出貨通知）。未設定＝不寄信（Email／LINE 註冊回 503，fail closed）；`log`＝僅開發／測試，把驗證連結寫進日誌（正式環境設定會啟動失敗）；其他值在 U-09 選定並實作前會啟動失敗 | 本專案定義（P5-01 審查 auth-2）；TODO(需查證：Aki 選定寄信服務 U-09) |
+| `MEDUSA_DISABLE_TELEMETRY` | `true`：不送 Medusa 匿名遙測（少一條出站連線，D11） | @medusajs/telemetry 2.21.2 store.js:21 |
+| `NODE_ENV` | `production`／`development`／`test`；映像固定 `production`；Medusa CLI 未設時預設 `development` | @medusajs/cli 2.21.2 create-cli.js:182 |
+| `POSTGRES_USER` | `drn-postgres` 容器初始化的角色名（`drn`）；compose 用 `${POSTGRES_USER:?}` 讀取 | docker-library postgres（docker-entrypoint.sh） |
+| `POSTGRES_PASSWORD` 🔒 | `drn-postgres` 的角色密碼；由 `drn-gen-env.sh` 以 `openssl rand` 產生，同時寫進 `DATABASE_URL` | 同上 |
+| `POSTGRES_DB` | `drn-postgres` 初始資料庫名（`drn`） | 同上 |
+| `TUNNEL_TOKEN` 🔒 | Cloudflare Tunnel 的 token，只放 `~/drn/tunnel.env`（600），由 `drn-cloudflared` 的 env_file 載入；永不入版控 | Cloudflare docs：tunnel run parameters（`--token` 對應 `TUNNEL_TOKEN`） |
+
+## 主機腳本（Mac mini，`~/drn/host.env` 與 LaunchAgent；不進容器）
+
+| 名稱 | 用途 | 來源 |
+|---|---|---|
+| `DOCKER_HOST` | `drn-docker` 包裝固定指向 Docker Desktop 的 socket（`unix:///Users/aki/.docker/run/docker.sock`），不依賴 docker context | Docker CLI reference（environment variables） |
+| `DOCKER_CONFIG` | `drn-docker` 包裝固定指向 `~/drn/docker-config`（只含 `cliPluginsExtraDirs`，沒有 `credsStore`），不碰 Aki 的 `~/.docker/config.json` | 同上 |
+| `DRN_HC_HEARTBEAT_URL` 🔒 | Healthchecks.io `drn-heartbeat` 的 ping 網址（monitor 每 5 分鐘） | 本專案定義（P12-20） |
+| `DRN_HC_ALERT_URL` 🔒 | Healthchecks.io `drn-ecpay-alert`（ALERT 掃描） | 本專案定義（P12-20） |
+| `DRN_HC_ACCESS_URL` 🔒 | Healthchecks.io `drn-access`（Access 漂移，每小時） | 本專案定義（P12-20） |
+| `DRN_HC_BACKUP_URL` 🔒 | Healthchecks.io `drn-backup`（每日備份） | 本專案定義（P12-08） |
+| `DRN_HC_DRILL_URL` 🔒 | Healthchecks.io `drn-restore-check`（每週還原演練） | 本專案定義（P12-21） |
+| `DRN_R2_REMOTE` | rclone remote 加 bucket（`drnr2:drn-backups`）；空值＝不做異地備份（`offsite-required` 存在時算失敗） | 本專案定義（P12-08） |
 
 ## apps/storefront（Next.js，Vercel）
 

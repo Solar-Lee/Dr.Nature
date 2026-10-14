@@ -1,11 +1,22 @@
 #!/usr/bin/env node
-// Fails if any variable name in a committed .env.example is missing from docs/ENV.md.
+// Every environment variable name the project uses must come from the whitelist in docs/ENV.md
+// (CLAUDE.md §2). Checked here:
+//  - committed .env.example files: every `NAME=` line;
+//  - host scripts and launchd templates under infra/host/**: every DRN_* and DOCKER_* token
+//    (the host-side names; P12-16);
+//  - (P12-02 adds the compose files infra/*.yml, once the Mac mini compose no longer uses DRN_TAG.)
+// `--root <dir>` points the check at another tree (used by the tests with fixtures).
 import { readFileSync, globSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Resolve paths from the repo root so the check works from any working directory.
-process.chdir(join(dirname(fileURLToPath(import.meta.url)), ".."));
+const rootArg = process.argv.indexOf("--root");
+const root = rootArg >= 0 ? process.argv[rootArg + 1] : join(dirname(fileURLToPath(import.meta.url)), "..");
+if (!root) {
+  console.error("check-env-names: --root needs a directory");
+  process.exit(2);
+}
+process.chdir(root);
 
 const whitelist = new Set(
   [...readFileSync("docs/ENV.md", "utf8").matchAll(/^\| `([A-Z0-9_]+)`/gm)].map((m) => m[1]),
@@ -14,15 +25,34 @@ if (whitelist.size === 0) {
   console.error("check-env-names: no names parsed from docs/ENV.md");
   process.exit(1);
 }
-const files = globSync("{.env.example,apps/*/.env.example}");
+
 let bad = 0;
-for (const f of files) {
-  for (const m of readFileSync(f, "utf8").matchAll(/^([A-Z0-9_]+)=/gm)) {
-    if (!whitelist.has(m[1])) {
-      console.error(`error ${f}: ${m[1]} is not in docs/ENV.md`);
-      bad++;
-    }
+let files = 0;
+const report = (file, name) => {
+  console.error(`error ${file}: ${name} is not in docs/ENV.md`);
+  bad++;
+};
+const checkNames = (file, names) => {
+  files++;
+  for (const name of new Set(names)) {
+    if (!whitelist.has(name)) report(file, name);
   }
+};
+
+for (const f of globSync("{.env.example,apps/*/.env.example}")) {
+  checkNames(f, [...readFileSync(f, "utf8").matchAll(/^([A-Z0-9_]+)=/gm)].map((m) => m[1]));
 }
-console.log(`check-env-names: ${files.length} file(s), ${whitelist.size} whitelisted names, ${bad} error(s)`);
+
+// Host scripts: names the project itself defines (DRN_*) or passes to the Docker CLI (DOCKER_*).
+for (const f of globSync("infra/host/**/*")) {
+  let text;
+  try {
+    text = readFileSync(f, "utf8");
+  } catch {
+    continue; // directories
+  }
+  checkNames(f, [...text.matchAll(/\b((?:DRN|DOCKER)_[A-Z0-9_]+)\b/g)].map((m) => m[1]));
+}
+
+console.log(`check-env-names: ${files} file(s), ${whitelist.size} whitelisted names, ${bad} error(s)`);
 process.exit(bad ? 1 : 0);
