@@ -5,7 +5,9 @@
 ## 名稱與資源
 
 - `<API_HOST>`：D12 建議 `drn-api.smilelife.tw`（Universal SSL 只涵蓋第一層子網域）。寫進 `~/drn/.env`（`MEDUSA_BACKEND_URL`、`ADMIN_CORS`、`AUTH_CORS`）與 `~/drn/host.env`（`DRN_API_HOST`）。
-- Tunnel `drn-tunnel`（遠端管理）：route `<API_HOST>` → `http://drn-backend:9000`；token 只放 `~/drn/tunnel.env`（600），由 `drn-cloudflared` 的 `env_file` 載入（`TUNNEL_TOKEN`）。
+- Tunnel `drn-tunnel`（**本機管理**，2026-10-14 改法）：`cloudflared tunnel login`（容器內執行，Aki 在瀏覽器點 Authorize 選 zone）把 `cert.pem` 寫進 `~/drn/cloudflared/`；`infra/host/drn-tunnel-setup.sh <API_HOST> [hooks-only|public]` 建立 tunnel、用 `tunnel route dns` 建 CNAME、寫 `config.yml` 並 `ingress validate`。憑證與設定檔 600，唯讀掛進 `drn-cloudflared`；沒有任何 token 經過剪貼簿或環境變數（原本的 `TUNNEL_TOKEN`／`tunnel.env` 作法不用了）。
+- Ingress 模式：`hooks-only`（目前）只把 `/hooks/ecpay/*` 與 `/health` 送到後端，其餘路徑在邊緣回 404，所以 Access 建立前管理後台不對外；Access 兩個應用建好後改跑 `drn-tunnel-setup.sh <API_HOST> public` 再 `drn-compose up -d --force-recreate drn-cloudflared`。
+- 2026-10-14 實測：tunnel `d2ae3221-f9f4-4882-a63b-08993e136eae`，1 條連線、協定 quic、邊緣節點 khh；`drn-api.smilelife.tw` 解析到 Cloudflare；邊緣憑證 SAN `smilelife.tw, *.smilelife.tw`；`/health` 200 OK；三條未簽章回呼 400；`/app`、`/admin/users/me`、`/store/products`、`/static/x`、`/auth/user/emailpass`、`/hooks/payment/ecpay_ecpay` 都 404；後端 access log 的 client_ip 等於 `/cdn-cgi/trace` 的 ip。
 - Access 應用：`drn-api-admin`（整個主機名稱，Allow，只放 Aki 的信箱，session 24h）；`drn-api-public`（`<API_HOST>/hooks/ecpay/*`、`<API_HOST>/health`，Bypass，Everyone）。TODO(需查證)：Bypass 應用是否確實優先於整個主機名稱的 Allow——P12-04 用 curl 驗收。
 - WAF custom rule `drn-ecpay-callback-skip`（第一條）：`(http.host eq "<API_HOST>" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/hooks/ecpay/"))` → Skip 其餘 custom rules、rate limiting、managed rules。
 - Bot Fight Mode（D13）：開著就對綠界 postgate 的 IP 建 zone 層級 IP Access rule Allow；演練期間替 Mac 當下的對外 IP（`https://<API_HOST>/cdn-cgi/trace` 的 `ip=`）建暫時規則，結束後刪。

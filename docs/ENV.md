@@ -64,7 +64,7 @@
 | `POSTGRES_USER` | `drn-postgres` 容器初始化的角色名（`drn`）；compose 用 `${POSTGRES_USER:?}` 讀取 | docker-library postgres（docker-entrypoint.sh） |
 | `POSTGRES_PASSWORD` 🔒 | `drn-postgres` 的角色密碼；由 `drn-gen-env.sh` 以 `openssl rand` 產生，同時寫進 `DATABASE_URL` | 同上 |
 | `POSTGRES_DB` | `drn-postgres` 初始資料庫名（`drn`） | 同上 |
-| `TUNNEL_TOKEN` 🔒 | Cloudflare Tunnel 的 token，只放 `~/drn/tunnel.env`（600），由 `drn-cloudflared` 的 env_file 載入；永不入版控 | Cloudflare docs：tunnel run parameters（`--token` 對應 `TUNNEL_TOKEN`） |
+| `TUNNEL_TOKEN` 🔒 | （保留名稱，目前不用）Cloudflare Tunnel 的遠端管理 token。2026-10-14 起改用本機管理 tunnel：憑證在 `~/drn/cloudflared/`（600，唯讀掛進容器），沒有 token 經過環境變數 | Cloudflare docs：tunnel run parameters（`--token` 對應 `TUNNEL_TOKEN`） |
 
 ## 主機腳本（Mac mini，`~/drn/host.env` 與 LaunchAgent；不進容器）
 
