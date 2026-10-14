@@ -4,7 +4,8 @@
 //  - committed .env.example files: every `NAME=` line;
 //  - host scripts and launchd templates under infra/host/**: every DRN_* and DOCKER_* token
 //    (the host-side names; P12-16);
-//  - (P12-02 adds the compose files infra/*.yml, once the Mac mini compose no longer uses DRN_TAG.)
+//  - compose files infra/*.yml (production file and overrides): upper-case `environment:` keys
+//    and every ${VAR} / $${VAR} reference (P12-02).
 // `--root <dir>` points the check at another tree (used by the tests with fixtures).
 import { readFileSync, globSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -52,6 +53,16 @@ for (const f of globSync("infra/host/**/*")) {
     continue; // directories
   }
   checkNames(f, [...text.matchAll(/\b((?:DRN|DOCKER)_[A-Z0-9_]+)\b/g)].map((m) => m[1]));
+}
+
+// Compose files: environment keys and variable references (both host-side ${VAR} and the
+// container-side $${VAR} that compose passes through).
+for (const f of globSync("infra/*.yml")) {
+  const text = readFileSync(f, "utf8");
+  const names = [];
+  for (const m of text.matchAll(/^\s+([A-Z][A-Z0-9_]*):\s/gm)) names.push(m[1]);
+  for (const m of text.matchAll(/\$\$?\{([A-Z][A-Z0-9_]*)[:?}]/g)) names.push(m[1]);
+  checkNames(f, names);
 }
 
 console.log(`check-env-names: ${files} file(s), ${whitelist.size} whitelisted names, ${bad} error(s)`);

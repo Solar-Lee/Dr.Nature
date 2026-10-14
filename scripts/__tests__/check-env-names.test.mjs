@@ -25,10 +25,11 @@ test("all names whitelisted -> exit 0", () => {
   const root = fixture({
     ".env.example": "DATABASE_URL=\nPOSTGRES_USER=\n",
     "infra/host/drn-backup.sh": "#!/bin/bash\ncurl \"$DRN_HC_BACKUP_URL\"\nexport DOCKER_HOST=unix:///x\n",
+    "infra/docker-compose.prod.yml": "services:\n  a:\n    environment:\n      POSTGRES_USER: ${POSTGRES_USER:?}\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U $${POSTGRES_USER}\"]\n",
   });
   const r = run(root);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /2 file\(s\).*0 error\(s\)/);
+  assert.match(r.stdout, /3 file\(s\).*0 error\(s\)/);
 });
 
 test(".env.example with an unknown name -> exit 1", () => {
@@ -44,6 +45,24 @@ test("host script with an unknown DRN_ name -> exit 1; unknown DOCKER_ name -> e
   const b = run(fixture({ "infra/host/launchd/x.plist": "<string>DOCKER_NOPE</string>\n" }));
   assert.equal(b.status, 1);
   assert.match(b.stderr, /DOCKER_NOPE/);
+});
+
+test("compose: unknown environment key, ${VAR} and $${VAR} are all caught; overrides too", () => {
+  for (const text of [
+    "services:\n  a:\n    environment:\n      FOO_BAR: x\n",
+    "services:\n  a:\n    image: x:${NOT_LISTED}\n",
+    "services:\n  a:\n    healthcheck:\n      test: [\"CMD-SHELL\", \"echo $${NOT_LISTED}\"]\n",
+  ]) {
+    const r = run(fixture({ "infra/docker-compose.prod.yml": text }));
+    assert.equal(r.status, 1, text);
+  }
+  const o = run(fixture({ "infra/drill-override.yml": "services:\n  a:\n    environment:\n      NOT_LISTED: \"true\"\n" }));
+  assert.equal(o.status, 1);
+});
+
+test("lower-case compose keys and words that are not variables are ignored", () => {
+  const r = run(fixture({ "infra/docker-compose.prod.yml": "services:\n  drn-backend:\n    image: drn-backend:current\n    mem_limit: 1g\n    environment:\n      DATABASE_URL: x\n" }));
+  assert.equal(r.status, 0, r.stderr);
 });
 
 test("missing docs/ENV.md names -> exit 1 (no names parsed)", () => {
