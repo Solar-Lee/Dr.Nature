@@ -120,7 +120,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-19 | 問綠界：① 信用卡付款頁最長開多久 ② QueryTradeInfo 能否看出「已取號」 ③ TradeNoAio 對帳檔最大日期範圍 | P4-09 縮短等待、P4-07 多日對帳 |
 | U-20 | ~~核准 Mac mini 守則與部署決定~~ ✅ 2026-10-14 Aki：「D1–D25 照建議，開始主機端步驟」 | P12 全部主機端步驟 |
 | U-21 | Mac mini 設定：電源（不睡眠、斷電後自動開機）、關閉自動安裝 macOS 更新、Docker Desktop「登入時自動啟動」、網路線、路由器不轉發、UPS | P12-06、P12-19 |
-| U-22 | 在主機執行 `drn-gen-env.sh <API_HOST>` 產生正式 `.env`（值不經過對話），回報 `missing=0 forbidden=0` | P12-06 |
+| U-22 | ~~在主機執行 `drn-gen-env.sh <API_HOST>` 產生正式 `.env`~~ ✅ 2026-10-14（env-check missing=0 forbidden=0） | P12-06 |
 | U-23 | Cloudflare：帳號 2FA、刪舊 A 記錄、Access 兩個應用、Tunnel 與 token 寫入 `~/drn/tunnel.env`、route、WAF skip 規則、通知；Healthchecks 5 個檢查、UptimeRobot、age 金鑰、R2 bucket 與 rclone；步驟見 [ops/deploy-backend.md](ops/deploy-backend.md) §2 | P12-04、P12-08、P12-20 |
 
 ## 7. 任務清單（最小執行單位）
@@ -303,7 +303,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | P12-17 | `drn-gen-env.sh`／`drn-env-check.sh`（Aki 執行；不印值；`?sslmode=disable`） | C＋U | P12-16 | `node --test drn-gen-env` → 0；6 個反向測試 RED（1 個等價）；Aki 執行 → `missing=0 forbidden=0` | git revert；首次啟動前可 rm .env | ✅ 腳本（e5f0c38、525af09）；**U-22 ⛔** |
 | P12-18 | 主機套件 `infra/host/`（install.sh、agents.sh、drn-docker、drn-compose、drn-maint、drn-lock、drn-compose-up、drn-alertscan、drn-check-migrations、drn-drill、drn-releases、LaunchAgent 範本） | C | P12-02 | host-files 16 測試 → 0；8 個反向測試 RED；主機：`install.sh` 後 ~/drn 700、無 .env、agents 0 | git revert；rm plist | ✅ 套件（0e5bb48）；2026-10-14 主機安裝：23 支腳本、~/drn 與 bin 700、無 quarantine、無 .env、tunnel.env／host.env 600、agents 0、4 個 plist lint OK、`drn-docker info` 與 `compose version` 正常 |
 | P12-03 | `drn-build.sh` 建 `drn-backend:<sha12>`（不打 current）＋六項檢查；`check-image-deps.mjs` | C | P12-14～P12-18 | arm64、medusa 2.21.2、1002 packages 0 not in lockfile、admin clean、static 擁有者 node、drill 與 heartbeat .js 在映像內、`image-ok-<sha>` | `drn-docker rmi` | ✅（16f67fa；演練 HOME 建置 `drn-backend:16f67fa49828` 55.7 秒全部檢查通過）；正式 HOME 2026-10-14 建置 `drn-backend:c9bebe9905e2`（快取，2.7 秒），六項檢查通過，`image-ok-c9bebe9905e2` 存在，current 未建立 |
-| P12-06 | 首次啟動：retag current、`releases first`、起 postgres／redis、兩步遷移、`drn-check-migrations`、起 backend／worker、煙霧測試 | C＋U | P12-03、U-22 | 兩步遷移 0／0；unfinished=0 drn=7/7；4 容器 healthy；無 port 發佈；/health OK；區網 curl exit 7；worker UTC；appendonly yes；static 可寫；/store/products 3 | `drn-compose down`（不加 -v） | 🟡 **演練全數通過**（`drn-rh-*`、2026-10-14；遷移 4.6 s＋2.1 s）；正式啟動 ⛔ 等 U-22 |
+| P12-06 | 首次啟動：retag current、`releases first`、起 postgres／redis、兩步遷移、`drn-check-migrations`、起 backend／worker、煙霧測試 | C＋U | P12-03、U-22 | 兩步遷移 0／0；unfinished=0 drn=7/7；4 容器 healthy；無 port 發佈；/health OK；區網 curl exit 7；worker UTC；appendonly yes；static 可寫；/store/products 3 | `drn-compose down`（不加 -v） | ✅ 2026-10-14 正式啟動：Aki 以 drn-gen-env.sh 產生 .env（env-check missing=0 forbidden=0，U-22 完成）；current=c9bebe9905e2、ledger first；兩步遷移 0／0；unfinished=0 drn=7/7；4 容器 healthy；只有 127.0.0.1:3961 發佈；/health OK；區網 curl exit 7；worker UTC；appendonly yes；static 可寫；/store/products 3；三條回呼 400、內建 webhook 404；verify-current 0；記憶體 backend 236 MiB／worker 141／postgres 65／redis 12 |
 | P12-05 | API 主機名稱（D12）：刪舊 A 記錄；確認邊緣憑證 | U | D12 | `dig +short api.dr.nature.smilelife.tw` 無輸出 | 加回 A 記錄 | ⛔ U-23 |
 | P12-04 | 對外連線：探測基準 → Access → Tunnel → route → WAF → 通知 → 啟用 edge → 外部驗收 → access-baseline | U＋C | P12-06、P12-05 | [ops/edge-cloudflare.md](ops/edge-cloudflare.md) 的驗收清單 | `rm edge-enabled`、停 cloudflared | ⛔ U-23 |
 | P12-22 | 第一位管理員（`medusa user --invite`，Aki 設密碼）；驗 Secure cookie | U | P12-04 | 重新整理後仍登入；cookie Secure/HttpOnly/SameSite=Lax | Admin 刪使用者 | ⛔ |
