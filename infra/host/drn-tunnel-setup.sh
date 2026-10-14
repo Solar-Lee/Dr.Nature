@@ -6,8 +6,9 @@
 # Steps: create tunnel drn-tunnel (credentials JSON written next to the cert), create the DNS
 # CNAME <API_HOST> -> <tunnel-id>.cfargotunnel.com, write ~/drn/cloudflared/config.yml.
 # Ingress "hooks-only" (default until Cloudflare Access exists): only /hooks/ecpay/* and /health
-# reach drn-backend, everything else answers 404 at the edge. "public": whole host (requires the
-# Access applications of docs/ops/edge-cloudflare.md to be in place first).
+# reach drn-backend, everything else answers 404 at the edge. "public": whole host behind Access,
+# except that only the exact bypassed paths pass (requires the Access applications of
+# docs/ops/edge-cloudflare.md to be in place first).
 # Files in ~/drn/cloudflared are 600 and never printed; the tunnel id is not a secret.
 set -euo pipefail
 umask 077
@@ -40,7 +41,20 @@ case "$mode" in
     path: ^/health$
     service: http://drn-backend:9000
   - service: http_status:404' ;;
+  # Access bypasses /health and /hooks/ecpay/ as prefixes (any sub-path, any case), so the tunnel
+  # forwards only the exact callback paths and /health from them; every other path under those
+  # prefixes (/health/x, /HEALTH, /hooks/ecpay/..%2f..%2fadmin) gets 404 here. All other paths go
+  # to the backend behind the Access login. Checked with `cloudflared tunnel ingress rule`.
   public) rules='  - hostname: '"$host"'
+    path: ^/hooks/ecpay/(payment|payment-info|logistics)$
+    service: http://drn-backend:9000
+  - hostname: '"$host"'
+    path: ^/health$
+    service: http://drn-backend:9000
+  - hostname: '"$host"'
+    path: (?i)^/+(health|hooks/+ecpay)
+    service: http_status:404
+  - hostname: '"$host"'
     service: http://drn-backend:9000
   - service: http_status:404' ;;
   *) echo "drn-tunnel-setup: mode must be public or hooks-only" >&2; exit 2 ;;
