@@ -44,7 +44,8 @@ done
 for name in "${forbidden[@]}"; do
   if printf '%s\n' "$present" | grep -qx "$name"; then forbid=$((forbid+1)); report+=("forbidden $name"); fi
 done
-perm="$(stat -f '%Lp' "$file" 2>/dev/null || stat -c '%a' "$file")"
+# GNU stat first: on Linux `stat -f` means filesystem status and would succeed with the wrong text.
+perm="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file")"
 echo "missing=$missing forbidden=$forbid"
 for r in "${report[@]:-}"; do [ -n "$r" ] && echo "$r"; done
 if [ "$perm" != "600" ]; then echo "mode $perm (expected 600)"; exit 1; fi

@@ -146,7 +146,7 @@ else
       newest="$(ls -1t "$drn_dir"/backups/daily/drn-*.manifest 2>/dev/null | head -n 1 || true)"
       if [ -z "$newest" ]; then note "backup-age:none"
       else
-        age=$(( now - $(stat -f %m "$newest" 2>/dev/null || stat -c %Y "$newest") ))
+        age=$(( now - $(stat -c %Y "$newest" 2>/dev/null || stat -f %m "$newest") ))  # GNU first (see env-check)
         [ "$age" -le 93600 ] || note "backup-age:$((age / 3600))h"
       fi
     fi
