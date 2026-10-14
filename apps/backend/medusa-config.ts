@@ -146,6 +146,7 @@ module.exports = defineConfig({
   // below replaces the default (disabled) one. Verified in @medusajs/framework 2.21.2.
   featureFlags: { rbac: true },
   // [P6-01] Blog (pillar / cluster posts, categories, tags): src/modules/blog.
+  // [P9-01] Affiliate partners and stores: src/modules/affiliate.
   modules: [
     ...redisModules,
     { resolve: "@medusajs/medusa/rbac" },
@@ -154,5 +155,6 @@ module.exports = defineConfig({
     ...paymentModules,
     ...fulfillmentModules,
     { resolve: "./src/modules/blog" },
+    { resolve: "./src/modules/affiliate" },
   ],
 })

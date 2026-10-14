@@ -2,6 +2,7 @@ import { configureStoreSearch, defineMiddlewares } from "@medusajs/framework/htt
 import { ContainerRegistrationKeys, MedusaError } from "@medusajs/framework/utils"
 import { guardVerificationConfirm, guardVerificationRequest, requireEmailProof } from "./email-verification-guards"
 import { maskOrderBody } from "../lib/order-privacy"
+import { cartMetadataProblem } from "../lib/affiliate/rules"
 import type {
   AuthenticatedMedusaRequest,
   MedusaNextFunction,
@@ -83,6 +84,15 @@ const rbacHardening: MiddlewareRoute[] = ([
     matcher,
     policies: [{ resource: "order", operation: "update" }],
   })),
+  // [P9-01] Affiliate partners and stores are run like promotions: operations and Super Admin
+  // manage them; finance (promotion:read) may look.
+  ...["/admin/affiliate/partners", "/admin/affiliate/stores"].flatMap((base) => [
+    { methods: ["GET"], matcher: base, policies: [{ resource: "promotion", operation: "read" }] },
+    { methods: ["POST"], matcher: base, policies: [{ resource: "promotion", operation: "create" }] },
+    { methods: ["GET"], matcher: `${base}/:id`, policies: [{ resource: "promotion", operation: "read" }] },
+    { methods: ["POST"], matcher: `${base}/:id`, policies: [{ resource: "promotion", operation: "update" }] },
+    { methods: ["DELETE"], matcher: `${base}/:id`, policies: [{ resource: "promotion", operation: "delete" }] },
+  ]),
   { methods: ["POST"], matcher: "/admin/index/sync", policies: SUPER_ADMIN_ONLY },
   { methods: ["DELETE"], matcher: "/admin/search-indexes/:id", policies: SUPER_ADMIN_ONLY },
   { methods: ["POST"], matcher: "/admin/search-indexes/:id/reindex", policies: SUPER_ADMIN_ONLY },
@@ -154,6 +164,16 @@ const rejectReservedCustomerMetadata = (req: MedusaRequest, _res: MedusaResponse
   }
   return next()
 }
+
+// [P9-01] Affiliate attribution is written only by POST /store/carts/:id/affiliate. The generic cart
+// routes accept any metadata (Medusa 2.21.2 StoreCreateCart / StoreUpdateCart) and Medusa copies it
+// onto the order, so they may not set or delete the affiliate keys, nor replace the whole metadata
+// (null or {}), which would erase the attribution (src/lib/affiliate/rules.ts cartMetadataProblem).
+const guardAffiliateCartMetadata =
+  (mode: "create" | "update") => (req: MedusaRequest, _res: MedusaResponse, next: MedusaNextFunction) => {
+    const problem = cartMetadataProblem(req.body, mode)
+    return next(problem ? new MedusaError(MedusaError.Types.INVALID_DATA, problem) : undefined)
+  }
 
 // [P4-11 review logistics-1] Order privacy. Medusa 2.21.2 serves orders by id alone and the id
 // is not a secret, so non-owners (anyone but the logged-in customer the order belongs to) get a
@@ -236,6 +256,8 @@ export default defineMiddlewares({
     { methods: ["POST"], matcher: "/auth/verification/request", middlewares: [guardVerificationRequest] },
     { methods: ["POST"], matcher: "/auth/verification/confirm", middlewares: [guardVerificationConfirm] },
     { methods: ["POST"], matcher: "/store/customers/me", middlewares: [rejectReservedCustomerMetadata] },
+    { methods: ["POST"], matcher: "/store/carts", middlewares: [guardAffiliateCartMetadata("create")] },
+    { methods: ["POST"], matcher: "/store/carts/:id", middlewares: [guardAffiliateCartMetadata("update")] },
     // [P4-11 review logistics-1] order privacy
     { methods: ["GET"], matcher: "/store/orders/:id", middlewares: [maskUnlessOwner("order")] },
     { methods: ["POST"], matcher: "/store/carts/:id/complete", middlewares: [maskUnlessOwner("cart")] },
