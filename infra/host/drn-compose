@@ -1,0 +1,15 @@
+#!/bin/bash
+# [P12-18] `drn-compose [--drill] <compose args>` = drn-docker compose -p drn -f ~/drn/docker-compose.prod.yml
+# plus the drill override with --drill (ATM/CVS simulated payments, D16) and --profile edge when
+# ~/drn/state/edge-enabled exists. Never call `config` without -q (the rendered config has secrets).
+set -euo pipefail
+dir="$HOME/drn"
+args=(compose -p drn -f "$dir/docker-compose.prod.yml")
+if [ "${1:-}" = "--drill" ]; then
+  args+=(-f "$dir/drill-simulated-payments.yml")
+  shift
+fi
+if [ -e "$dir/state/edge-enabled" ]; then
+  args+=(--profile edge)
+fi
+exec "$dir/bin/drn-docker" "${args[@]}" "$@"

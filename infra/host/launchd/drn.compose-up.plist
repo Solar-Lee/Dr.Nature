@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- # drn-compose-up: start the drn containers after login (P12-18 / P12-19). Installed by install.sh with __HOME__ replaced. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>drn.compose-up</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__HOME__/drn/bin/drn-compose-up.sh</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>DOCKER_HOST</key><string>unix://__HOME__/.docker/run/docker.sock</string>
+    <key>DOCKER_CONFIG</key><string>__HOME__/drn/docker-config</string>
+  </dict>
+  <key>Umask</key><integer>63</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>__HOME__/drn/logs/launchd-compose-up.out</string>
+  <key>StandardErrorPath</key><string>__HOME__/drn/logs/launchd-compose-up.err</string>
+</dict>
+</plist>

@@ -1,0 +1,25 @@
+#!/bin/bash
+# [P12-18] Docker CLI pinned to Docker Desktop's engine and to drn's OWN client config
+# (deployment review D1/D2b, Docker Desktop variant). Why a wrapper:
+#  - DOCKER_HOST is fixed to Docker Desktop's socket, so a changed docker context can never make
+#    drn commands land on another engine; DOCKER_CONTEXT is unset because it would override it.
+#  - DOCKER_CONFIG points at ~/drn/docker-config, which holds only cliPluginsExtraDirs (the
+#    compose/buildx plugins shipped inside Docker.app). Aki's ~/.docker/config.json is never read
+#    or written: its credsStore=desktop needs docker-credential-desktop, which is not on PATH
+#    (the /usr/local/bin links are dangling), and that broke anonymous pulls (2026-10-14).
+#  - The binary is the one inside Docker.app, by absolute path.
+set -euo pipefail
+sock="$HOME/.docker/run/docker.sock"
+bin="/Applications/Docker.app/Contents/Resources/bin/docker"
+if [ ! -S "$sock" ]; then
+  echo "drn-docker: Docker Desktop socket $sock not found; start Docker Desktop" >&2
+  exit 2
+fi
+if [ ! -x "$bin" ]; then
+  echo "drn-docker: $bin is not executable" >&2
+  exit 2
+fi
+unset DOCKER_CONTEXT
+export DOCKER_HOST="unix://$sock"
+export DOCKER_CONFIG="$HOME/drn/docker-config"
+exec "$bin" "$@"

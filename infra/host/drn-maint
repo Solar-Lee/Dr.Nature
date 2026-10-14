@@ -1,0 +1,53 @@
+#!/bin/bash
+# [P12-18] Maintenance flag and controlled stop/start (deployment review D25/C3):
+#   drn-maint quiet <reason> [minutes<=120]   set run/maintenance only (heartbeat reports it;
+#                                             compose-up and auto-up refuse to start containers)
+#   drn-maint stop <reason>                   quiet + alertscan + stop drn-worker, then drn-backend
+#   drn-maint end                             alertscan + `drn-compose up -d --wait`; the flag is
+#                                             removed only when up succeeds
+#   drn-maint ack alerts                      clear the pending ALERT counter (after a human handled them)
+#   drn-maint status
+set -euo pipefail
+# shellcheck disable=SC1091
+. "$HOME/drn/bin/drn-lib.sh"
+install -d -m 700 "$drn_run" "$drn_state/monitor"
+cmd="${1:-}"
+case "$cmd" in
+  quiet)
+    reason="${2:-}"; minutes="${3:-120}"
+    [ -n "$reason" ] || { echo "usage: drn-maint quiet <reason> [minutes]" >&2; exit 2; }
+    [ "$minutes" -le 120 ] 2>/dev/null || { echo "drn-maint: minutes must be <= 120" >&2; exit 2; }
+    printf '%s|%s\n' "$reason" "$(( $(date +%s) + minutes * 60 ))" > "$drn_maint_flag"
+    drn_log maint "quiet $reason ${minutes}m"
+    ;;
+  stop)
+    reason="${2:-}"
+    [ -n "$reason" ] || { echo "usage: drn-maint stop <reason>" >&2; exit 2; }
+    printf '%s|%s\n' "$reason" "$(( $(date +%s) + 120 * 60 ))" > "$drn_maint_flag"
+    drn_log maint "stop $reason"
+    bash "$drn_dir/bin/drn-alertscan.sh" >/dev/null || true
+    "$drn_dir/bin/drn-compose" stop drn-worker
+    "$drn_dir/bin/drn-compose" stop drn-backend
+    ;;
+  end)
+    bash "$drn_dir/bin/drn-alertscan.sh" >/dev/null || true
+    if "$drn_dir/bin/drn-compose" up -d --wait --wait-timeout 600; then
+      rm -f "$drn_maint_flag"
+      drn_log maint "end ok"
+    else
+      drn_log maint "end FAILED; flag kept"
+      echo "drn-maint: up failed; maintenance flag kept" >&2
+      exit 1
+    fi
+    ;;
+  ack)
+    [ "${2:-}" = "alerts" ] || { echo "usage: drn-maint ack alerts" >&2; exit 2; }
+    echo 0 > "$drn_state/monitor/alerts-pending"
+    drn_log maint "ack alerts"
+    ;;
+  status)
+    if drn_maint_active; then echo "maintenance: $(drn_maint_reason) (expires $(drn_maint_expires))"; else echo "maintenance: none"; fi
+    echo "alerts pending: $(cat "$drn_state/monitor/alerts-pending" 2>/dev/null || echo 0)"
+    ;;
+  *) echo "usage: drn-maint quiet|stop|end|ack|status" >&2; exit 2 ;;
+esac
