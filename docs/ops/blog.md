@@ -1,4 +1,4 @@
-# Blog：資料模型、API 與發佈規則（P6-01）
+# Blog：資料模型、API、後台編輯與發佈規則（P6-01、P6-02）
 
 適用：內容編輯（`content_editor`）與 Super Admin；前台（P6-03／P7）讀取 Store API。程式：`apps/backend/src/modules/blog`（模組）、`src/lib/blog/`（規則）、`src/api/admin/blog/**`、`src/api/store/blog/**`；測試：`integration-tests/http/blog.spec.ts`、`src/lib/blog/__tests__/`。
 
@@ -45,12 +45,23 @@ Store（需 publishable key，與其他 `/store` 路由相同）：
 
 `body_markdown` 是原始 Markdown；前台渲染時**不得執行其中的 HTML**（P6-03）。
 
-## 4. 權限
+## 4. 後台編輯介面（P6-02）
+
+後台左側選單「Blog」（`/app/blog`，程式 `apps/backend/src/admin/routes/blog/**`）：
+
+- 列表：搜尋標題／slug、依狀態篩選（草稿／已發佈與排程）、分頁；狀態標籤「草稿」「排程」「已發佈」。下方列出分類與標籤（可刪除）。
+- 新增／編輯：標題、slug、類型、所屬 pillar（只列出 pillar）、狀態、發佈時間、作者、摘要、分類與標籤（可直接新增）、SEO 欄位、noindex；內文是 Markdown，右側即時預覽。pillar 的編輯頁會列出掛在它下面的 cluster；最下方可刪除文章。
+- **排程**：狀態選「發佈」並填未來的發佈時間（以瀏覽器所在時區輸入），到時間才會出現在前台。發佈時間留空＝按下儲存時立即發佈。已發佈的文章再次儲存時，如果沒改發佈時間，原本的時間不變。
+- **預覽不會執行 HTML**：內文裡的 HTML（例如 `<script>`）只會以文字顯示；連結與圖片只接受 `https://`、`http://`、站內 `/…` 與 `#…`。預覽只支援常用語法（標題、粗體、斜體、清單、引言、程式碼、分隔線、連結、圖片），與前台最終樣式可能不同（前台 P6-03 決定渲染方式）。沒有新增任何套件（lockfile 內沒有 Markdown 套件，預覽是 `src/admin/lib/markdown.ts` 自寫的小型解析器）。
+- 含禁用詞時，畫面列出每個字詞、所在欄位、行與字的位置及理由；可以先存成草稿再修改。
+
+## 5. 權限
 
 RBAC 資源 `blog_post`、`blog_category`、`blog_tag`（各有 read／create／update／delete；`src/policies/blog.ts`）。`content_editor` 全部都有（新資料庫由 drn-0004 建立；P6 以前建立的角色由 drn-0008 補上），Super Admin（`*:*`）也可以；營運、客服、財務與沒有角色的帳號一律 403（每個路由在 `src/api/middlewares.ts` 宣告）。
 
-## 5. 回滾
+## 6. 回滾
 
-1. 從 `medusa-config.ts` 移除 `./src/modules/blog`、刪除 `src/api/{admin,store}/blog`、`src/policies/blog.ts`。
-2. 資料表：`medusa db:rollback blog`（2026-10-14 在拋棄式資料庫 `drn_blog_gen` 驗證：還原後 `blog_*` 資料表全數移除，再 `db:migrate` 可重建）。**正式環境先 `pg_dump` 備份**（`docs/ops/backup-restore.md`）。
-3. drn-0008 已執行的資料庫：角色上的 `blog_*` 權限在 policy 不再註冊後會被 Medusa 同步為刪除狀態，不需另外處理。
+1. 後台介面：刪除 `src/admin/routes/blog`（以及 `src/admin/components/blog-*`、`src/admin/lib/blog-api.ts`、`markdown*.ts`）後重新 build。
+2. 從 `medusa-config.ts` 移除 `./src/modules/blog`、刪除 `src/api/{admin,store}/blog`、`src/policies/blog.ts`。
+3. 資料表：`medusa db:rollback blog`（2026-10-14 在拋棄式資料庫 `drn_blog_gen` 驗證：還原後 `blog_*` 資料表全數移除，再 `db:migrate` 可重建）。**正式環境先 `pg_dump` 備份**（`docs/ops/backup-restore.md`）。
+4. drn-0008 已執行的資料庫：角色上的 `blog_*` 權限在 policy 不再註冊後會被 Medusa 同步為刪除狀態，不需另外處理。
