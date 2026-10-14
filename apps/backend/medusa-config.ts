@@ -3,6 +3,7 @@ import { authProvidersFromEnv } from "./src/lib/auth/config"
 import { databaseDriverOptionsFromEnv } from "./src/lib/database/config"
 import { emailDeliveryFromEnv } from "./src/lib/email/config"
 import { fileModuleFromEnv } from "./src/lib/file/config"
+import { assertRedisForProduction } from "./src/lib/runtime/redis-guard"
 import {
   ecpayInvoiceConfigured,
   ecpayInvoiceOptionsFromEnv,
@@ -28,7 +29,9 @@ const workerMode = (process.env.MEDUSA_WORKER_MODE || "shared") as
   | "server"
 
 // Without REDIS_URL (local dev, unit tests) Medusa falls back to its in-memory
-// event bus, workflow engine and locking. Production always sets REDIS_URL.
+// event bus, workflow engine and locking. Production refuses to boot without it (P12-24):
+// server and worker are separate processes and share events only through Redis.
+assertRedisForProduction()
 const redisModules = redisUrl
   ? [
     {
