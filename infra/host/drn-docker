@@ -11,6 +11,9 @@
 set -euo pipefail
 sock="$HOME/.docker/run/docker.sock"
 bin="/Applications/Docker.app/Contents/Resources/bin/docker"
+# A symlinked socket (rehearsal HOME) is used by its real path: Unix socket paths are limited to
+# 104 bytes on macOS and the Docker CLI refuses longer ones.
+if [ -L "$sock" ]; then sock="$(readlink "$sock")"; fi
 if [ ! -S "$sock" ]; then
   echo "drn-docker: Docker Desktop socket $sock not found; start Docker Desktop" >&2
   exit 2
