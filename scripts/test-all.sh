@@ -21,6 +21,10 @@ run_suite() {
     failed+=("$name")
     echo "✖ $name (exit $code). First error:"
     grep -m1 -iE 'error|fail|not ok|cannot|exception' "$log" || head -5 "$log"
+    # Every failing TAP subtest with its assertion (node --test), then the log tail on CI, where
+    # the local log file is not available afterwards.
+    grep -nE '^not ok|^\s+(error|message|expected|actual|code|operator):' "$log" | head -60
+    if [ -n "${CI:-}" ]; then echo "--- last 40 lines of $name ---"; tail -40 "$log"; fi
   else
     echo "✔ $name"
   fi
