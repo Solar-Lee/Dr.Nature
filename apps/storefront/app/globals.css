@@ -547,6 +547,7 @@ a:hover > .arrow {
 
 /* ---------- home: 02 dark ---------- */
 .dark {
+  position: relative;
   background: #1a1a1a;
   color: #f1f0ec;
   padding: clamp(80px, 14vw, 180px) var(--gutter);
@@ -561,8 +562,42 @@ a:hover > .arrow {
   color: #6f6f6b;
   transition: color 900ms var(--ease);
 }
-.js-reveal .dark [data-inview] .dim {
+.js-reveal .dark [data-inview] .dim,
+.fx .dark .dim {
   color: #f1f0ec;
+}
+/* staircase wipe (ScrollFX scrubs scaleY of the columns); the section's own paint sits on them */
+.dark .stairs {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  pointer-events: none;
+}
+.dark .stairs span {
+  display: block;
+  background: #1a1a1a;
+  transform-origin: 50% 100%;
+}
+.fx .dark {
+  background: transparent;
+}
+.fx #s02 h2 {
+  position: relative;
+  z-index: 1;
+}
+.fx #s01 {
+  z-index: 0;
+}
+.fx #s02,
+.fx #s03 {
+  position: relative;
+  z-index: 1;
+  background-color: var(--paper);
+}
+.fx #s02 {
+  background-color: transparent;
 }
 .inline-slot {
   display: inline-block;
@@ -593,6 +628,32 @@ a:hover > .arrow {
   display: grid;
   grid-template-rows: auto 1fr auto;
   min-height: 70dvh;
+}
+.fx .three {
+  height: 100dvh;
+}
+.fx .three .left,
+.fx .three .right {
+  min-height: 0;
+}
+.numstack {
+  position: relative;
+  display: grid;
+}
+.numstep {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 500ms var(--ease), transform 600ms var(--ease);
+  pointer-events: none;
+}
+.numstep[data-active] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+html:not(.fx) .numstep:not([data-active]) {
+  display: none;
 }
 .three .bignum {
   font-family: var(--latin);
@@ -630,10 +691,26 @@ a:hover > .arrow {
   padding-top: 10px;
   border-top: 2px solid var(--line);
 }
+.tabs a {
+  position: relative;
+}
+.tabs a::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -2px;
+  height: 2px;
+  width: 100%;
+  background: var(--red);
+  transform: scaleX(var(--fill, 0));
+  transform-origin: 0 50%;
+}
 .tabs a[aria-current] {
   color: var(--ink);
-  border-top-color: var(--red);
   font-weight: 700;
+}
+html:not(.fx) .tabs a[aria-current] {
+  border-top-color: var(--red);
 }
 .three .right {
   position: relative;
@@ -731,6 +808,9 @@ a:hover > .arrow {
 }
 
 /* ---------- home: 06 marquee + dark panel ---------- */
+#s06 .wide {
+  will-change: transform;
+}
 .marquee {
   overflow: hidden;
   white-space: nowrap;
@@ -1276,10 +1356,11 @@ a:hover > .arrow {
     transform: translateX(-50%);
   }
 }
+/* opacity only: a transform on <main> would turn every pinned (position: fixed) child into an
+   absolutely positioned one and break ScrollTrigger pins */
 @keyframes route-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
 }
 @media (prefers-reduced-motion: reduce) {

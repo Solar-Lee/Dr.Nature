@@ -1,89 +1,16 @@
 import Link from "next/link";
 import { Bottle3D } from "./components/Bottle3D";
-import { Greeting } from "./components/Greeting";
+import { HomeStory } from "./components/HomeStory";
 import { ContactBlocks, JournalGrid, Marquee, SeriesCards, Slot } from "./components/Blocks";
-import { HOME, JOURNAL, PRODUCTS, SERIES, SPEC } from "@/lib/site";
+import { HOME, JOURNAL, PRODUCTS } from "@/lib/site";
 
 // Home: the six-part story from DESIGN's prototype (01 序 … 06 讀懂自然), then the series cards,
 // 知識誌, LINE / 電子報. Section ids match NAV.story so the left index tracks the scroll.
 export default function Home() {
-  const first = PRODUCTS[0];
   const third = PRODUCTS[2];
   return (
     <>
-      <section id="s01" className="hero" aria-labelledby="hero-title">
-        <div className="hero-top">
-          <div className="hero-copy">
-            <div className="enter" style={{ ["--i" as string]: 0 }}>
-              <Greeting />
-            </div>
-            <h1 id="hero-title" className="enter" style={{ ["--i" as string]: 1 }}>
-              {HOME.heroTitle[0]}
-              <br />
-              {HOME.heroTitle[1]}
-            </h1>
-            <div className="hero-cta enter" style={{ ["--i" as string]: 2 }}>
-              <Link href="/products/" className="btn">
-                {HOME.heroCta} <span className="arrow">→</span>
-              </Link>
-              <span className="en">{HOME.heroEn}</span>
-            </div>
-          </div>
-          <div className="hero-meta enter" style={{ ["--i" as string]: 3 }}>
-            <b>{SERIES}</b>
-            {HOME.heroMeta.map((l) => (
-              <span key={l} style={{ display: "block" }}>
-                {l}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="hero-stage">
-          <div className="hero-video" aria-hidden="true">
-            <span className="tag">品牌影片（D-E01）製作中</span>
-          </div>
-          <Bottle3D num={first.num} name={first.name} className="stage3d tilt" tilt={0.14} scale={1.05} />
-        </div>
-        <p className="giant" aria-hidden="true">
-          Dr<span className="dot">.</span>Nature
-        </p>
-      </section>
-
-      <section id="s02" className="dark" aria-label="我們只說">
-        <h2 data-reveal>
-          {HOME.s02.a}
-          <br />
-          {HOME.s02.b1}
-          <span className="inline-slot" aria-hidden="true" />
-          <span className="dim">{HOME.s02.b2}</span>
-        </h2>
-      </section>
-
-      <section id="s03" className="three" aria-label="三個編號">
-        <div className="left">
-          <span className="kicker">{HOME.s03Kicker}</span>
-          <div>
-            <div className="bignum" data-reveal>
-              {first.num}
-            </div>
-            <div className="pname" data-reveal>
-              {first.name}
-            </div>
-            <span className="ptag">{first.pendingTag}</span>
-          </div>
-          <nav className="tabs" aria-label="三款">
-            {PRODUCTS.map((p) => (
-              <Link key={p.handle} href={`/products/${p.handle}/`} aria-current={p.handle === first.handle ? "true" : undefined}>
-                {p.num} {p.short}
-              </Link>
-            ))}
-          </nav>
-        </div>
-        <div className="right">
-          <Bottle3D num={first.num} name={first.name} />
-          <span className="footnote">{SPEC.bottle} · 即時 3D</span>
-        </div>
-      </section>
+      <HomeStory />
 
       <section id="s04" className="daily" aria-labelledby="daily-title">
         <div className="daily-top">
@@ -123,7 +50,9 @@ export default function Home() {
       </section>
 
       <section id="s06" aria-label="讀懂自然">
-        <Slot label="情境全幅影像（D-E03）" className="slot" style={{ minHeight: "38dvh", borderLeft: 0, borderRight: 0 }} />
+        <div className="wide">
+          <Slot label="情境全幅影像（D-E03）" className="slot" style={{ minHeight: "38dvh", borderLeft: 0, borderRight: 0 }} />
+        </div>
         <Marquee />
         <div className="panel-dark">
           <span className="kicker">{HOME.s06.kicker}</span>
