@@ -30,9 +30,9 @@
 
 命名速查：compose 專案 `drn`；容器 `drn-backend`、`drn-worker`、`drn-storefront`、`drn-postgres`、`drn-redis`、`drn-cloudflared`，一次性 `drn-migrate`、`drn-restore-check`、`drn-probe-*`；網路 `drn_net`、`drn_edge`、暫時 `drn_probe_tmp`；資料卷 `drn_pgdata`、`drn_redisdata`、`drn_uploads`；映像 `drn-backend:<sha12>`／`drn-backend:current`；nginx `drn.conf`；排程註解 `# drn-backup`；LaunchAgent 標籤 `drn.*`；主機目錄 `~/drn`；port 見 server-inventory（Mac mini 只有 `127.0.0.1:3961`）。
 
-## 1b. Mac mini 正式主機守則（Docker Desktop，2026-10-14 草案，待 Aki 核准）
+## 1b. Mac mini 正式主機守則（Docker Desktop；Aki 2026-10-14 核准）
 
-正式主機是 Aki 的日常機（Mac mini M4，16 GB），Docker Desktop 上同時有 Aki 自己的容器。核准前 CODE 不在這台主機安裝任何東西；核准後，CODE **只能**做下列事（細節：[docs/ops/deploy-backend.md](docs/ops/deploy-backend.md)）：
+正式主機是 Aki 的日常機（Mac mini M4，16 GB），Docker Desktop 上同時有 Aki 自己的容器。CODE **只能**做下列事（細節：[docs/ops/deploy-backend.md](docs/ops/deploy-backend.md)）：
 
 1. 建立與修改 `~/drn/**` 和 `~/Library/LaunchAgents/drn.*.plist`。`launchctl` 只對 `drn.*` 標籤做 bootstrap／bootout／kickstart／print，一律經 `~/drn/bin/agents.sh`。
 2. 任何 Docker 指令一律經 `~/drn/bin/drn-docker` 或 `drn-compose`（固定 `DOCKER_HOST`、`DOCKER_CONFIG=~/drn/docker-config`、清掉 `DOCKER_CONTEXT`）。只能操作 compose 專案 `drn`、`drn-dev` 與 `drn` 開頭的資源（上方命名速查）；可以拉取 compose 與 Dockerfile 以 digest 釘選的映像；舊映像只能用 `docker rmi drn-backend:<tag>` 刪。

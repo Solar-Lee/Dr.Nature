@@ -118,7 +118,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-17 | LINE Developers：Login channel 的 Callback URL、連結官方帳號（加好友提示）、（選擇性）申請 Email 權限；Google Cloud：OAuth 重新導向 URI。網址見 [ops/customer-login.md](ops/customer-login.md) §4 | P5-01 正式登入 |
 | U-18 | 付款規則決定（詳見 [reviews/2026-10-13-p4-p5-review.md](reviews/2026-10-13-p4-p5-review.md)「要 Aki 決定」）：① ATM／超商代碼過期後要不要保留重新付款的時間（目前期限一到就自動取消）② 每張訂單最多 5 筆綠界交易 ③ Apple Pay 未付款改為 180 分鐘取消（原 24 小時）、信用卡仍預設 180 分鐘 ④ 信用卡被拒後 40 分鐘才能重新付款 | P4-09 定案 |
 | U-19 | 問綠界：① 信用卡付款頁最長開多久 ② QueryTradeInfo 能否看出「已取號」 ③ TradeNoAio 對帳檔最大日期範圍 | P4-09 縮短等待、P4-07 多日對帳 |
-| U-20 | **核准 Mac mini 守則與部署決定**：CLAUDE.md §1b、[ops/deploy-backend.md](ops/deploy-backend.md) §1 的 D1–D25（重點 D2 Docker Desktop、D12 主機名稱、D24 容器連主機的處置） | P12 全部主機端步驟 |
+| U-20 | ~~核准 Mac mini 守則與部署決定~~ ✅ 2026-10-14 Aki：「D1–D25 照建議，開始主機端步驟」 | P12 全部主機端步驟 |
 | U-21 | Mac mini 設定：電源（不睡眠、斷電後自動開機）、關閉自動安裝 macOS 更新、Docker Desktop「登入時自動啟動」、網路線、路由器不轉發、UPS | P12-06、P12-19 |
 | U-22 | 在主機執行 `drn-gen-env.sh <API_HOST>` 產生正式 `.env`（值不經過對話），回報 `missing=0 forbidden=0` | P12-06 |
 | U-23 | Cloudflare：帳號 2FA、刪舊 A 記錄、Access 兩個應用、Tunnel 與 token 寫入 `~/drn/tunnel.env`、route、WAF skip 規則、通知；Healthchecks 5 個檢查、UptimeRobot、age 金鑰、R2 bucket 與 rclone；步驟見 [ops/deploy-backend.md](ops/deploy-backend.md) §2 | P12-04、P12-08、P12-20 |
@@ -289,7 +289,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
-| P12-00 | Mac mini 主機守則 CLAUDE.md §1b（D1）；A7／CODE_HANDOFF 事實改成 16 GB／460 GB／Docker Desktop；runbook 與 ops 文件 | C 起草、U 核准 | — | `grep -c '^## 1b' CLAUDE.md` → 1；舊的記憶體與磁碟規格數字（24／512）在 DEV_PLAN 與 CODE_HANDOFF 都已改掉；claims-lint 0 | git revert | 🟡 草案已提交（本提交）；**U-20 核准後改 ✅** |
+| P12-00 | Mac mini 主機守則 CLAUDE.md §1b（D1）；A7／CODE_HANDOFF 事實改成 16 GB／460 GB／Docker Desktop；runbook 與 ops 文件 | C 起草、U 核准 | — | `grep -c '^## 1b' CLAUDE.md` → 1；舊的記憶體與磁碟規格數字（24／512）在 DEV_PLAN 與 CODE_HANDOFF 都已改掉；claims-lint 0 | git revert | ✅ Aki 2026-10-14 核准：「D1–D25 照建議，開始主機端步驟」（U-20） |
 | P12-01 | 部署前盤點：`infra/host/drn-inventory.sh snapshot／compare`（正規化、規則比對） | C | P12-00 | `node --test scripts/__tests__/inventory.test.mjs` → 0；主機：`snapshot ~/drn/logs/inventory-pre.txt` 7 段、3961 無人監聽、disk ≥ 40 | git revert | ✅ 腳本與 6 支測試（750393b；4 個反向測試轉紅）；**主機快照 ⛔ 等 U-20** |
 | P12-13 | 容器執行環境：Docker Desktop（取代 Colima）；`drn-docker` 包裝固定 socket、自有 `DOCKER_CONFIG`、`unset DOCKER_CONTEXT`；Aki 設登入自動啟動 | C＋U | P12-01 | 包裝在假 HOME 無 socket → exit 2；`drn-docker compose version` 可用；pinned 映像匿名拉取成功 | 刪 ~/drn/bin | ✅ 包裝（0e5bb48）；2026-10-14 實測 compose v5.1.4、postgres／redis／cloudflared digest 拉取成功；**AutoStart 目前 False，等 U-21** |
 | P12-28 | 容器到主機的探測 `drn-probe.sh`／`.mjs`（Docker Desktop 無 VM 防火牆，只量測，處置是 D24） | C | P12-13 | probe 測試 → 0；`--control` exit 1 且含 :9999；`--dns` dns-ok；無 drn_probe_tmp 殘留 | git revert | ✅（abd0951）；實測：容器經 host.docker.internal 可連主機所有監聽埠（含 127.0.0.1 服務），清單只留主機；**D24 等 Aki 裁決** |
