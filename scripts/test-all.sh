@@ -44,6 +44,13 @@ if [ -f pnpm-workspace.yaml ]; then
   done
 fi
 
+# 2a. Storefront (Next.js static export, P12-26): typecheck and a full build; the build must
+#     produce the 404 page and the three product pages, else the export is incomplete.
+if [ -f apps/storefront/package.json ]; then
+  run_suite "storefront:typecheck" pnpm --dir apps/storefront exec tsc --noEmit
+  run_suite "storefront:build" bash -c 'pnpm --dir apps/storefront exec next build >/dev/null 2>&1 && test -f apps/storefront/out/404.html && test -f apps/storefront/out/products/probiotic-c/index.html'
+fi
+
 # 2b. Backend (Medusa): typecheck, Medusa lint rules, and HTTP integration tests.
 #     Integration tests need the dev Postgres (infra/docker-compose.dev.yml). If it is not
 #     reachable the suite FAILS rather than being skipped, so a green run always means the
