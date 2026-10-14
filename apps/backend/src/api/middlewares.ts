@@ -91,6 +91,27 @@ const rbacHardening: MiddlewareRoute[] = ([
   { methods: ["POST", "DELETE"], matcher: "/admin/property-labels/:id", policies: SUPER_ADMIN_ONLY },
 ] as MiddlewareRoute[]).map((entry) => ({ ...entry, middlewares: [requirePolicies] }))
 
+// [P6-01] Blog admin routes (src/api/admin/blog/**). Custom routes declare no policy of their own,
+// so without these entries ANY signed-in staff user could read and write the blog. Policies are
+// registered in src/policies/blog.ts; content_editor and Super Admin hold them (lib/rbac-roles.ts).
+const blogRbac: MiddlewareRoute[] = (["post", "category", "tag"] as const).flatMap((kind) => {
+  const resource = `blog_${kind}`
+  const base = `/admin/blog/${kind === "category" ? "categories" : `${kind}s`}`
+  const entry = (methods: ("GET" | "POST" | "DELETE")[], matcher: string, operation: string): MiddlewareRoute => ({
+    methods,
+    matcher,
+    policies: [{ resource, operation }],
+    middlewares: [requirePolicies],
+  })
+  return [
+    entry(["GET"], base, "read"),
+    entry(["POST"], base, "create"),
+    entry(["GET"], `${base}/:id`, "read"),
+    entry(["POST"], `${base}/:id`, "update"),
+    entry(["DELETE"], `${base}/:id`, "delete"),
+  ]
+})
+
 // ECPay (P4-03 review): once a cart is completed into an order, Medusa 2.21.2 still lets the
 // storefront create a new payment session on its collection, which deletes the old session
 // while its ECPay form can still be paid. Block it until a deliberate re-pay flow (P4-09)
@@ -204,6 +225,7 @@ export default defineMiddlewares({
       ],
     },
     ...rbacHardening,
+    ...blogRbac,
     {
       methods: ["POST"],
       matcher: "/store/payment-collections/:id/payment-sessions",
