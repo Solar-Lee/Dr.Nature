@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const HOST = fileURLToPath(new URL("../../infra/host", import.meta.url));
 const FAKE_DOCKER = fileURLToPath(new URL("./fixtures/fake-drn-docker.sh", import.meta.url));
-const scripts = readdirSync(HOST).filter((f) => /^(drn-|agents\.sh$|install\.sh$)/.test(f) && statSync(join(HOST, f)).isFile());
+const scripts = readdirSync(HOST).filter((f) => /^(drn-|agents\.sh$|install\.sh$)/.test(f) && !/\.(mjs|json)$/.test(f) && statSync(join(HOST, f)).isFile());
 const plists = readdirSync(join(HOST, "launchd")).filter((f) => f.endsWith(".plist"));
 const bash = (args, opts = {}) => spawnSync("bash", args, { encoding: "utf8", ...opts });
 const stripComments = (text) => text.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
@@ -252,6 +252,14 @@ test("drn-lock: second acquire fails while the holder (this test process) lives;
   // A lock left by a dead process is cleared.
   writeFileSync(join(ctx.home, "drn/run/heavy.lock/pid"), "999999\n");
   assert.equal(runIn(ctx, "drn-lock.sh", ["acquire", "heavy"]).status, 0);
+});
+
+test("drn-probe.sh falls back to the Node digest pinned in infra/backend.Dockerfile and always removes its containers", () => {
+  const probe = readFileSync(join(HOST, "drn-probe.sh"), "utf8");
+  const dockerfile = readFileSync(join(HOST, "../backend.Dockerfile"), "utf8");
+  const pinned = dockerfile.match(/^FROM (node:\S+) AS build$/m)[1];
+  assert.ok(probe.includes(`node_image="${pinned}"`), "fallback digest differs from the Dockerfile");
+  for (const line of probe.split("\n")) if (/drn_docker" run /.test(line)) assert.match(line, /--rm/, line);
 });
 
 test("agents.sh refuses labels that do not start with drn.", () => {

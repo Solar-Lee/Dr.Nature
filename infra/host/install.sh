@@ -16,6 +16,7 @@ install -d -m 700 "$dir" "$dir/bin" "$dir/docker-config" "$dir/backups" "$dir/ba
 # Compose files and scripts (700; the quarantine attribute from a copied tree is dropped).
 install -m 600 "$src/../docker-compose.prod.yml" "$dir/docker-compose.prod.yml"
 install -m 600 "$src/../drill-simulated-payments.yml" "$dir/drill-simulated-payments.yml"
+install -m 600 "$src/../backend.Dockerfile" "$dir/backend.Dockerfile"
 count=0
 for f in "$src"/drn-* "$src"/agents.sh "$src"/install.sh; do
   [ -f "$f" ] || continue
@@ -39,7 +40,7 @@ done
 # Secrets templates only when absent; .env is never touched.
 [ -e "$dir/tunnel.env" ] || { : > "$dir/tunnel.env"; chmod 600 "$dir/tunnel.env"; }
 [ -e "$dir/host.env" ] || {
-  printf 'DRN_HC_HEARTBEAT_URL=\nDRN_HC_ALERT_URL=\nDRN_HC_ACCESS_URL=\nDRN_HC_BACKUP_URL=\nDRN_HC_DRILL_URL=\nDRN_R2_REMOTE=\n' > "$dir/host.env"
+  printf 'DRN_API_HOST=\nDRN_HC_HEARTBEAT_URL=\nDRN_HC_ALERT_URL=\nDRN_HC_ACCESS_URL=\nDRN_HC_BACKUP_URL=\nDRN_HC_DRILL_URL=\nDRN_R2_REMOTE=\n' > "$dir/host.env"
   chmod 600 "$dir/host.env"
 }
 echo "installed $count scripts into $dir/bin; agents not enabled; .env untouched"

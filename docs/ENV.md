@@ -73,6 +73,7 @@
 | `DOCKER_HOST` | `drn-docker` 包裝固定指向 Docker Desktop 的 socket（`~/.docker/run/docker.sock`），不依賴 docker context | Docker CLI reference（environment variables） |
 | `DOCKER_CONTEXT` | `drn-docker` 包裝一律 `unset`：這個變數會覆蓋 `DOCKER_HOST`（Docker CLI reference），不能讓外部 shell 的設定把 drn 指令導到別的引擎 | Docker CLI reference（environment variables） |
 | `DOCKER_CONFIG` | `drn-docker` 包裝固定指向 `~/drn/docker-config`（只含 `cliPluginsExtraDirs`，沒有 `credsStore`），不碰 Aki 的 `~/.docker/config.json` | 同上 |
+| `DRN_API_HOST` | 對外 API 主機名稱（D12，例如 `drn-api.smilelife.tw`），monitor 的 Access 漂移檢查與 drn-probe 用；不是機密 | 本專案定義（P12-20） |
 | `DRN_HC_HEARTBEAT_URL` 🔒 | Healthchecks.io `drn-heartbeat` 的 ping 網址（monitor 每 5 分鐘） | 本專案定義（P12-20） |
 | `DRN_HC_ALERT_URL` 🔒 | Healthchecks.io `drn-ecpay-alert`（ALERT 掃描） | 本專案定義（P12-20） |
 | `DRN_HC_ACCESS_URL` 🔒 | Healthchecks.io `drn-access`（Access 漂移，每小時） | 本專案定義（P12-20） |

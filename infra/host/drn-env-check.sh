@@ -11,7 +11,7 @@ if [ "${1:-}" = "--host" ]; then mode="host"; fi
 
 if [ "$mode" = "host" ]; then
   file="$HOME/drn/host.env"
-  required=(DRN_HC_HEARTBEAT_URL DRN_HC_ALERT_URL DRN_HC_ACCESS_URL DRN_HC_BACKUP_URL DRN_HC_DRILL_URL)
+  required=(DRN_API_HOST DRN_HC_HEARTBEAT_URL DRN_HC_ALERT_URL DRN_HC_ACCESS_URL DRN_HC_BACKUP_URL DRN_HC_DRILL_URL)
   forbidden=()
 else
   file="$HOME/drn/.env"

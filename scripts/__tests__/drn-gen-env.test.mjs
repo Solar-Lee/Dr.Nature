@@ -91,16 +91,16 @@ test("drn-env-check reports missing names and forbidden names without printing v
   assert.match(m.stdout, /mode 644/);
 });
 
-test("--host checks the five Healthchecks URLs in host.env", () => {
+test("--host checks DRN_API_HOST and the five Healthchecks URLs in host.env", () => {
   const home = mkdtempSync(join(tmpdir(), "drn-genenv-"));
   mkdirSync(join(home, "drn"));
   const file = join(home, "drn/host.env");
-  writeFileSync(file, "DRN_HC_HEARTBEAT_URL=\nDRN_HC_ALERT_URL=\nDRN_HC_ACCESS_URL=\nDRN_HC_BACKUP_URL=\nDRN_HC_DRILL_URL=\nDRN_R2_REMOTE=\n");
+  writeFileSync(file, "DRN_API_HOST=\nDRN_HC_HEARTBEAT_URL=\nDRN_HC_ALERT_URL=\nDRN_HC_ACCESS_URL=\nDRN_HC_BACKUP_URL=\nDRN_HC_DRILL_URL=\nDRN_R2_REMOTE=\n");
   chmodSync(file, 0o600);
   const empty = run(CHECK, ["--host"], home);
   assert.equal(empty.status, 1);
-  assert.match(empty.stdout, /^missing=5 forbidden=0$/m);
-  writeFileSync(file, ["HEARTBEAT", "ALERT", "ACCESS", "BACKUP", "DRILL"].map((n) => `DRN_HC_${n}_URL=https://hc-ping.example/${n}`).join("\n") + "\n");
+  assert.match(empty.stdout, /^missing=6 forbidden=0$/m);
+  writeFileSync(file, "DRN_API_HOST=drn-api.example.tw\n" + ["HEARTBEAT", "ALERT", "ACCESS", "BACKUP", "DRILL"].map((n) => `DRN_HC_${n}_URL=https://hc-ping.example/${n}`).join("\n") + "\n");
   chmodSync(file, 0o600);
   const full = run(CHECK, ["--host"], home);
   assert.equal(full.status, 0, full.stdout);
