@@ -2,6 +2,7 @@ import { ContainerRegistrationKeys, Modules, loadEnv, defineConfig } from "@medu
 import { authProvidersFromEnv } from "./src/lib/auth/config"
 import { databaseDriverOptionsFromEnv } from "./src/lib/database/config"
 import { emailDeliveryFromEnv } from "./src/lib/email/config"
+import { fileModuleFromEnv } from "./src/lib/file/config"
 import {
   ecpayInvoiceConfigured,
   ecpayInvoiceOptionsFromEnv,
@@ -106,6 +107,10 @@ const fulfillmentModules = process.env.ECPAY_LOGISTICS_MERCHANT_ID
 // state lives in the cache module (Medusa 2.21.2 auth-module setState/getState), hence the
 // explicit dependency; the default in-memory cache is enough for ONE server process (state
 // lasts 20 minutes and is lost on restart; several server replicas would need cache-redis).
+// Uploads (P12-15): local provider under <cwd>/static with a public URL derived from
+// MEDUSA_BACKEND_URL; production refuses to boot without it.
+const fileModules = fileModuleFromEnv()
+
 const auth = authProvidersFromEnv()
 const authModule = {
   resolve: "@medusajs/medusa/auth",
@@ -137,5 +142,5 @@ module.exports = defineConfig({
   // registered, so the flag alone leaves the module disabled; the explicit module entry
   // below replaces the default (disabled) one. Verified in @medusajs/framework 2.21.2.
   featureFlags: { rbac: true },
-  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, authModule, ...paymentModules, ...fulfillmentModules],
+  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, authModule, ...fileModules, ...paymentModules, ...fulfillmentModules],
 })

@@ -15,13 +15,15 @@ RUN pnpm install --frozen-lockfile
 COPY apps/backend apps/backend
 RUN pnpm --dir apps/backend run build \
  && pnpm --filter @drn/backend deploy --prod /out \
- && cp -R apps/backend/.medusa /out/.medusa
+ && cp -R apps/backend/.medusa /out/.medusa \
+ && mkdir -p /out/.medusa/server/static
 
 FROM node:22.22.3-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /out /app
 USER node
-# Medusa runs from the build output; packages resolve from /app/node_modules.
+# Medusa runs from the build output; packages resolve from /app/node_modules. Uploads land in
+# ./static (created in the build stage, owned by node; a named volume in production, P12-15).
 WORKDIR /app/.medusa/server
 EXPOSE 9000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
