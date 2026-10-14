@@ -10,7 +10,8 @@
 #              baseline state/monitor/probe-baseline)
 #   alert      drn-alertscan pending ALERT lines or >= 5 error lines -> fail until `drn-maint ack alerts`
 #   access     hourly: https://$DRN_API_HOST/admin/users/me compared with state/access-baseline
-#              (status, Location host, no cf-mitigated); fail on any drift
+#              (status, Location host, no cf-mitigated); fail on any drift, and on no HTTP answer
+#              at all (access-unreachable; such a reading is never recorded as the baseline)
 # Flags for tests and for P12-04: --access-only, --access-path <path>, --record-access-baseline.
 set -euo pipefail
 # shellcheck disable=SC1091
@@ -50,6 +51,15 @@ access_check() {
   location="$(printf '%s\n' "$hdr" | awk 'tolower($1) == "location:" {print $2}' | tail -n 1 | sed -E 's#^https?://([^/]+).*#\1#')"
   mitigated="$(printf '%s\n' "$hdr" | grep -ci '^cf-mitigated:' || true)"
   obs="status=${status:-none} location=${location:-none} mitigated=$mitigated"
+  # No HTTP status means the probe never reached Cloudflare (DNS, network): it proves nothing about
+  # Access, so it is never a baseline and never "no drift".
+  if [ -z "$status" ]; then
+    if [ "$record_baseline" = 1 ]; then echo "access baseline NOT recorded: $url unreachable" >&2; exit 1; fi
+    echo "$now" > "$mon/last-access"
+    drn_log monitor "access unreachable: $url"
+    hc_ping access fail "access-unreachable"
+    return 0
+  fi
   if [ "$record_baseline" = 1 ]; then
     echo "$obs" > "$drn_state/access-baseline"; chmod 600 "$drn_state/access-baseline"
     echo "access baseline recorded: $obs"; return 0

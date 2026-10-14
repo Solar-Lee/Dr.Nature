@@ -135,3 +135,18 @@ test("restart count increase and OOM kill stick for 60 minutes; redis AOF status
   utimesSync(m, old, old);
   assert.match(run(c).stdout, /backup-age:30h/);
 });
+
+test("access: an unresolvable host is never a baseline and fails as access-unreachable, not as a match", () => {
+  const c = ctx();
+  writeFileSync(join(c.home, "drn/host.env"), "DRN_API_HOST=drn-api.example.tw\n");
+  writeFileSync(join(c.fake, "access-headers"), "UNRESOLVED");
+  const rec = run(c, ["--record-access-baseline"]);
+  assert.notEqual(rec.status, 0);
+  assert.match(rec.stderr, /access baseline NOT recorded/);
+  assert.equal(existsSync(join(c.home, "drn/state/access-baseline")), false);
+  // A baseline written by the old script while DNS failed must not turn an unreachable probe into "ok".
+  writeFileSync(join(c.home, "drn/state/access-baseline"), "status=none location=none mitigated=0\n");
+  const r = run(c, ["--access-only"]);
+  assert.match(r.stdout, /^hc access fail access-unreachable$/m);
+  assert.doesNotMatch(r.stdout, /^hc access ok/m);
+});

@@ -60,6 +60,8 @@ Node 22.23.2（mise）、pnpm 9.15.9、Docker Desktop 29.6.1。`bash scripts/tes
   - 整合測試的替身固定綁 56390～56393 port，不能同時跑兩組整合測試。
   - `test-all.sh` 執行期間不要改原始碼：jest 是延遲載入，會讀到改到一半的檔案。
 - **反向測試協定**（CLAUDE.md §4）：用 `scripts/mutate.py` 在另一個 git worktree 裡做（見檔頭用法）。「沒有任何測試執行」一律判為無效，不算轉紅。弄壞後仍然綠，通常是少了斷言，要補測試，不是放過。競態可以在整合規格裡用 `jest.mock` 包住真正的模組、在指定時間點插入動作，讓結果固定（範例：`integration-tests/http/ecpay-cancel-race.spec.ts`）。
+- **新 worktree 的原生模組卡住（2026-10-14）**：在 Claude Code 裡 `pnpm install` 出來的 `*.node` 帶 `com.apple.quarantine`，`medusa lint` 載入 `@swc/core` 時卡在 macOS 簽章檢查（`sample <pid>` 看到 `dlopen → fcntl`，CPU 0%，test-all 停在 backend:lint）。只清掉旗標不夠：該檔的檢查已經卡住。解法：`xattr -dr com.apple.quarantine node_modules`，再把同 SHA-256 的 `.node` 用 `ln -f` 指到已經能用的 worktree 那份。卡住的 lint 不吃 SIGTERM，要 `kill -9`。
+- **新主機名稱的本機 DNS 快取（2026-10-14）**：tunnel 建好當下本機查過 `drn-api.smilelife.tw`，macOS 解析器記住「查無」約 30 分鐘；`dig` 正常但 `curl` 解析失敗。這段時間內不要記錄 access 基準（drn-monitor 現在會拒絕）。
 - **磁碟**：舊電腦曾因本機 `docker build` 把磁碟塞滿、Docker 當掉。建映像前先確認剩餘空間；**任何全域清理指令（prune）都要先問 Aki**。
 - **Docker Desktop 上的 Docker CLI**：Aki 的 `~/.docker/config.json` 有 `credsStore=desktop`，但 `docker-credential-desktop` 不在 PATH 上，直接用 `docker` 拉映像會失敗；一律經 `~/drn/bin/drn-docker`（自己的 `DOCKER_CONFIG`，`unset DOCKER_CONTEXT`，因為 `DOCKER_CONTEXT` 會覆蓋 `DOCKER_HOST`）。Unix socket 路徑上限 104 位元組，包裝會把 symlink 解成真實路徑。
 - **Medusa 遷移的 SSL**：`db:migrate` 的鎖連線用 Medusa 自己的預設 driver options，對非 localhost 主機會開 SSL，`drn-postgres` 沒有 TLS → 10 秒逾時。`DATABASE_URL` 必須帶 `?sslmode=disable`（`drn-gen-env.sh` 已寫入）。
