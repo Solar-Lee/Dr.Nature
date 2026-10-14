@@ -275,7 +275,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 
 | ID | 任務 | 負責 | 前置 | 驗收 | 回滾 | 狀態 |
 |---|---|---|---|---|---|---|
-| P11-01 | 單元＋整合測試入 `scripts/test-all.sh`（後端用全新資料庫跑全部遷移） | C | P0-07 | 反向測試：弄壞一個遷移 → 紅 | — | 🟡 後端整合 20 支＋單元 23 支已入 test-all（含反向測試） |
+| P11-01 | 單元＋整合測試入 `scripts/test-all.sh`（後端用全新資料庫跑全部遷移） | C | P0-07 | 反向測試：弄壞一個遷移 → 紅 | — | ✅ 後端整合＋單元全入 test-all；2026-10-14 反向測試：在 drn-0001 遷移腳本開頭插入 throw → `bash scripts/test-all.sh` EXIT=1（backend:integration:http 失敗），drn-setup.spec 20/20 失敗且錯誤訊息出現 40 次「drn P11-01 broken migration」；還原後工作樹乾淨 |
 | P11-02 | e2e smoke（Playwright）：首頁、商品頁、加入購物車、結帳到付款頁、Blog、登入；只讀模式可對正式站跑 | C | P7-05 | 本機與 staging 全綠；`E2E_ALLOW_WRITES` 未設時不建立訂單（測試斷言） | — | ⬜ |
 | P11-03 | e2e 全流程（測試環境）：三種付款、兩種物流、發票、退款、等級升級、分潤歸因 | C | P4、P5、P9 | 全綠＋證據截圖 | — | ⛔ |
 | P11-04 | 效能預算：行動版 LCP ≤ 2.5 s、CLS ≤ 0.1、INP ≤ 200 ms；首屏 JS ≤ 200 KB gzip | C | P7 | Lighthouse CI 斷言 | — | ⛔ |
