@@ -145,5 +145,14 @@ module.exports = defineConfig({
   // registered, so the flag alone leaves the module disabled; the explicit module entry
   // below replaces the default (disabled) one. Verified in @medusajs/framework 2.21.2.
   featureFlags: { rbac: true },
-  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, authModule, ...fileModules, ...paymentModules, ...fulfillmentModules],
+  // [P9-01] Affiliate partners and stores (src/modules/affiliate).
+  modules: [
+    ...redisModules,
+    { resolve: "@medusajs/medusa/rbac" },
+    authModule,
+    ...fileModules,
+    ...paymentModules,
+    ...fulfillmentModules,
+    { resolve: "./src/modules/affiliate" },
+  ],
 })
