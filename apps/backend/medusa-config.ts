@@ -1,6 +1,6 @@
-import { readFileSync } from "fs"
-import { ContainerRegistrationKeys, MedusaError, Modules, loadEnv, defineConfig } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules, loadEnv, defineConfig } from "@medusajs/framework/utils"
 import { authProvidersFromEnv } from "./src/lib/auth/config"
+import { databaseDriverOptionsFromEnv } from "./src/lib/database/config"
 import { emailDeliveryFromEnv } from "./src/lib/email/config"
 import {
   ecpayInvoiceConfigured,
@@ -14,32 +14,11 @@ loadEnv(process.env.NODE_ENV || "development", process.cwd())
 // Variable names must stay within docs/ENV.md (checked by scripts/check-env-names.mjs).
 // Module options follow the Medusa deployment guide (docs.medusajs.com/learn/deployment/general),
 // verified against Medusa 2.21.2 on 2026-10-13.
-// Non-local databases (Supabase in production) must use TLS with certificate
-// verification. Medusa 2.21.2 defaults to ssl=false (utils create-pg-connection), so the
-// CA must be supplied explicitly; startup fails closed if it is missing.
+// A database reached over a network must use TLS with certificate verification; startup fails
+// closed without the CA. The machine itself and the compose-internal drn-postgres are exempt, and
+// the pg host-override query parameters are refused (src/lib/database/config.ts, D8).
 const databaseUrl = process.env.DATABASE_URL
-const databaseHost = (() => {
-  try {
-    return databaseUrl ? new URL(databaseUrl).hostname : ""
-  } catch {
-    return ""
-  }
-})()
-const isLocalDatabase = ["", "localhost", "127.0.0.1", "::1"].includes(databaseHost)
-const databaseDriverOptions = isLocalDatabase
-  ? undefined
-  : (() => {
-    const caPath = process.env.DATABASE_SSL_CA_PATH
-    if (!caPath) {
-      throw new MedusaError(
-        MedusaError.Types.INVALID_DATA,
-        `DATABASE_SSL_CA_PATH is required for non-local database host ${databaseHost}`
-      )
-    }
-    return {
-      connection: { ssl: { ca: readFileSync(caPath, "utf8"), rejectUnauthorized: true } },
-    }
-  })()
+const databaseDriverOptions = databaseDriverOptionsFromEnv()
 
 const redisUrl = process.env.REDIS_URL
 const workerMode = (process.env.MEDUSA_WORKER_MODE || "shared") as
