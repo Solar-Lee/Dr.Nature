@@ -1468,6 +1468,55 @@ html:not(.fx) .tabs a[aria-current] {
   color: var(--ink-2);
 }
 
+/* ---------- fallbacks for older engines ---------- */
+/* Why @supports and not a plain fallback line above the modern one:
+   - "height: 100vh" written above "height: 100dvh" does not survive the build (Lightning CSS drops
+     it because Next's default targets all support dvh); an @supports block is kept as written.
+   - "background: rgba(...)" above "background: color-mix(..., var(--x) ...)" never wins in an
+     engine without color-mix(): a value containing var() passes parsing and only fails at
+     computed-value time, which resets the property to transparent instead of falling back.
+   Each rule mirrors one declaration above (same selector and media condition). The .hero and
+   .fx .three heights belong to the motion lane and carry their own fallbacks. */
+/* color-mix(): iOS Safari < 16.2, Chrome < 111, Firefox < 113 */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .topbar {
+    background: rgba(241, 240, 236, 0.94);
+  }
+  .btn.ghost:hover {
+    background: rgba(21, 21, 21, 0.06);
+  }
+}
+/* dvh / svh: iOS Safari < 15.4, Chrome < 108, Firefox < 101 */
+@supports not (height: 1dvh) {
+  @media (min-width: 1024px) {
+    .sidenav {
+      height: 100vh;
+    }
+  }
+  @media (max-width: 899px) {
+    .hero-stage {
+      min-height: 46vh;
+    }
+  }
+  .three .left {
+    min-height: 70vh;
+  }
+  .three .right {
+    min-height: 60vh;
+  }
+  .daily-panel {
+    min-height: 42vh;
+  }
+  @media (min-width: 960px) {
+    .pdp .stage {
+      height: 100vh;
+    }
+  }
+  .pdp .stage {
+    min-height: 70vh;
+  }
+}
+
 /* ---------- motion ---------- */
 @media (prefers-reduced-motion: no-preference) {
   .js-reveal [data-reveal] {
