@@ -565,7 +565,9 @@ a:hover > .arrow {
 .giant {
   font-family: var(--latin);
   font-weight: 700;
-  font-size: clamp(5rem, 19vw, 17rem);
+  /* floor 3.75rem: at the old 5rem floor the 80px wordmark (329px Helvetica Neue, 337px WebKit)
+     overflowed the 288px content box at 320px and clipped; 19vw now governs from 316px up */
+  font-size: clamp(3.75rem, 19vw, 17rem);
   line-height: 0.82;
   letter-spacing: -0.045em;
   white-space: nowrap;

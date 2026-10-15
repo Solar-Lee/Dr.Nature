@@ -36,3 +36,8 @@ CODE 依 WCAG 2.2（文字 ≥ 4.5:1、大字與非文字元件 ≥ 3:1，不四
 - 外觀不變的部分：購物車框、選單、頂欄 wordmark 只加高度（56px 頂欄置中）；`.textlink` 的 1px 底線改成背景線畫在原位置；03 tabs 文字仍在進度線下 10px，多出的高度在下方；知識誌 tabs 文字仍在底線上 4px，多出的高度在上方（每個 tab 都帶 2px 透明底線，選中才變紅，標籤基線一致）。
 - 外觀有變的部分：頁尾連結在 ≤ 1023px 或觸控螢幕上每行 44px（原本約 30px 行距），桌機滑鼠不變。範圍：每個可點目標高度 ≥ 44px；行距可以靠 padding 或 min-height 達成，視覺間距由 DESIGN 決定。
 - 截圖（前／後上下對照）：`/private/tmp/claude-501/drn-lane-e/shots/v13-compare-*.png`（暫存，非 repo 檔）。
+
+### V-17　首頁巨型 wordmark 在小手機不再被裁
+
+- 舊 `font-size: clamp(5rem, 19vw, 17rem)`：5rem（80px）下限讓 wordmark 在 320px 寬約 329px（WebKit 337px），超出 288px 內容寬被 `.hero` 的 overflow 裁掉。新下限 3.75rem：320px 時 60.8px、375px 時 71.25px，Chromium／WebKit 在 320–414px 全部放得下。
+- 外觀變化：375–420px 的手機上 wordmark 從固定 80px 變成跟著 19vw（71–80px）。若 DESIGN 想在 375px 維持接近 80px，可改用只在 ≤ 420px 生效的 `min(5rem, 21vw)`（以目前字型寬約 4.21em 計，320px 起都放得下）；換成自架字型（VI-05）後要重量。
