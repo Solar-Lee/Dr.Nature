@@ -48,6 +48,10 @@
 | `LINE_LOGIN_CHANNEL_ID` | LINE Login（會員登入）；與 SECRET 必須同時設定，否則啟動失敗。Callback：`STOREFRONT_URL` + `/auth/callback/line` | LINE Developers |
 | `LINE_LOGIN_CHANNEL_SECRET` 🔒 | LINE Login | LINE Developers |
 | `LINE_LOGIN_API_BASE_URL` | 僅測試／開發：LINE token／verify 改打本機替身；`NODE_ENV=production` 時設定會啟動失敗 | 本專案定義（P5-01） |
+| `LINE_OA_CHANNEL_ID` | LINE 官方帳號的 Messaging API channel ID（與 LINE Login 是不同 channel；不是機密）。與 `LINE_OA_CHANNEL_SECRET` 一起以 client_credentials 簽發無狀態 channel access token（`POST https://api.line.me/oauth2/v3/token`，效期 15 分鐘）；未設定＝不回覆、不推播 | developers.line.biz/en/docs/basics/channel-access-token/；line-openapi channel-access-token.yml（LINE-02） |
+| `LINE_OA_CHANNEL_SECRET` 🔒 | 同一個 Messaging API channel 的 channel secret：驗證 webhook 的 `x-line-signature`（對原始 body 做 HMAC-SHA256、Base64），並用來簽發無狀態 token。未設定＝`/hooks/line/webhook` 回 503 | developers.line.biz/en/docs/messaging-api/verify-webhook-signature/（LINE-02） |
+| `LINE_OA_API_BASE_URL` | 僅測試／開發：Messaging API（token、reply、push）改打本機替身；`NODE_ENV=production` 時設定會啟動失敗（比照 `LINE_LOGIN_API_BASE_URL`） | 本專案定義（LINE-02、LINE-05） |
+| `LINE_OA_FORWARD_URL` | 選填：驗章通過後，把 webhook 的原始 body 與原 `x-line-signature`、`content-type` 原樣轉送到這個網址（團購招商機器人；G3 ③，Aki 2026-10-15 決定）。未設定＝不轉送 | 本專案定義（LINE-02、LINE-07） |
 | `GOOGLE_OAUTH_CLIENT_ID` | Google 登入；與 SECRET 必須同時設定，否則啟動失敗。Callback：`STOREFRONT_URL` + `/auth/callback/google` | Google Cloud Console |
 | `GOOGLE_OAUTH_CLIENT_SECRET` 🔒 | Google 登入 | Google Cloud Console |
 | `FILE_S3_BUCKET` | 商品圖／上傳檔的 S3 相容儲存。**MVP 未使用**：A7 改用 file-local＋資料卷 `drn_uploads`（P12-15）；前台上線前再評估 | Medusa S3 file provider |
