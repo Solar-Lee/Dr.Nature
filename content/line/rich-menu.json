@@ -1,0 +1,91 @@
+{
+  "size": {
+    "width": 2500,
+    "height": 1686
+  },
+  "selected": true,
+  "name": "drn-main-v1",
+  "chatBarText": "Dr.Nature 選單",
+  "areas": [
+    {
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 833,
+        "height": 843
+      },
+      "action": {
+        "type": "uri",
+        "label": "產品",
+        "uri": "https://dr.nature.smilelife.tw/products/?utm_source=line&utm_medium=richmenu&utm_content=products"
+      }
+    },
+    {
+      "bounds": {
+        "x": 833,
+        "y": 0,
+        "width": 833,
+        "height": 843
+      },
+      "action": {
+        "type": "uri",
+        "label": "知識誌",
+        "uri": "https://dr.nature.smilelife.tw/journal/?utm_source=line&utm_medium=richmenu&utm_content=journal"
+      }
+    },
+    {
+      "bounds": {
+        "x": 1666,
+        "y": 0,
+        "width": 834,
+        "height": 843
+      },
+      "action": {
+        "type": "uri",
+        "label": "常見問題",
+        "uri": "https://dr.nature.smilelife.tw/faq/?utm_source=line&utm_medium=richmenu&utm_content=faq"
+      }
+    },
+    {
+      "bounds": {
+        "x": 0,
+        "y": 843,
+        "width": 833,
+        "height": 843
+      },
+      "action": {
+        "type": "postback",
+        "label": "會員綁定",
+        "data": "link",
+        "displayText": "會員綁定"
+      }
+    },
+    {
+      "bounds": {
+        "x": 833,
+        "y": 843,
+        "width": 833,
+        "height": 843
+      },
+      "action": {
+        "type": "message",
+        "label": "真人客服",
+        "text": "真人"
+      }
+    },
+    {
+      "bounds": {
+        "x": 1666,
+        "y": 843,
+        "width": 834,
+        "height": 843
+      },
+      "action": {
+        "type": "postback",
+        "label": "小測驗",
+        "data": "quiz:start",
+        "displayText": "小測驗"
+      }
+    }
+  ]
+}
