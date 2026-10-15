@@ -11,6 +11,11 @@
   --red: #d7261b;
   --red-2: #b81f15;
   --line: #cfcdc6;
+  /* dark surfaces (02 statement, 06 panel); white text needs every stop <= #767672 (4.56:1) */
+  --ink-dark: #1a1a1a;
+  --ink-dark-2: #4a4a48;
+  --ink-dark-3: #666663;
+  --line-dark: #8a8a86;
   --tint-1: #e6e5e0;
   --tint-2: #e2e5e7;
   --tint-3: #ebe4de;
@@ -51,6 +56,11 @@ canvas {
 :focus-visible {
   outline: 2px solid var(--red);
   outline-offset: 3px;
+}
+/* the red ring is 1.8:1 or less on the dark surfaces; white is >= 5.7:1 on every dark stop */
+.dark :focus-visible,
+.panel-dark :focus-visible {
+  outline-color: #fff;
 }
 .skip {
   position: absolute;
@@ -550,7 +560,7 @@ a:hover > .arrow {
 /* ---------- home: 02 dark ---------- */
 .dark {
   position: relative;
-  background: #1a1a1a;
+  background: var(--ink-dark);
   color: #f1f0ec;
   padding: clamp(80px, 14vw, 180px) var(--gutter);
   border-bottom: 1px solid #333;
@@ -579,7 +589,7 @@ a:hover > .arrow {
 }
 .dark .stairs span {
   display: block;
-  background: #1a1a1a;
+  background: var(--ink-dark);
   transform-origin: 50% 100%;
 }
 .fx .dark {
@@ -607,7 +617,7 @@ a:hover > .arrow {
   width: 1.9em;
   height: 1.1em;
   margin: 0 0.25em;
-  border: 1px solid #555;
+  border: 1px solid var(--line-dark);
   background: #2a2a2a;
 }
 
@@ -844,7 +854,7 @@ html:not(.fx) .tabs a[aria-current] {
   vertical-align: middle;
 }
 .panel-dark {
-  background: linear-gradient(180deg, #4a4a48 0%, #8a8a86 55%, #bdbcb8 100%);
+  background: linear-gradient(180deg, var(--ink-dark) 0%, var(--ink-dark-2) 70%, var(--ink-dark-3) 100%);
   color: #fff;
   padding: clamp(56px, 8vw, 110px) var(--gutter);
   display: grid;

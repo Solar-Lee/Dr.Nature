@@ -90,12 +90,12 @@ const mix = (a, b, frac) => blend(b, a, frac);
 // ---- pairs: [label, foreground, background, kind] -----------------------------------------------
 // kind: "text" | "large" | "non-text" | "exempt: <reason>"
 const WHITE = "#ffffff";
-const DARK = "#1a1a1a"; // .dark / .dark .stairs span (globals.css L551, L580)
-const DARK_SLOT = "#2a2a2a"; // .inline-slot background (L609)
+const DARK = t("ink-dark"); // .dark / .dark .stairs span
+const DARK_SLOT = "#2a2a2a"; // .inline-slot background
 const SURFACE = "#ffffff"; // inputs and card stage highlight (L1041, L1319, L910, L1156)
 const SURFACE_2 = "#fbfbf9"; // .label-table / .rd-name / .soon (L1190, L1238, L1299)
 const HOVER = "#f6f5f2"; // .pcard:hover / .jcard:hover (L892, L986)
-const panelStops = ["#4a4a48", "#8a8a86", "#bdbcb8"]; // .panel-dark gradient (L845)
+const panelStops = [t("ink-dark"), t("ink-dark-2"), t("ink-dark-3")]; // .panel-dark gradient 0% / 70% / 100%
 
 const pairs = [
   // body and secondary text
@@ -118,21 +118,23 @@ const pairs = [
   ["btn: white on red (L330-331)", WHITE, t("red"), "text"],
   ["btn:hover: white on red-2 (L340-341)", WHITE, t("red-2"), "text"],
   ["btn disabled: ink-2 on paper-2 (L359-361)", t("ink-2"), t("paper-2"), "exempt: disabled control (1.4.3)"],
-  ["btn.light border: white on panel-dark end stop (L354-357, L845)", WHITE, panelStops[2], "non-text"],
+  ["btn.light border: white on panel-dark end stop (.btn.light, .panel-dark)", WHITE, panelStops[2], "non-text"],
   // hero caption over the stage gradient (ink-2 at opacity .75, L494-496)
   ["hero-video tag: ink-2 @ .75 on paper-2 (L485, L494-496)", blend(t("ink-2"), t("paper-2"), 0.75), t("paper-2"), "text"],
   ["hero-video tag: ink-2 @ .75 on #f7f6f3 (L485, L494-496)", blend(t("ink-2"), "#f7f6f3", 0.75), "#f7f6f3", "text"],
   // 02 dark section
-  ["dark: #f1f0ec on #1a1a1a (L551-552)", "#f1f0ec", DARK, "text"],
-  ["dark .dim resting: #6f6f6b on #1a1a1a, h2 >= 28.8px bold (L561-562)", "#6f6f6b", DARK, "large"],
-  ["inline-slot border: #555 on #1a1a1a (L608)", "#555555", DARK, "non-text"],
-  ["inline-slot fill: #2a2a2a on #1a1a1a (L609)", DARK_SLOT, DARK, "exempt: decorative placeholder"],
-  // 06 dark panel (gradient sampled at its stops and the midpoint of the last segment)
-  ["panel-dark: white on top stop (L845-846)", WHITE, panelStops[0], "text"],
-  ["panel-dark: white on mid stop (L845-846)", WHITE, panelStops[1], "text"],
-  ["panel-dark: white on end stop (L845-846)", WHITE, panelStops[2], "text"],
-  ["panel-dark: white on mid-end midpoint (L845-846)", WHITE, mix(panelStops[1], panelStops[2], 0.5), "text"],
-  ["panel-dark kicker: #e8e7e2 on top stop (L852-853)", "#e8e7e2", panelStops[0], "text"],
+  ["dark: #f1f0ec on ink-dark (.dark)", "#f1f0ec", DARK, "text"],
+  ["dark .dim resting: #6f6f6b on ink-dark, h2 >= 28.8px bold (.dark .dim)", "#6f6f6b", DARK, "large"],
+  ["inline-slot border: line-dark on ink-dark (.inline-slot)", t("line-dark"), DARK, "non-text"],
+  ["inline-slot border: line-dark on its own fill #2a2a2a (.inline-slot)", t("line-dark"), DARK_SLOT, "non-text"],
+  ["inline-slot fill: #2a2a2a on ink-dark (.inline-slot)", DARK_SLOT, DARK, "exempt: decorative placeholder"],
+  // 06 dark panel (gradient sampled at its stops and the midpoint of each segment)
+  ["panel-dark: white on top stop (.panel-dark)", WHITE, panelStops[0], "text"],
+  ["panel-dark: white on top-mid midpoint (.panel-dark)", WHITE, mix(panelStops[0], panelStops[1], 0.5), "text"],
+  ["panel-dark: white on mid stop (.panel-dark)", WHITE, panelStops[1], "text"],
+  ["panel-dark: white on end stop (.panel-dark)", WHITE, panelStops[2], "text"],
+  ["panel-dark: white on mid-end midpoint (.panel-dark)", WHITE, mix(panelStops[1], panelStops[2], 0.5), "text"],
+  ["panel-dark kicker: #e8e7e2 on every stop, worst = end (.panel-dark .kicker)", "#e8e7e2", panelStops[2], "text"],
   // forms
   ["nl input placeholder: #8a8a86 on surface (L1044-1045)", "#8a8a86", SURFACE, "text"],
   ["soon input:disabled: #8a8a86 on surface (L1321-1322)", "#8a8a86", SURFACE, "exempt: disabled control (1.4.3)"],
@@ -142,9 +144,10 @@ const pairs = [
   // focus indicator (2px outline, L49-51) on every surface it can land on
   ["focus ring: red on paper (L49-50)", t("red"), t("paper"), "non-text"],
   ["focus ring: red on surface (L49-50)", t("red"), SURFACE, "non-text"],
-  ["focus ring: red on dark #1a1a1a (L49-50, L551)", t("red"), DARK, "non-text"],
-  ["focus ring: red on panel-dark top stop (L49-50, L845)", t("red"), panelStops[0], "non-text"],
-  ["focus ring: red on panel-dark mid stop (L49-50, L845)", t("red"), panelStops[1], "non-text"],
+  ["focus ring: white on ink-dark (.dark :focus-visible)", WHITE, DARK, "non-text"],
+  ["focus ring: white on panel-dark top stop (.panel-dark :focus-visible)", WHITE, panelStops[0], "non-text"],
+  ["focus ring: white on panel-dark mid stop (.panel-dark :focus-visible)", WHITE, panelStops[1], "non-text"],
+  ["focus ring: white on panel-dark end stop (.panel-dark :focus-visible)", WHITE, panelStops[2], "non-text"],
   // state indicators
   ["tabs rail active: red on paper (L697-704, L712-713)", t("red"), t("paper"), "non-text"],
   ["jtabs active underline: red on paper (L955-958)", t("red"), t("paper"), "non-text"],
