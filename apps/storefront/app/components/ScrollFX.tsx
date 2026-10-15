@@ -151,6 +151,16 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
         hold();
       };
       landOnHash();
+
+      // Web fonts still loading at setup can reflow text above the pins when they arrive; measure
+      // again then (and keep a deep link on its section unless the visitor has scrolled).
+      if (document.fonts.status !== "loaded") {
+        document.fonts.ready.then(() => {
+          if (cancelled) return;
+          ScrollTrigger.refresh();
+          landOnHash();
+        });
+      }
     })();
     return () => {
       cancelled = true;
