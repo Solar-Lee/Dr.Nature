@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { loadRules, lintText } from "../claims-lint.mjs";
+import { DEFAULT_TARGETS, loadRules, lintText } from "../claims-lint.mjs";
 
 const rules = loadRules();
 const SCRIPT = fileURLToPath(new URL("../claims-lint.mjs", import.meta.url));
@@ -54,4 +54,11 @@ test("CLI exits non-zero on a banned term and zero on clean text", () => {
   writeFileSync(good, "幫助維持消化道機能");
   assert.equal(spawnSync(process.execPath, [SCRIPT, bad]).status, 1);
   assert.equal(spawnSync(process.execPath, [SCRIPT, good]).status, 0);
+});
+
+test("every default target exists, so the no-argument run never lints nothing (CC-07)", () => {
+  const root = fileURLToPath(new URL("../..", import.meta.url));
+  const missing = DEFAULT_TARGETS.filter((t) => !existsSync(join(root, t)));
+  assert.deepEqual(missing, []);
+  assert.ok(DEFAULT_TARGETS.includes("apps/storefront/lib") && DEFAULT_TARGETS.includes("apps/storefront/app"));
 });
