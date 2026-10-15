@@ -87,3 +87,40 @@
 ### 1.7 回滾
 
 `git revert` 該提交；刪除瀏覽器快取只刪 drn 自己的目錄：`rm -rf ~/drn/pw-browsers`。
+
+## 2. a11y／效能稽核（PERF-07／PF-04，`scripts/audit-storefront.sh`，手動關卡）
+
+```
+pnpm --dir apps/storefront exec next build
+bash scripts/audit-storefront.sh                  # 預設：--out apps/storefront/out --port 3072 --lcp-budget-ms 4000 --cls-budget 0.1
+bash scripts/audit-storefront.sh --lcp-budget-ms 2500   # PF-02／PF-03 完成後改用 DEV_PLAN 目標
+```
+
+- 工具版本釘死、用 `npx --yes` 取得（不進 repo、不進 lockfile）：`@axe-core/cli@4.13.0`（2026-08-11 發佈）、
+  `lighthouse@13.5.0`（2026-09-18 發佈），2026-10-15 以 `npm view` 確認。
+- 需要本機安裝 Google Chrome。`@axe-core/cli` 會拉「最新版」chromedriver，Chrome 版本必須相符
+  （2026-10-15：chromedriver 155.0.1 對 Chrome 155.0.8059.79）；不相符時 axe 不會產出結果，腳本離場碼 2。
+- 伺服器：腳本自己在 `127.0.0.1:<port>` 起一個模仿 PF-01 之後 nginx 的靜態伺服器（gzip、`/_next/static/` immutable、
+  不存在的路徑回 `404.html`）。port 已被占用就離場碼 2。報告寫在新的暫存目錄（`$TMPDIR/drn-audit-storefront.*`），
+  不寫進 repo。
+- 判定（數字一律印出）：
+  1. axe-core（Chrome headless、載入後等 4 秒）掃 `out/**/index.html` 每一頁：impact 為 serious 或 critical 的違規 > 0 → 失敗。
+  2. Lighthouse 行動版（預設設定：模擬節流）跑 `/` 與 `/products/daily/`：LCP > `--lcp-budget-ms`、CLS > `--cls-budget`、
+     或有任何對 `fonts.googleapis.com` 的請求 → 失敗。
+- 離場碼：0 全過；1 有判定失敗；2 參數錯誤、沒有 build、port 被占用、工具沒有產出結果（不會「綠在空集合上」）。
+
+**為什麼不接進 `scripts/test-all.sh`**：需要本機 Chrome 與網路（npx 下載兩個工具，axe 另拉 chromedriver），
+跑一次約 2 分鐘，Lighthouse 的時間數字在不同機器、不同次之間會浮動，放進總入口會讓 CI 與本機時紅時綠。
+它是 a11y／效能任務（AC-*、PF-*、P7-02／P7-07／P7-08／P11-04／P11-05）的驗收指令，由執行任務的人手動跑。
+
+**2026-10-15 基準（commit 7fba83b 的匯出，本機 Mac）**：離場碼 1。
+axe：22 頁中 13 頁有 serious（`/` 有 aria-prohibited-attr、color-contrast ×5、scrollable-region-focusable；
+其餘多為 color-contrast），critical 0。Lighthouse 行動版：`/` LCP 8946 ms、CLS 0.000、fonts.googleapis.com 1 次、
+效能分數 67；`/products/daily/` LCP 8522 ms、CLS 0.000、fonts.googleapis.com 1 次、分數 74。
+
+**反向測試（2026-10-15 實跑）**：用一個乾淨的兩頁假站（`--out <暫存目錄>`）→ 離場碼 0（axe 0／0，LCP 753／642 ms）；
+同一假站加 `--lcp-budget-ms 1` → 離場碼 1（`lcp:/ lcp:/products/daily/`）；把跳到主要內容連結的文字拿掉 →
+`link-name(serious,1)`、離場碼 1；`--out /nonexistent`、未知參數、port 被占用 → 離場碼 2。
+
+這支腳本不能證明：鍵盤操作與螢幕報讀的實際體驗（axe 只抓得到約兩到五成的問題）、真手機上的速度
+（Lighthouse 是模擬節流）、正式站經過 Cloudflare／nginx 後的數字。
