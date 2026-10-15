@@ -151,7 +151,6 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       const reduceQuery = matchMedia("(prefers-reduced-motion: reduce)");
       let reduce = reduceQuery.matches;
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       el.appendChild(renderer.domElement);
       const scene = new THREE.Scene();
@@ -311,6 +310,7 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
 
       const resize = () => {
         const s = el.clientWidth;
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); // re-read: screens and zoom change it
         renderer.setSize(s, s, false);
         renderer.domElement.style.width = "100%";
         renderer.domElement.style.height = "100%";
@@ -319,6 +319,19 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       resize();
       const ro = new ResizeObserver(resize);
       ro.observe(el);
+      // The ResizeObserver only sees the host's CSS size; a devicePixelRatio change (window moved
+      // to another screen, browser zoom) is caught with a resolution query re-armed on each change.
+      let dprQuery: MediaQueryList | null = null;
+      const onDpr = () => {
+        resize();
+        watchDpr();
+      };
+      const watchDpr = () => {
+        dprQuery?.removeEventListener("change", onDpr);
+        dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+        dprQuery.addEventListener("change", onDpr);
+      };
+      watchDpr();
       // Context lost after startup (GPU reset, too many contexts): show the static slot again and
       // stop the loop; three restores its own state, then the loop restarts.
       const canvas = renderer.domElement;
@@ -361,6 +374,7 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         canvas.removeEventListener("webglcontextrestored", onRestored);
         cancelAnimationFrame(raf);
         ro.disconnect();
+        dprQuery?.removeEventListener("change", onDpr);
         el.removeEventListener("pointerdown", onDown);
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", onUp);
