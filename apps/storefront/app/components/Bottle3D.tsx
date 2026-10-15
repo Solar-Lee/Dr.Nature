@@ -1,10 +1,11 @@
 "use client";
 
 // Real-time 3D bottle (three 0.186.1): the opaque white 100 ml PE bottle (PB-100, Ø45.8 × 85.7 mm)
-// with the numbered label drawn on a canvas texture. Auto-rotates slowly, drag to turn; both stop
-// under prefers-reduced-motion. Rendered only on the client; the page keeps a static fallback
-// until the scene is ready. Exposes an imperative handle so ScrollFX can swap the label (01→02→03)
-// and add a scroll-driven rotation while the bottle stays pinned.
+// with the numbered label drawn on a canvas texture. Auto-rotates slowly, drag to turn; the
+// auto-rotation stops under prefers-reduced-motion and while the site's motion pause is on.
+// Rendered only on the client; the page keeps a static fallback until the scene is ready. Exposes
+// an imperative handle so ScrollFX can swap the label (01→02→03) and add a scroll-driven rotation
+// while the bottle stays pinned.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 export type Bottle3DHandle = {
@@ -13,6 +14,69 @@ export type Bottle3DHandle = {
 };
 
 type Props = { num: string; name: string; sub?: string; className?: string; tilt?: number; scale?: number };
+
+// Fonts of the label's text runs. drawLabel and the font preload share them, so every face the
+// canvas uses is loaded before the texture is rasterised (a canvas never re-renders on its own
+// when a web font arrives later).
+const LABEL_FONT = {
+  word: "700 46px 'Helvetica Neue', Helvetica, Arial, 'Noto Sans TC', sans-serif",
+  num: "700 250px 'Helvetica Neue', Helvetica, Arial, sans-serif",
+  name: "700 58px 'Noto Sans TC', 'PingFang TC', sans-serif",
+  sub: "700 26px 'Noto Sans TC', 'Helvetica Neue', sans-serif",
+  side: "400 18px 'Noto Sans TC', sans-serif",
+};
+const SIDE_LINES = ["食用方法 · 以標示為準", "保存方式 · 以標示為準", "DN-PB · 60 顆膠囊"];
+
+function labelRuns(num: string, name: string, sub: string): [string, string][] {
+  return [
+    [LABEL_FONT.word, "Dr.Nature"],
+    [LABEL_FONT.num, num],
+    [LABEL_FONT.name, name],
+    [LABEL_FONT.sub, sub],
+    [LABEL_FONT.side, SIDE_LINES.join("")],
+  ];
+}
+
+/** True when every face the label needs is already loaded (FontFaceSet.check). */
+function labelFontsReady(runs: [string, string][]) {
+  try {
+    return runs.every(([font, text]) => document.fonts.check(font, text));
+  } catch {
+    return true;
+  }
+}
+
+/** Loads the faces for these runs (Google Fonts serves unicode-range subsets, so the text matters). */
+function loadLabelFonts(runs: [string, string][]) {
+  try {
+    return Promise.all(runs.map(([font, text]) => document.fonts.load(font, text))).then(
+      () => true,
+      () => false,
+    );
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+const within = <T,>(p: Promise<T>, ms: number, fallback: T) =>
+  Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+
+// WebGL 2 pre-check, the same test as three's capabilities/WebGL.js isWebGL2Available(), run once
+// per page. Without it three logs console errors before the static fallback takes over. The probe
+// context is released right away so it does not count toward the browser's context limit.
+let webgl2: boolean | undefined;
+function hasWebGL2() {
+  if (webgl2 === undefined) {
+    try {
+      const gl = window.WebGL2RenderingContext ? document.createElement("canvas").getContext("webgl2") : null;
+      webgl2 = !!gl;
+      gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch {
+      webgl2 = false;
+    }
+  }
+  return webgl2;
+}
 
 function drawLabel(num: string, name: string, sub: string) {
   const c = document.createElement("canvas");
@@ -25,7 +89,7 @@ function drawLabel(num: string, name: string, sub: string) {
   const w = 404;
   g.fillStyle = "#151515";
   g.textBaseline = "top";
-  g.font = "700 46px 'Helvetica Neue', Helvetica, Arial, 'Noto Sans TC', sans-serif";
+  g.font = LABEL_FONT.word;
   g.fillText("Dr", x0, 150);
   const drW = g.measureText("Dr").width;
   g.fillStyle = "#d7261b";
@@ -33,18 +97,18 @@ function drawLabel(num: string, name: string, sub: string) {
   const dotW = g.measureText(".").width;
   g.fillStyle = "#151515";
   g.fillText("Nature", x0 + drW + dotW, 150);
-  g.font = "700 250px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+  g.font = LABEL_FONT.num;
   g.fillText(num, x0 - 8, 300);
-  g.font = "700 58px 'Noto Sans TC', 'PingFang TC', sans-serif";
+  g.font = LABEL_FONT.name;
   g.fillText(name, x0, 580);
   g.fillRect(x0, 668, w, 3);
-  g.font = "700 26px 'Noto Sans TC', 'Helvetica Neue', sans-serif";
+  g.font = LABEL_FONT.sub;
   g.fillText(sub, x0, 690);
   g.fillStyle = "#d7261b";
   g.fillRect(x0 + w - 18, 696, 18, 18);
   g.fillStyle = "#8a8a86";
-  g.font = "400 18px 'Noto Sans TC', sans-serif";
-  ["食用方法 · 以標示為準", "保存方式 · 以標示為準", "DN-PB · 60 顆膠囊"].forEach((t, i) => g.fillText(t, 790, 420 + i * 30));
+  g.font = LABEL_FONT.side;
+  SIDE_LINES.forEach((t, i) => g.fillText(t, 790, 420 + i * 30));
   return c;
 }
 
@@ -55,9 +119,18 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Bottle3DHandle>({ setLabel: () => {}, setScrollRotation: () => {} });
   const [ready, setReady] = useState(false);
+  // The last label / scroll turn asked for, kept for a scene that starts later (three loads lazily,
+  // so ScrollFX may already be at step 02 when the 03 stage's bottle comes up).
+  const wanted = useRef<{ label?: { num: string; name: string }; rot?: number }>({});
   useImperativeHandle(ref, () => ({
-    setLabel: (n, m) => api.current.setLabel(n, m),
-    setScrollRotation: (r) => api.current.setScrollRotation(r),
+    setLabel: (n, m) => {
+      wanted.current.label = { num: n, name: m };
+      api.current.setLabel(n, m);
+    },
+    setScrollRotation: (r) => {
+      wanted.current.rot = r;
+      api.current.setScrollRotation(r);
+    },
   }));
 
   useEffect(() => {
@@ -65,12 +138,24 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
     if (!el) return;
     let disposed = false;
     let cleanup = () => {};
-    (async () => {
+    const start = async () => {
+      if (!hasWebGL2()) return; // the static fallback stays
+      // The label waits for its fonts (at most 3 s, then the fallback face; it is redrawn once
+      // the faces arrive) while three loads in parallel.
+      const first = wanted.current.label ?? { num, name };
+      const firstRuns = labelRuns(first.num, first.name, sub);
+      const firstFonts = loadLabelFonts(firstRuns);
       const THREE = await import("three");
+      await within(firstFonts, 3000, false);
       if (disposed) return;
-      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // Auto-rotation follows prefers-reduced-motion live (dragging always works).
+      const reduceQuery = matchMedia("(prefers-reduced-motion: reduce)");
+      let reduce = reduceQuery.matches;
+      // ...and the site's motion pause (WCAG 2.2.2): the pause control sets
+      // html[data-motion="paused"] and dispatches "drn:motion" on window.
+      const motionPaused = () => document.documentElement.dataset.motion === "paused";
+      let paused = motionPaused();
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       el.appendChild(renderer.domElement);
       const scene = new THREE.Scene();
@@ -112,9 +197,19 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         m.rotation.y = -a;
         group.add(m);
       }
-      let tex = new THREE.CanvasTexture(drawLabel(num, name, sub));
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 4;
+      // The label shown now; setLabel swaps it, a late font redraws it.
+      let shown = first;
+      let drawnWithFonts = false;
+      let labelSeq = 0;
+      const makeTexture = () => {
+        drawnWithFonts = labelFontsReady(labelRuns(shown.num, shown.name, sub));
+        if (process.env.NODE_ENV !== "production") el.dataset.labelFont = String(drawnWithFonts);
+        const t = new THREE.CanvasTexture(drawLabel(shown.num, shown.name, sub));
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 4;
+        return t;
+      };
+      let tex = makeTexture();
       const labelMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 });
       const label = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.004, r + 0.004, h * 0.62, 96, 1, true), labelMat);
       label.position.y = -0.3 - 0.08;
@@ -124,58 +219,81 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         new THREE.CircleGeometry(1.35, 48),
         new THREE.MeshBasicMaterial({ color: 0x151515, transparent: true, opacity: 0.16 }),
       );
-      shadow.rotation.x = -Math.PI / 2;
-      shadow.position.y = -0.3 - h / 2 - 0.01;
-      shadow.scale.set(1, 0.55, 1);
-      group.add(shadow);
       group.rotation.z = tilt;
       group.scale.setScalar(scale);
       scene.add(group);
+      // The contact shadow lies on the floor, not on the tilted bottle: it belongs to the scene,
+      // flat, under the bottle's base centre and level with its lowest rim point.
+      const base = -0.3 - h / 2;
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.set(-base * Math.sin(tilt) * scale, (base * Math.cos(tilt) - r * Math.abs(Math.sin(tilt))) * scale - 0.01, 0);
+      shadow.scale.set(scale, 0.55 * scale, 1);
+      scene.add(shadow);
 
       let rot = 0.35;
-      let scrollRot = 0;
+      let scrollRot = wanted.current.rot ?? 0;
       let dragging = false;
       let lastX = 0;
       let vel = 0;
       let raf = 0;
       let last = performance.now();
       let needsFrame = true;
+      let lost = false; // WebGL context lost: no frames until it is restored
+      let visible = true; // only an on-screen bottle runs its loop (see the observer below)
       const tick = (t: number) => {
         const dt = Math.min(0.05, (t - last) / 1000);
         last = t;
         if (!dragging) {
-          if (!reduce) rot += 0.25 * dt;
+          if (!reduce && !paused) rot += 0.25 * dt;
           vel *= 0.92;
           rot += vel;
         }
         group.rotation.y = rot + scrollRot;
         renderer.render(scene, camera);
-        needsFrame = !reduce || dragging || Math.abs(vel) > 0.0005;
+        el.dataset.frame = String(renderer.info.render.frame); // probes: off-screen bottles stay still
+        needsFrame = visible && !lost && ((!reduce && !paused) || dragging || Math.abs(vel) > 0.0005);
         if (needsFrame) raf = requestAnimationFrame(tick);
       };
       const kick = () => {
-        if (!needsFrame) {
+        if (!needsFrame && !lost && visible) {
           needsFrame = true;
           last = performance.now();
           raf = requestAnimationFrame(tick);
         }
       };
+      const repaint = () => {
+        const old = tex;
+        tex = makeTexture();
+        labelMat.map = tex;
+        labelMat.needsUpdate = true;
+        old.dispose();
+        kick();
+      };
+      // Drawn before its faces arrived (timeout, slow network): redraw once they have loaded.
+      if (!drawnWithFonts) {
+        document.fonts.ready.then(() => {
+          if (!disposed && !drawnWithFonts) repaint();
+        });
+      }
       api.current = {
         setLabel: (n, m) => {
-          const old = tex;
-          tex = new THREE.CanvasTexture(drawLabel(n, m, sub));
-          tex.colorSpace = THREE.SRGBColorSpace;
-          tex.anisotropy = 4;
-          labelMat.map = tex;
-          labelMat.needsUpdate = true;
-          old.dispose();
-          kick();
+          shown = { num: n, name: m };
+          const seq = ++labelSeq;
+          const runs = labelRuns(n, m, sub);
+          if (labelFontsReady(runs)) return repaint();
+          // New glyphs (another unicode-range subset): load them first, keep the old label meanwhile.
+          within(loadLabelFonts(runs), 3000, false).then(() => {
+            if (!disposed && seq === labelSeq) repaint();
+          });
         },
         setScrollRotation: (rad) => {
           scrollRot = rad;
           kick();
         },
       };
+      // A step change that arrived while the fonts or three were still loading.
+      const w = wanted.current.label;
+      if (w && (w.num !== shown.num || w.name !== shown.name)) api.current.setLabel(w.num, w.name);
 
       const onDown = (e: PointerEvent) => {
         dragging = true;
@@ -200,6 +318,7 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
 
       const resize = () => {
         const s = el.clientWidth;
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); // re-read: screens and zoom change it
         renderer.setSize(s, s, false);
         renderer.domElement.style.width = "100%";
         renderer.domElement.style.height = "100%";
@@ -208,11 +327,68 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       resize();
       const ro = new ResizeObserver(resize);
       ro.observe(el);
+      // The ResizeObserver only sees the host's CSS size; a devicePixelRatio change (window moved
+      // to another screen, browser zoom) is caught with a resolution query re-armed on each change.
+      let dprQuery: MediaQueryList | null = null;
+      const onDpr = () => {
+        resize();
+        watchDpr();
+      };
+      const watchDpr = () => {
+        dprQuery?.removeEventListener("change", onDpr);
+        dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+        dprQuery.addEventListener("change", onDpr);
+      };
+      watchDpr();
+      // Context lost after startup (GPU reset, too many contexts): show the static slot again and
+      // stop the loop; three restores its own state, then the loop restarts.
+      const canvas = renderer.domElement;
+      const onLost = () => {
+        lost = true;
+        cancelAnimationFrame(raf);
+        needsFrame = false;
+        setReady(false);
+      };
+      const onRestored = () => {
+        lost = false;
+        setReady(true);
+        kick();
+      };
+      canvas.addEventListener("webglcontextlost", onLost);
+      canvas.addEventListener("webglcontextrestored", onRestored);
+      // Off-screen bottles stop rendering (three continuous loops would keep the GPU busy while
+      // the visitor reads 05/06); the loop restarts when the host scrolls back in.
+      const onScreen =
+        "IntersectionObserver" in window
+          ? new IntersectionObserver((entries) => {
+              const now = entries[entries.length - 1].isIntersecting;
+              if (now === visible) return;
+              visible = now;
+              if (now) kick();
+            })
+          : null;
+      onScreen?.observe(el);
+      const onReduceChange = () => {
+        reduce = reduceQuery.matches;
+        kick();
+      };
+      reduceQuery.addEventListener("change", onReduceChange);
+      const onMotion = () => {
+        paused = motionPaused();
+        kick();
+      };
+      window.addEventListener("drn:motion", onMotion);
       raf = requestAnimationFrame(tick);
       setReady(true);
       cleanup = () => {
+        onScreen?.disconnect();
+        reduceQuery.removeEventListener("change", onReduceChange);
+        window.removeEventListener("drn:motion", onMotion);
+        canvas.removeEventListener("webglcontextlost", onLost);
+        canvas.removeEventListener("webglcontextrestored", onRestored);
         cancelAnimationFrame(raf);
         ro.disconnect();
+        dprQuery?.removeEventListener("change", onDpr);
         el.removeEventListener("pointerdown", onDown);
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", onUp);
@@ -222,11 +398,28 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         renderer.domElement.remove();
         api.current = { setLabel: () => {}, setScrollRotation: () => {} };
       };
-    })().catch(() => {
-      /* WebGL unavailable: the static fallback stays visible */
-    });
+    };
+    const run = () =>
+      start().catch(() => {
+        /* WebGL unavailable: the static fallback stays visible */
+      });
+    // three (~185 KB gzip) is fetched only when the stage comes within 300px of the viewport; the
+    // hero's bottle is on screen at load and starts at once, the 03/04 bottles when scrolled near.
+    let near: IntersectionObserver | null = null;
+    if ("IntersectionObserver" in window) {
+      near = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((e) => e.isIntersecting)) return;
+          near?.disconnect();
+          run();
+        },
+        { rootMargin: "300px" },
+      );
+      near.observe(el);
+    } else run();
     return () => {
       disposed = true;
+      near?.disconnect();
       cleanup();
     };
     // The label is swapped through the handle; props only seed the first texture.
@@ -234,7 +427,8 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
   }, [sub, tilt, scale]);
 
   return (
-    <div ref={host} className={className} style={{ touchAction: "pan-y", cursor: "grab" }} aria-label={`${name} 3D 瓶身`} role="img">
+    // Horizontal drags turn the bottle; vertical pans scroll and pinches zoom the page as usual.
+    <div ref={host} className={className} style={{ touchAction: "pan-y pinch-zoom", cursor: "grab" }} aria-label={`${name} 3D 瓶身`} role="img">
       {!ready && (
         <div className="slot" style={{ position: "absolute", inset: "12% 20%", border: "none", background: "transparent" }}>
           <span>

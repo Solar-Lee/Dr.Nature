@@ -27,7 +27,6 @@
 }
 html {
   -webkit-text-size-adjust: 100%;
-  scroll-behavior: smooth;
 }
 body {
   margin: 0;
@@ -413,8 +412,9 @@ a:hover > .arrow {
 /* ---------- home: 01 hero ---------- */
 .hero {
   position: relative;
-  /* one viewport, like the prototype: copy on top, bottle in the middle, wordmark anchored at the bottom */
-  height: calc(100dvh - 30px);
+  /* one viewport, like the prototype: copy on top, bottle in the middle, wordmark anchored at the bottom
+     (minus the notice and, below 1024px, the sticky top bar: --chrome-h in the motion block) */
+  height: calc(100svh - var(--chrome-h));
   min-height: 600px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -425,7 +425,7 @@ a:hover > .arrow {
 @media (max-width: 899px) {
   .hero {
     height: auto;
-    min-height: calc(100dvh - 30px);
+    min-height: calc(100svh - var(--chrome-h));
   }
 }
 .hero-top {
@@ -503,11 +503,6 @@ a:hover > .arrow {
   width: min(60vw, 520px);
   aspect-ratio: 1;
 }
-@media (max-width: 899px) {
-  .hero-stage .stage3d.tilt {
-    transform: rotate(-8deg);
-  }
-}
 @media (min-width: 900px) {
   /* Desktop, as in the prototype: the bottle floats over the hero (right of the copy) and overlaps
      the wordmark; it takes no row of its own, so the wordmark stays on the first screen. */
@@ -524,9 +519,6 @@ a:hover > .arrow {
     height: min(72vh, 600px);
     max-height: none;
     transform: translateX(-14%);
-  }
-  .hero-stage .stage3d.tilt {
-    transform: translateX(-14%) rotate(-8deg);
   }
   .hero-video {
     inset: 34% 0 0;
@@ -630,7 +622,7 @@ a:hover > .arrow {
   min-height: 70dvh;
 }
 .fx .three {
-  height: 100dvh;
+  height: calc(100svh - var(--bar-h));
 }
 .fx .three .left,
 .fx .three .right {
@@ -1460,4 +1452,56 @@ html[data-motion="paused"] .marquee .track {
 }
 .crumbs [aria-current="page"] {
   color: var(--ink);
+}
+/* ---------- motion (lane B) ---------- */
+/* Viewport chrome above the pinned home sections: the 30px notice scrolls away, the 56px sticky
+   top bar (below 1024px) stays, so the hero and the 03 stage pin under it (ScrollFX reads the
+   bar's height for the pin starts). */
+:root {
+  --bar-h: 56px;
+  --chrome-h: calc(30px + var(--bar-h));
+}
+@media (min-width: 1024px) {
+  :root {
+    --bar-h: 0px;
+  }
+}
+/* 01 stays under the top bar while 02 slides over it: sticky inside the .stick wrapper (01 + 02,
+   HomeStory) instead of a ScrollTrigger pin, so the hero never switches to position: fixed during
+   the scroll (that switch registered as layout shifts). 02 keeps z-index 1 over it. */
+.fx .stick > #s01 {
+  position: sticky;
+  top: var(--bar-h);
+}
+/* The hero stays for its own height (as the old pin did) even when 02 is shorter: ScrollFX sets
+   --stick-extra = hero height - 02 height; the wrapper grows by it and gives it back below. */
+.fx .stick {
+  margin-bottom: calc(-1 * var(--stick-extra, 0px));
+}
+.fx .stick::after {
+  content: "";
+  display: block;
+  height: var(--stick-extra, 0px);
+}
+/* Smooth anchor scrolling, except under the home choreography (html.fx): there every scroll is
+   instant, so GSAP's refresh measurements, the deep-link landing and programmatic scrolls are not
+   animated through three pinned viewports (gsap.com/resources/st-mistakes). Under reduced motion
+   this does not apply (the reduced-motion block above sets auto). */
+@media (prefers-reduced-motion: no-preference) {
+  html:not(.fx) {
+    scroll-behavior: smooth;
+  }
+}
+/* Choreographed heights use svh (the small viewport, stable while a phone's address bar hides or
+   shows): ScrollTrigger skips refreshing for those resizes on touch devices (ignoreMobileResize),
+   so a dvh box would change size under stale scrub ranges. The base .daily-panel rule keeps dvh
+   for the static layout. */
+.fx .daily-panel {
+  min-height: 42svh;
+}
+/* 05 under the scroll choreography: GSAP writes the scene cards' transform (drift + odd-card
+   stagger), so the scroll reveal only fades them; a transform transition here would lag every
+   scrubbed frame and race GSAP's first read. */
+.fx .scene[data-reveal] {
+  transition-property: opacity;
 }
