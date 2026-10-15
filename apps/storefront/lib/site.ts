@@ -101,7 +101,9 @@ export const HOME = {
   s02: { a: "Dr.Nature 說的每一句話，", b1: "都照一本筆記的", b2: "規矩寫。" },
   s03Kicker: "同一個瓶子，三個編號",
   s04: { kicker: "日常", title: ["放進你", "本來就有的習慣裡。"] },
-  s05: { kicker: "習慣", title: ["好的習慣，", "不需要提醒。"], scenes: ["窗邊", "餐桌", "玄關", "書桌"] },
+  // Scene labels are times of day, not places: story.md:212 (不要 #9) and slogan.md:71 rule out
+  // within-reach placement scenes until storage conditions (U-08) are known.
+  s05: { kicker: "習慣", title: ["好的習慣，", "不需要提醒。"], scenes: ["早晨", "午後", "傍晚", "夜裡"] },
   s06: { marquee: ["Nature, read by science.", "以科學，讀懂自然。"], kicker: SERIES, title: ["說得剛好的", "一瓶益生菌。"], cta: "認識三款益生菌", cta2: "讀品牌故事" },
   seriesTitle: "三款，一個系列。",
   seriesLink: "全部產品",
