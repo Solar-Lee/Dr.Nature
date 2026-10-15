@@ -109,11 +109,14 @@ const pairs = [
   ["sidenav story a: ink-2 13.5px on paper (L301-303)", t("ink-2"), t("paper"), "text"],
   ["sidenav story-head: ink-2 11px on paper (L294-297)", t("ink-2"), t("paper"), "text"],
   ["notice / skip: paper on ink (L138-140, L58-59)", t("paper"), t("ink"), "text"],
-  // red accent as text
-  ["kicker: red 12px bold on paper (L103-107)", t("red"), t("paper"), "text"],
-  ["ptag / jcard .cat: red 11.5px on paper (L671-674, L991-994)", t("red"), t("paper"), "text"],
-  ["hero-meta b: red 12px on paper (L460-462)", t("red"), t("paper"), "text"],
-  ["wordmark dot: red 22px bold on paper (L124-126)", t("red"), t("paper"), "large"],
+  // red accent as text: small type uses --red-2; --red stays for fills, the wordmark dot and rails
+  ["kicker: red-2 12px bold on paper (.kicker)", t("red-2"), t("paper"), "text"],
+  ["ptag: red-2 11.5px on paper (.ptag)", t("red-2"), t("paper"), "text"],
+  ["jcard .cat: red-2 11.5px bold on paper (.jcard .cat)", t("red-2"), t("paper"), "text"],
+  ["jcard .cat on hover: red-2 on #f6f5f2 (.jcard:hover)", t("red-2"), "#f6f5f2", "text"],
+  ["hero-meta b: red-2 12px on paper (.hero-meta b)", t("red-2"), t("paper"), "text"],
+  ["story pillar numerals: red inline (story/page.tsx:79, lane D moves it to red-2)", t("red"), t("paper"), "exempt: info (inline .tsx colour)"],
+  ["wordmark dot: red 22px bold on paper (.dot)", t("red"), t("paper"), "large"],
   // buttons
   ["btn: white on red (L330-331)", WHITE, t("red"), "text"],
   ["btn:hover: white on red-2 (L340-341)", WHITE, t("red-2"), "text"],
