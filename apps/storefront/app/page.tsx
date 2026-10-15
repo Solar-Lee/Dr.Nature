@@ -36,7 +36,7 @@ export default function Home() {
             {HOME.s05.title[1]}
           </h2>
         </div>
-        <div className="scenes">
+        <div className="scenes" tabIndex={0} role="region" aria-label="習慣情境">
           {HOME.s05.scenes.map((s, i) => (
             <figure key={s} className="scene" style={{ margin: 0 }} data-reveal>
               <Slot label={`情境 0${i + 1} · ${s}`} />

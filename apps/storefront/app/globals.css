@@ -1374,3 +1374,17 @@ html:not(.fx) .tabs a[aria-current] {
     transform: none;
   }
 }
+
+/* ---------- a11y utilities (lane D) ---------- */
+/* Text for assistive technology only (marquee text, cart count unit). */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}

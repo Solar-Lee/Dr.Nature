@@ -25,7 +25,8 @@ export function Marquee() {
     </>
   );
   return (
-    <div className="marquee" aria-label={HOME.s06.marquee.join(" ")}>
+    <div className="marquee">
+      <p className="visually-hidden">{HOME.s06.marquee.join(" ")}</p>
       <div className="track" aria-hidden="true">
         {item}
         {item}
@@ -36,7 +37,7 @@ export function Marquee() {
 
 export function SeriesCards({ withHead = true }: { withHead?: boolean }) {
   return (
-    <section aria-labelledby="series-title">
+    <section {...(withHead ? { "aria-labelledby": "series-title" } : { "aria-label": HOME.seriesTitle })}>
       {withHead && (
         <div className="series-head">
           <h2 id="series-title">{HOME.seriesTitle}</h2>

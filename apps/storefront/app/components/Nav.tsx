@@ -19,9 +19,10 @@ export function Wordmark({ className = "wordmark" }: { className?: string }) {
 
 export function CartBox({ className = "cartbox" }: { className?: string }) {
   return (
-    <Link href="/account/" className={className} aria-label="購物車，0 件">
+    <Link href="/account/" className={className}>
       <span>購物車</span>
       <span className="num">0</span>
+      <span className="visually-hidden">件</span>
     </Link>
   );
 }
