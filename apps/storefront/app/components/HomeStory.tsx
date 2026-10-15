@@ -48,7 +48,7 @@ export function HomeStory() {
           <div className="hero-video" aria-hidden="true">
             <span className="tag">品牌影片（D-E01）製作中</span>
           </div>
-          <Bottle3D num={first.num} name={first.name} className="stage3d tilt" tilt={0.14} scale={1.05} />
+          <Bottle3D num={first.num} name={first.name} className="stage3d" tilt={0.14} scale={1.05} />
         </div>
         <p className="giant" aria-hidden="true">
           Dr<span className="dot">.</span>Nature

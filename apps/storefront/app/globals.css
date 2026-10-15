@@ -503,11 +503,6 @@ a:hover > .arrow {
   width: min(60vw, 520px);
   aspect-ratio: 1;
 }
-@media (max-width: 899px) {
-  .hero-stage .stage3d.tilt {
-    transform: rotate(-8deg);
-  }
-}
 @media (min-width: 900px) {
   /* Desktop, as in the prototype: the bottle floats over the hero (right of the copy) and overlaps
      the wordmark; it takes no row of its own, so the wordmark stays on the first screen. */
@@ -524,9 +519,6 @@ a:hover > .arrow {
     height: min(72vh, 600px);
     max-height: none;
     transform: translateX(-14%);
-  }
-  .hero-stage .stage3d.tilt {
-    transform: translateX(-14%) rotate(-8deg);
   }
   .hero-video {
     inset: 34% 0 0;

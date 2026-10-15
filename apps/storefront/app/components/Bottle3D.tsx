@@ -214,13 +214,16 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         new THREE.CircleGeometry(1.35, 48),
         new THREE.MeshBasicMaterial({ color: 0x151515, transparent: true, opacity: 0.16 }),
       );
-      shadow.rotation.x = -Math.PI / 2;
-      shadow.position.y = -0.3 - h / 2 - 0.01;
-      shadow.scale.set(1, 0.55, 1);
-      group.add(shadow);
       group.rotation.z = tilt;
       group.scale.setScalar(scale);
       scene.add(group);
+      // The contact shadow lies on the floor, not on the tilted bottle: it belongs to the scene,
+      // flat, under the bottle's base centre and level with its lowest rim point.
+      const base = -0.3 - h / 2;
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.set(-base * Math.sin(tilt) * scale, (base * Math.cos(tilt) - r * Math.abs(Math.sin(tilt))) * scale - 0.01, 0);
+      shadow.scale.set(scale, 0.55 * scale, 1);
+      scene.add(shadow);
 
       let rot = 0.35;
       let scrollRot = wanted.current.rot ?? 0;
