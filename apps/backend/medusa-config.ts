@@ -3,6 +3,7 @@ import { authProvidersFromEnv } from "./src/lib/auth/config"
 import { databaseDriverOptionsFromEnv } from "./src/lib/database/config"
 import { emailDeliveryFromEnv } from "./src/lib/email/config"
 import { fileModuleFromEnv } from "./src/lib/file/config"
+import { assertLineOaEnv } from "./src/lib/line/config"
 import { assertRedisForProduction } from "./src/lib/runtime/redis-guard"
 import {
   ecpayInvoiceConfigured,
@@ -90,6 +91,8 @@ if (ecpayInvoiceConfigured()) {
 }
 // E-mail delivery (verification codes, P5-01 review auth-2): a bad EMAIL_PROVIDER stops the boot.
 emailDeliveryFromEnv()
+// [LINE-05] LINE OA: a test stub host (LINE_OA_API_BASE_URL) stops a production boot.
+assertLineOaEnv()
 
 const fulfillmentModules = process.env.ECPAY_LOGISTICS_MERCHANT_ID
   ? [
