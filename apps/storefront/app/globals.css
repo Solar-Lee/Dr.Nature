@@ -17,6 +17,7 @@
   --ink-dark-2: #4a4a48;
   --ink-dark-3: #666663;
   --line-dark: #8a8a86;
+  --ink-dim: #8a8a86; /* dimmed words on --ink-dark before they light up: 5.02:1 */
   --tint-1: #e6e5e0;
   --tint-2: #e2e5e7;
   --tint-3: #ebe4de;
@@ -592,12 +593,20 @@ a:hover > .arrow {
   max-width: 20em;
 }
 .dark .dim {
-  color: #6f6f6b;
+  color: var(--ink-dim);
   transition: color 900ms var(--ease);
 }
 .js-reveal .dark [data-inview] .dim,
 .fx .dark .dim {
   color: #f1f0ec;
+}
+/* nothing lights the dimmed words when motion is reduced (no .fx, no scroll reveal), so they are
+   shown lit from the start instead of reading as disabled */
+@media (prefers-reduced-motion: reduce) {
+  .dark .dim {
+    color: var(--paper);
+    transition: none;
+  }
 }
 /* staircase wipe (ScrollFX scrubs scaleY of the columns); the section's own paint sits on them */
 .dark .stairs {

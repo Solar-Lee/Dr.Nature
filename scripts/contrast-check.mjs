@@ -128,7 +128,8 @@ const pairs = [
   ["hero-video tag: ink-2 on #dddbd5 gradient end (.hero-video .tag)", t("ink-2"), "#dddbd5", "text"],
   // 02 dark section
   ["dark: #f1f0ec on ink-dark (.dark)", "#f1f0ec", DARK, "text"],
-  ["dark .dim resting: #6f6f6b on ink-dark, h2 >= 28.8px bold (.dark .dim)", "#6f6f6b", DARK, "large"],
+  ["dark .dim resting: ink-dim on ink-dark, judged as body text (.dark .dim)", t("ink-dim"), DARK, "text"],
+  ["dark .dim reduced motion: paper on ink-dark (.dark .dim)", t("paper"), DARK, "text"],
   ["inline-slot border: line-dark on ink-dark (.inline-slot)", t("line-dark"), DARK, "non-text"],
   ["inline-slot border: line-dark on its own fill #2a2a2a (.inline-slot)", t("line-dark"), DARK_SLOT, "non-text"],
   ["inline-slot fill: #2a2a2a on ink-dark (.inline-slot)", DARK_SLOT, DARK, "exempt: decorative placeholder"],
