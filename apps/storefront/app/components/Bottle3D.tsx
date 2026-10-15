@@ -14,6 +14,52 @@ export type Bottle3DHandle = {
 
 type Props = { num: string; name: string; sub?: string; className?: string; tilt?: number; scale?: number };
 
+// Fonts of the label's text runs. drawLabel and the font preload share them, so every face the
+// canvas uses is loaded before the texture is rasterised (a canvas never re-renders on its own
+// when a web font arrives later).
+const LABEL_FONT = {
+  word: "700 46px 'Helvetica Neue', Helvetica, Arial, 'Noto Sans TC', sans-serif",
+  num: "700 250px 'Helvetica Neue', Helvetica, Arial, sans-serif",
+  name: "700 58px 'Noto Sans TC', 'PingFang TC', sans-serif",
+  sub: "700 26px 'Noto Sans TC', 'Helvetica Neue', sans-serif",
+  side: "400 18px 'Noto Sans TC', sans-serif",
+};
+const SIDE_LINES = ["食用方法 · 以標示為準", "保存方式 · 以標示為準", "DN-PB · 60 顆膠囊"];
+
+function labelRuns(num: string, name: string, sub: string): [string, string][] {
+  return [
+    [LABEL_FONT.word, "Dr.Nature"],
+    [LABEL_FONT.num, num],
+    [LABEL_FONT.name, name],
+    [LABEL_FONT.sub, sub],
+    [LABEL_FONT.side, SIDE_LINES.join("")],
+  ];
+}
+
+/** True when every face the label needs is already loaded (FontFaceSet.check). */
+function labelFontsReady(runs: [string, string][]) {
+  try {
+    return runs.every(([font, text]) => document.fonts.check(font, text));
+  } catch {
+    return true;
+  }
+}
+
+/** Loads the faces for these runs (Google Fonts serves unicode-range subsets, so the text matters). */
+function loadLabelFonts(runs: [string, string][]) {
+  try {
+    return Promise.all(runs.map(([font, text]) => document.fonts.load(font, text))).then(
+      () => true,
+      () => false,
+    );
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+const within = <T,>(p: Promise<T>, ms: number, fallback: T) =>
+  Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+
 function drawLabel(num: string, name: string, sub: string) {
   const c = document.createElement("canvas");
   c.width = 1024;
@@ -25,7 +71,7 @@ function drawLabel(num: string, name: string, sub: string) {
   const w = 404;
   g.fillStyle = "#151515";
   g.textBaseline = "top";
-  g.font = "700 46px 'Helvetica Neue', Helvetica, Arial, 'Noto Sans TC', sans-serif";
+  g.font = LABEL_FONT.word;
   g.fillText("Dr", x0, 150);
   const drW = g.measureText("Dr").width;
   g.fillStyle = "#d7261b";
@@ -33,18 +79,18 @@ function drawLabel(num: string, name: string, sub: string) {
   const dotW = g.measureText(".").width;
   g.fillStyle = "#151515";
   g.fillText("Nature", x0 + drW + dotW, 150);
-  g.font = "700 250px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+  g.font = LABEL_FONT.num;
   g.fillText(num, x0 - 8, 300);
-  g.font = "700 58px 'Noto Sans TC', 'PingFang TC', sans-serif";
+  g.font = LABEL_FONT.name;
   g.fillText(name, x0, 580);
   g.fillRect(x0, 668, w, 3);
-  g.font = "700 26px 'Noto Sans TC', 'Helvetica Neue', sans-serif";
+  g.font = LABEL_FONT.sub;
   g.fillText(sub, x0, 690);
   g.fillStyle = "#d7261b";
   g.fillRect(x0 + w - 18, 696, 18, 18);
   g.fillStyle = "#8a8a86";
-  g.font = "400 18px 'Noto Sans TC', sans-serif";
-  ["食用方法 · 以標示為準", "保存方式 · 以標示為準", "DN-PB · 60 顆膠囊"].forEach((t, i) => g.fillText(t, 790, 420 + i * 30));
+  g.font = LABEL_FONT.side;
+  SIDE_LINES.forEach((t, i) => g.fillText(t, 790, 420 + i * 30));
   return c;
 }
 
@@ -66,7 +112,12 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
     let disposed = false;
     let cleanup = () => {};
     (async () => {
+      // The label waits for its fonts (at most 3 s, then the fallback face; it is redrawn once
+      // the faces arrive) while three loads in parallel.
+      const firstRuns = labelRuns(num, name, sub);
+      const firstFonts = loadLabelFonts(firstRuns);
       const THREE = await import("three");
+      await within(firstFonts, 3000, false);
       if (disposed) return;
       const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -112,9 +163,19 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         m.rotation.y = -a;
         group.add(m);
       }
-      let tex = new THREE.CanvasTexture(drawLabel(num, name, sub));
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 4;
+      // The label shown now; setLabel swaps it, a late font redraws it.
+      let shown = { num, name };
+      let drawnWithFonts = false;
+      let labelSeq = 0;
+      const makeTexture = () => {
+        drawnWithFonts = labelFontsReady(labelRuns(shown.num, shown.name, sub));
+        if (process.env.NODE_ENV !== "production") el.dataset.labelFont = String(drawnWithFonts);
+        const t = new THREE.CanvasTexture(drawLabel(shown.num, shown.name, sub));
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 4;
+        return t;
+      };
+      let tex = makeTexture();
       const labelMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 });
       const label = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.004, r + 0.004, h * 0.62, 96, 1, true), labelMat);
       label.position.y = -0.3 - 0.08;
@@ -160,16 +221,30 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
           raf = requestAnimationFrame(tick);
         }
       };
+      const repaint = () => {
+        const old = tex;
+        tex = makeTexture();
+        labelMat.map = tex;
+        labelMat.needsUpdate = true;
+        old.dispose();
+        kick();
+      };
+      // Drawn before its faces arrived (timeout, slow network): redraw once they have loaded.
+      if (!drawnWithFonts) {
+        document.fonts.ready.then(() => {
+          if (!disposed && !drawnWithFonts) repaint();
+        });
+      }
       api.current = {
         setLabel: (n, m) => {
-          const old = tex;
-          tex = new THREE.CanvasTexture(drawLabel(n, m, sub));
-          tex.colorSpace = THREE.SRGBColorSpace;
-          tex.anisotropy = 4;
-          labelMat.map = tex;
-          labelMat.needsUpdate = true;
-          old.dispose();
-          kick();
+          shown = { num: n, name: m };
+          const seq = ++labelSeq;
+          const runs = labelRuns(n, m, sub);
+          if (labelFontsReady(runs)) return repaint();
+          // New glyphs (another unicode-range subset): load them first, keep the old label meanwhile.
+          within(loadLabelFonts(runs), 3000, false).then(() => {
+            if (!disposed && seq === labelSeq) repaint();
+          });
         },
         setScrollRotation: (rad) => {
           scrollRot = rad;
