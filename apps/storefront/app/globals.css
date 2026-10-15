@@ -1434,3 +1434,7 @@ html[data-motion="paused"] .marquee .track {
 .faq details[id] {
   scroll-margin-top: 72px;
 }
+/* Mobile menu: the 01-06 home-story index sits under its own small head. */
+.menu-story-head {
+  padding: 22px 0 4px;
+}

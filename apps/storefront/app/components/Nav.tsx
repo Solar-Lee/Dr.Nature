@@ -174,6 +174,18 @@ export function TopBar() {
                 </li>
               ))}
             </ul>
+            <p className="kicker plain menu-story-head" id="menu-story-head">
+              首頁故事 STORY
+            </p>
+            <ul aria-labelledby="menu-story-head">
+              {NAV.story.map((s) => (
+                <li key={s.id} className="sub">
+                  <Link href={`/#${s.id}`}>
+                    <span className="num">{s.num}</span> {s.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         </details>
       </div>
