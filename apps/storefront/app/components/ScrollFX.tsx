@@ -8,7 +8,8 @@
 //   04 日常      the full-bleed panel shrinks into an inset card
 //   05 習慣      the scene cards drift sideways with the scroll
 //   06 讀懂自然   the wide panel scales down as the marquee arrives
-// Everything is skipped under prefers-reduced-motion (static layout, nothing pinned).
+// Everything is skipped under prefers-reduced-motion (static layout, nothing pinned), and the
+// preference is followed live: switching it mid-visit builds or reverts the choreography.
 import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { Bottle3DHandle } from "./Bottle3D";
@@ -17,9 +18,9 @@ type Step = { num: string; name: string };
 
 export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle | null>; steps: Step[] }) {
   useEffect(() => {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let ctx: { revert: () => void } | null = null;
+    let mm: { revert: () => void } | null = null;
     let cancelled = false;
+    let loading = false;
     // Once the visitor scrolls on their own, a late deep-link correction must not move the page.
     let userMoved = false;
     const moved = () => {
@@ -27,7 +28,14 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
     };
     const intents = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
     intents.forEach((t) => window.addEventListener(t, moved, { passive: true, once: true }));
-    (async () => {
+    // GSAP is fetched only once motion is allowed (now or after the visitor changes the setting);
+    // from then on gsap.matchMedia builds the choreography while the preference is
+    // "no-preference" and reverts it (pins, tweens, html.fx) when it turns to "reduce".
+    const motionOk = matchMedia("(prefers-reduced-motion: no-preference)");
+    const boot = async () => {
+      if (loading || !motionOk.matches) return;
+      loading = true;
+      motionOk.removeEventListener("change", boot);
       const { gsap } = await import("gsap");
       const { ScrollTrigger } = await import("gsap/ScrollTrigger");
       if (cancelled) return;
@@ -36,14 +44,17 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
       // scroll; the choreographed heights use svh so nothing depends on that refresh. Explicit, so
       // it does not hang on GSAP's touch-only default.
       ScrollTrigger.config({ ignoreMobileResize: true });
-      document.documentElement.classList.add("fx");
       // Below 1024px the sticky top bar (56px) stays over the page: both pins start under it so the
       // hero copy and the 03 kicker are never hidden. Functions, so every refresh re-measures.
       const bar = () => {
         const t = document.querySelector<HTMLElement>(".topbar");
         return t && getComputedStyle(t).display !== "none" ? t.offsetHeight : 0;
       };
-      ctx = gsap.context(() => {
+      const media = gsap.matchMedia();
+      mm = media;
+      media.add("(prefers-reduced-motion: no-preference)", () => {
+        let alive = true;
+        document.documentElement.classList.add("fx");
         // 01 → 02: pin the hero under the dark panel; the panel's dark columns rise in a staircase.
         ScrollTrigger.create({ trigger: "#s01", start: () => `top ${bar()}px`, end: () => `bottom ${bar()}px`, pin: true, pinSpacing: false });
         gsap.fromTo(
@@ -128,44 +139,56 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
           { scale: 1 },
           { scale: 0.94, ease: "none", transformOrigin: "50% 100%", scrollTrigger: { trigger: "#s06 .wide", start: "top 60%", end: "bottom 40%", scrub: true } },
         );
-      });
-      ScrollTrigger.refresh();
+        ScrollTrigger.refresh();
 
-      // A cold load of /#s0N (the side index on every other page links there) jumps before the pin
-      // spacers exist, and the browser's own (smooth) fragment scroll may still be running, so the
-      // section ends up off its start. Land on the pinned start (or the section top under the top
-      // bar) once everything is measured, and hold it for a few frames against that animation.
-      const landOnHash = () => {
-        const id = location.hash.slice(1);
-        if (userMoved || !/^s0[1-6]$/.test(id)) return;
-        const el = document.getElementById(id);
-        if (!el) return;
-        const pinned = ScrollTrigger.getAll().find((t) => t.trigger === el && t.pin);
-        const top = Math.max(0, Math.round(pinned ? pinned.start : el.getBoundingClientRect().top + window.scrollY - bar()));
-        let frames = 0;
-        const hold = () => {
-          if (cancelled || userMoved) return;
-          if (Math.abs(window.scrollY - top) > 1) window.scrollTo({ top, behavior: "instant" });
-          if (++frames < 12) requestAnimationFrame(hold);
+        // A cold load of /#s0N (the side index on every other page links there) jumps before the pin
+        // spacers exist, and the browser's own (smooth) fragment scroll may still be running, so the
+        // section ends up off its start. Land on the pinned start (or the section top under the top
+        // bar) once everything is measured, and hold it for a few frames against that animation.
+        const landOnHash = () => {
+          const id = location.hash.slice(1);
+          if (userMoved || !/^s0[1-6]$/.test(id)) return;
+          const el = document.getElementById(id);
+          if (!el) return;
+          const pinned = ScrollTrigger.getAll().find((t) => t.trigger === el && t.pin);
+          const top = Math.max(0, Math.round(pinned ? pinned.start : el.getBoundingClientRect().top + window.scrollY - bar()));
+          let frames = 0;
+          const hold = () => {
+            if (cancelled || !alive || userMoved) return;
+            if (Math.abs(window.scrollY - top) > 1) window.scrollTo({ top, behavior: "instant" });
+            if (++frames < 12) requestAnimationFrame(hold);
+          };
+          hold();
         };
-        hold();
-      };
-      landOnHash();
+        landOnHash();
 
-      // Web fonts still loading at setup can reflow text above the pins when they arrive; measure
-      // again then (and keep a deep link on its section unless the visitor has scrolled).
-      if (document.fonts.status !== "loaded") {
-        document.fonts.ready.then(() => {
-          if (cancelled) return;
-          ScrollTrigger.refresh();
-          landOnHash();
-        });
-      }
-    })();
+        // Web fonts still loading at setup can reflow text above the pins when they arrive; measure
+        // again then (and keep a deep link on its section unless the visitor has scrolled).
+        if (document.fonts.status !== "loaded") {
+          document.fonts.ready.then(() => {
+            if (cancelled || !alive) return;
+            ScrollTrigger.refresh();
+            landOnHash();
+          });
+        }
+
+        // Reverted (motion turned to "reduce", or unmount): back to the static layout's 03 state.
+        return () => {
+          alive = false;
+          document.documentElement.classList.remove("fx");
+          document.querySelectorAll<HTMLElement>("#s03 .tabs a").forEach((a) => a.style.removeProperty("--fill"));
+          setActive(0);
+          bottle.current?.setScrollRotation(0);
+        };
+      });
+    };
+    motionOk.addEventListener("change", boot);
+    void boot();
     return () => {
       cancelled = true;
+      motionOk.removeEventListener("change", boot);
       intents.forEach((t) => window.removeEventListener(t, moved));
-      ctx?.revert();
+      mm?.revert();
       document.documentElement.classList.remove("fx");
     };
   }, [bottle, steps]);

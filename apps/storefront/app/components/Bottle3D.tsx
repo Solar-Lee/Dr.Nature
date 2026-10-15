@@ -147,7 +147,9 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       const THREE = await import("three");
       await within(firstFonts, 3000, false);
       if (disposed) return;
-      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // Auto-rotation follows prefers-reduced-motion live (dragging always works).
+      const reduceQuery = matchMedia("(prefers-reduced-motion: reduce)");
+      let reduce = reduceQuery.matches;
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -345,10 +347,16 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
             })
           : null;
       onScreen?.observe(el);
+      const onReduceChange = () => {
+        reduce = reduceQuery.matches;
+        kick();
+      };
+      reduceQuery.addEventListener("change", onReduceChange);
       raf = requestAnimationFrame(tick);
       setReady(true);
       cleanup = () => {
         onScreen?.disconnect();
+        reduceQuery.removeEventListener("change", onReduceChange);
         canvas.removeEventListener("webglcontextlost", onLost);
         canvas.removeEventListener("webglcontextrestored", onRestored);
         cancelAnimationFrame(raf);
