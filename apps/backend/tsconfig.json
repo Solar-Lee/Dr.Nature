@@ -24,7 +24,8 @@
   },
   "include": [
     "**/*",
-    ".medusa/types/*"
+    ".medusa/types/*",
+    "src/data/line-replies.json"
   ],
   "exclude": [
     "node_modules",

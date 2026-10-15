@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "greeting": { "text": "fixture greeting" },
+  "fallback": { "text": "fixture fallback" },
+  "handoff": { "keywords": ["真人", "客服人員"], "text": "fixture handoff" },
+  "intents": [
+    {
+      "id": "shipping",
+      "keywords": ["出貨", "運費"],
+      "reply": { "text": "fixture shipping" },
+      "quickReplies": [
+        { "label": "退換貨", "text": "退貨" },
+        { "label": "真人客服", "text": "真人" }
+      ]
+    },
+    {
+      "id": "returns",
+      "keywords": ["退貨", "退貨運費"],
+      "reply": { "text": "fixture returns" },
+      "quickReplies": []
+    },
+    {
+      "id": "payment",
+      "keywords": ["ATM", "付款"],
+      "reply": { "text": "fixture payment" },
+      "quickReplies": [{ "label": "出貨", "text": "出貨" }]
+    }
+  ]
+}

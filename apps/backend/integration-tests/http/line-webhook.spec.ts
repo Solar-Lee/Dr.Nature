@@ -1,5 +1,8 @@
 // [LINE-04] POST /hooks/line/webhook: raw-body signature check, 503 / 401 / 200 semantics,
 // redelivery de-duplication, nothing served on GET.
+// [LINE-06] Auto-replies reach the Messaging API (a local stub on an OS-assigned port,
+// LINE_OA_API_BASE_URL) with the content of src/data/line-replies.json (or the built-in replies
+// while it is absent).
 //
 // What these tests cannot prove: that LINE's servers reach the URL (Cloudflare Access bypass
 // and the webhook URL in the LINE Developers console are Aki's, LINE's Verify button is the
@@ -7,8 +10,12 @@
 //
 // Run: cd apps/backend && ../../infra/test-env.sh env TEST_TYPE=integration:http \
 //   NODE_OPTIONS=--experimental-vm-modules pnpm exec jest --runInBand --forceExit integration-tests/http/line-webhook.spec.ts
+import http from "http"
+import type { AddressInfo } from "net"
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import { planReply } from "../../src/lib/line/dispatch"
+import { loadLineReplies } from "../../src/lib/line/replies"
 import { lineSignature } from "../../src/lib/line/signature"
 
 // Fake test value (not a real channel secret). Read per request by the route.
@@ -32,8 +39,40 @@ const textEvent = (id: string, text: string) => ({
   message: { type: "text", id: "1", text, quoteToken: "q" },
 })
 
+type StubCall = { path: string; headers: http.IncomingHttpHeaders; body: string }
+
 medusaIntegrationTestRunner({
   testSuite: ({ api, getContainer }) => {
+    // Plays api.line.me: token endpoint and reply endpoint. Port 0 = any free port.
+    let stub: http.Server
+    let stubCalls: StubCall[] = []
+    let tokenRequests = 0 // whole file: the client keeps its token between webhooks
+    beforeAll(async () => {
+      stub = http.createServer((req, res) => {
+        let body = ""
+        req.setEncoding("utf8")
+        req.on("data", (c) => (body += c))
+        req.on("end", () => {
+          stubCalls.push({ path: req.url ?? "", headers: req.headers, body })
+          if (req.url === "/oauth2/v3/token") tokenRequests++
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end(req.url === "/oauth2/v3/token" ? JSON.stringify({ access_token: "stub-token", expires_in: 900, token_type: "Bearer" }) : "{}")
+        })
+      })
+      await new Promise<void>((r) => stub.listen(0, "127.0.0.1", () => r()))
+      process.env.LINE_OA_CHANNEL_ID = "2000000000" // fake test value
+      process.env.LINE_OA_API_BASE_URL = `http://127.0.0.1:${(stub.address() as AddressInfo).port}`
+    })
+    afterAll(async () => {
+      delete process.env.LINE_OA_CHANNEL_ID
+      delete process.env.LINE_OA_API_BASE_URL
+      await new Promise((r) => stub.close(r))
+    })
+    beforeEach(() => {
+      stubCalls = []
+    })
+    const replyCalls = () => stubCalls.filter((c) => c.path === "/v2/bot/message/reply")
+
     const post = (body: string | Buffer, signature?: string, contentType = "application/json; charset=utf-8") => {
       const headers: Record<string, string> = { "content-type": contentType }
       if (signature !== undefined) headers["x-line-signature"] = signature
@@ -136,6 +175,44 @@ medusaIntegrationTestRunner({
       } finally {
         process.env.LINE_OA_CHANNEL_SECRET = SECRET
       }
+    })
+
+    it("replies through the Messaging API: greeting on follow, the planned reply to a text", async () => {
+      const replies = loadLineReplies().replies
+      const followId = eventId()
+      const follow = {
+        type: "follow",
+        mode: "active",
+        timestamp: 1791820000000,
+        source: { type: "user", userId: "U0000000000000000000000000000test" },
+        webhookEventId: followId,
+        deliveryContext: { isRedelivery: false },
+        replyToken: "reply-token-follow",
+        follow: { isUnblocked: false },
+      }
+      const textId = eventId()
+      const question = { ...textEvent(textId, "請問退貨怎麼辦"), replyToken: "reply-token-text" }
+      const res = await signed(JSON.stringify({ destination: "U0000000000000000000000000000bot1", events: [follow, question] }))
+      expect(res.status).toBe(200)
+      for (let i = 0; i < 40 && replyCalls().length < 2; i++) await new Promise((r) => setTimeout(r, 25))
+
+      expect(tokenRequests).toBe(1)
+      const sent = replyCalls().map((c) => ({ auth: c.headers.authorization, body: JSON.parse(c.body) }))
+      expect(sent).toEqual([
+        { auth: "Bearer stub-token", body: { replyToken: "reply-token-follow", messages: planReply(follow, replies)?.messages } },
+        { auth: "Bearer stub-token", body: { replyToken: "reply-token-text", messages: planReply(question, replies)?.messages } },
+      ])
+      expect(sent[0].body.messages[0].text).toBe(replies.greeting.text)
+      for (const s of sent) expect(s.body.messages.length).toBeLessThanOrEqual(5)
+    })
+
+    it("does not reply in a group chat", async () => {
+      const id = eventId()
+      const inGroup = { ...textEvent(id, "請問運費"), source: { type: "group", groupId: "C0000000000000000000000000000grp", userId: "U0000000000000000000000000000test" } }
+      expect((await signed(JSON.stringify({ destination: "U0000000000000000000000000000bot1", events: [inGroup] }))).status).toBe(200)
+      await settle()
+      expect(handledLines(id)).toHaveLength(1)
+      expect(replyCalls()).toHaveLength(0)
     })
 
     it("serves nothing on GET", async () => {

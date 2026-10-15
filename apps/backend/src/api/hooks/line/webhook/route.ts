@@ -7,7 +7,7 @@
 //     redelivery) are dropped.
 //  4. 200 {} is sent BEFORE the events are handled: LINE's Verify button sends an empty
 //     events array, and a failed or slow handler must not make LINE redeliver.
-//  5. Each event goes to lib/line/dispatch.ts in its own try/catch.
+//  5. Each event goes to lib/line/dispatch.ts in its own try/catch (auto-replies, LINE-06).
 // developers.line.biz/en/docs/messaging-api/verify-webhook-signature/, receiving-messages/.
 // /hooks/* has no publishable-key, auth or CORS middleware in Medusa 2.21.2.
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
@@ -15,6 +15,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { RecentIds } from "../../../../lib/line/dedupe"
 import { dispatchLineEvent } from "../../../../lib/line/dispatch"
 import { parseCallbackBody } from "../../../../lib/line/events"
+import { lineClient, lineReplies } from "../../../../lib/line/runtime"
 import { verifyLineSignature } from "../../../../lib/line/signature"
 
 const recentEvents = new RecentIds(5000)
@@ -50,9 +51,10 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
   res.status(200).json({})
 
+  const ctx = { logger, client: lineClient(logger), replies: lineReplies(logger) }
   for (const event of events) {
     try {
-      await dispatchLineEvent(event, { logger })
+      await dispatchLineEvent(event, ctx)
     } catch (e) {
       logger.error(`[LINE-WEBHOOK] handler failed for ${event.type} ${event.webhookEventId ?? "-"}: ${(e as Error).message}`)
     }
