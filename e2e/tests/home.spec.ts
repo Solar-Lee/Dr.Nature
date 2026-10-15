@@ -23,10 +23,12 @@ test("hero is pinned while 02 slides over it", { tag: "@motion" }, async ({ page
   const s = await sectionTops(page);
   for (const f of [0.3, 0.8]) {
     await scrollToY(page, s.s01 + (s.s02 - s.s01) * f);
-    await expect.poll(() => placement(page, "#s01"), { message: `#s01 at ${f} of the pin range` }).toMatchObject({ position: "fixed" });
+    // The hero is held either by a ScrollTrigger pin (position: fixed) or, since MO-12, by CSS
+    // position: sticky; the behaviour under test is that it stays at the top while 02 slides over it.
+    await expect.poll(async () => (await placement(page, "#s01")).position, { message: `#s01 at ${f} of the pin range` }).toMatch(/^(fixed|sticky)$/);
     const { top } = await placement(page, "#s01");
-    expect(top).toBeGreaterThanOrEqual(0);
-    expect(top).toBeLessThanOrEqual(PIN_TOP_MAX);
+    expect(top, `#s01 top at ${f} of the pin range`).toBeGreaterThanOrEqual(0);
+    expect(top, `#s01 top at ${f} of the pin range`).toBeLessThanOrEqual(PIN_TOP_MAX);
   }
   expect(errors).toEqual([]);
 });
@@ -67,12 +69,18 @@ test("03 stage stays pinned and cycles 01→02→03, and back when scrolling up"
 
 test("reduced motion: nothing is pinned and the choreography is off", { tag: "@reduced" }, async ({ page, errors }) => {
   await openHome(page);
-  await expect.poll(() => page.locator("canvas").count()).toBe(3);
+  // Bottles start their WebGL context only near the viewport (PF-03), under reduced motion too:
+  // walk the page once, then all three canvases must exist and none may be pinned.
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  const vh = await page.evaluate(() => window.innerHeight);
+  for (let y = 0; y < height; y += vh) await scrollToY(page, y);
+  await scrollToY(page, 0);
+  await expect.poll(() => page.locator("canvas").count(), { message: "WebGL canvases on / under reduced motion" }).toBe(3);
   await expect(page.locator("html")).not.toHaveClass(/\bfx\b/);
   const s = await sectionTops(page);
   for (const f of [0.3, 0.8]) {
     await scrollToY(page, s.s01 + (s.s02 - s.s01) * f);
-    expect((await placement(page, "#s01")).position, `#s01 at ${f} of the would-be pin range`).not.toBe("fixed");
+    expect((await placement(page, "#s01")).position, `#s01 at ${f} of the would-be pin range`).not.toMatch(/^(fixed|sticky)$/);
   }
   await scrollToY(page, s.s03 + 1.5 * s.vh);
   expect((await placement(page, "#s03 .three")).position).not.toBe("fixed");
