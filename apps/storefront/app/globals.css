@@ -612,6 +612,11 @@ a:hover > .arrow {
   display: block;
   background: var(--ink-dark);
   transform-origin: 50% 100%;
+  /* the 8 columns end on fractional device pixels (e.g. 51.5px x 2.625); each scaled column is
+     anti-aliased on its own, so the shared edge pixel let the light hero show through as a
+     hairline in Firefox, Chrome and WebKit. A 1px shadow to the right covers that pixel under the
+     next column; shadows add no scrollable overflow, so the last column cannot widen the page */
+  box-shadow: 1px 0 0 var(--ink-dark);
 }
 .fx .dark {
   background: transparent;
