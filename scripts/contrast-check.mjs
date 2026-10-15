@@ -89,12 +89,12 @@ const mix = (a, b, frac) => blend(b, a, frac);
 
 // ---- pairs: [label, foreground, background, kind] -----------------------------------------------
 // kind: "text" | "large" | "non-text" | "exempt: <reason>"
-const WHITE = "#ffffff";
+const WHITE = t("on-dark"); // text, outlines and focus ring on dark surfaces and on red
 const DARK = t("ink-dark"); // .dark / .dark .stairs span
-const DARK_SLOT = "#2a2a2a"; // .inline-slot background
-const SURFACE = "#ffffff"; // inputs and card stage highlight (L1041, L1319, L910, L1156)
-const SURFACE_2 = "#fbfbf9"; // .label-table / .rd-name / .soon (L1190, L1238, L1299)
-const HOVER = "#f6f5f2"; // .pcard:hover / .jcard:hover (L892, L986)
+const DARK_SLOT = t("slot-dark"); // .inline-slot background
+const SURFACE = t("surface"); // fields and the light centre of the card stages
+const SURFACE_2 = t("surface-2"); // .label-table / .rd-name / .soon
+const HOVER = t("hover"); // .pcard:hover / .jcard:hover
 const panelStops = [t("ink-dark"), t("ink-dark-2"), t("ink-dark-3")]; // .panel-dark gradient 0% / 70% / 100%
 
 const pairs = [
@@ -113,7 +113,7 @@ const pairs = [
   ["kicker: red-2 12px bold on paper (.kicker)", t("red-2"), t("paper"), "text"],
   ["ptag: red-2 11.5px on paper (.ptag)", t("red-2"), t("paper"), "text"],
   ["jcard .cat: red-2 11.5px bold on paper (.jcard .cat)", t("red-2"), t("paper"), "text"],
-  ["jcard .cat on hover: red-2 on #f6f5f2 (.jcard:hover)", t("red-2"), "#f6f5f2", "text"],
+  ["jcard .cat on hover: red-2 on hover (.jcard:hover)", t("red-2"), HOVER, "text"],
   ["hero-meta b: red-2 12px on paper (.hero-meta b)", t("red-2"), t("paper"), "text"],
   ["story pillar numerals: red inline (story/page.tsx:79, lane D moves it to red-2)", t("red"), t("paper"), "exempt: info (inline .tsx colour)"],
   ["wordmark dot: red 22px bold on paper (.dot)", t("red"), t("paper"), "large"],
@@ -124,10 +124,10 @@ const pairs = [
   ["btn.light border: white on panel-dark end stop (.btn.light, .panel-dark)", WHITE, panelStops[2], "non-text"],
   // hero caption over the stage gradient (.hero-video .tag, full opacity)
   ["hero-video tag: ink-2 on paper-2 (.hero-video .tag)", t("ink-2"), t("paper-2"), "text"],
-  ["hero-video tag: ink-2 on #f7f6f3 (.hero-video .tag)", t("ink-2"), "#f7f6f3", "text"],
-  ["hero-video tag: ink-2 on #dddbd5 gradient end (.hero-video .tag)", t("ink-2"), "#dddbd5", "text"],
+  ["hero-video tag: ink-2 on video-hi (.hero-video .tag)", t("ink-2"), t("video-hi"), "text"],
+  ["hero-video tag: ink-2 on video-lo gradient end (.hero-video .tag)", t("ink-2"), t("video-lo"), "text"],
   // 02 dark section
-  ["dark: #f1f0ec on ink-dark (.dark)", "#f1f0ec", DARK, "text"],
+  ["dark: paper on ink-dark (.dark)", t("paper"), DARK, "text"],
   ["dark .dim resting: ink-dim on ink-dark, judged as body text (.dark .dim)", t("ink-dim"), DARK, "text"],
   ["dark .dim reduced motion: paper on ink-dark (.dark .dim)", t("paper"), DARK, "text"],
   ["inline-slot border: line-dark on ink-dark (.inline-slot)", t("line-dark"), DARK, "non-text"],
@@ -139,7 +139,7 @@ const pairs = [
   ["panel-dark: white on mid stop (.panel-dark)", WHITE, panelStops[1], "text"],
   ["panel-dark: white on end stop (.panel-dark)", WHITE, panelStops[2], "text"],
   ["panel-dark: white on mid-end midpoint (.panel-dark)", WHITE, mix(panelStops[1], panelStops[2], 0.5), "text"],
-  ["panel-dark kicker: #e8e7e2 on every stop, worst = end (.panel-dark .kicker)", "#e8e7e2", panelStops[2], "text"],
+  ["panel-dark kicker: paper-2 on every stop, worst = end (.panel-dark .kicker)", t("paper-2"), panelStops[2], "text"],
   // forms
   ["input placeholder: ink-2 on surface (.input::placeholder)", t("ink-2"), SURFACE, "text"],
   ["input:disabled text: ink-2 on surface (.input:disabled)", t("ink-2"), SURFACE, "exempt: disabled control (1.4.3)"],

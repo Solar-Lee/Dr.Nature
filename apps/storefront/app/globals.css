@@ -12,17 +12,27 @@
   --red-2: #b81f15;
   --line: #cfcdc6;
   --line-strong: #8a8a86; /* form-field and pending-tag boundaries: 3.47:1 on #fff, 3.04:1 on paper */
+  --surface: #ffffff; /* fields and the light centre of the product stages */
+  --surface-2: #fbfbf9; /* spec table, R&D name card, "coming soon" panel */
+  --hover: #f6f5f2; /* card hover */
+  --stage-hi: #f9f8f5; /* 03 stage glow */
+  --video-hi: #f7f6f3; /* hero video placeholder gradient */
+  --video-lo: #dddbd5;
   /* dark surfaces (02 statement, 06 panel); white text needs every stop <= #767672 (4.56:1) */
   --ink-dark: #1a1a1a;
   --ink-dark-2: #4a4a48;
   --ink-dark-3: #666663;
   --line-dark: #8a8a86;
   --ink-dim: #8a8a86; /* dimmed words on --ink-dark before they light up: 5.02:1 */
+  --on-dark: #ffffff; /* text, outlines and focus ring on the dark surfaces and on red */
+  --slot-dark: #2a2a2a; /* image placeholder inside the 02 sentence */
+  --hair-dark: #333333; /* hairline under the 02 section (decorative) */
   --tint-1: #e6e5e0;
   --tint-2: #e2e5e7;
   --tint-3: #ebe4de;
   --bottle: #fcfcfa;
   --bottle-shade: #e2e1dc;
+  --bottle-edge: #d8d7d1;
   --nav-w: 168px;
   --gutter: clamp(16px, 3.5vw, 40px);
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -62,7 +72,7 @@ canvas {
 /* the red ring is 1.8:1 or less on the dark surfaces; white is >= 5.7:1 on every dark stop */
 .dark :focus-visible,
 .panel-dark :focus-visible {
-  outline-color: #fff;
+  outline-color: var(--on-dark);
 }
 .skip {
   position: absolute;
@@ -353,7 +363,7 @@ p {
   gap: 18px;
   padding: 13px 20px;
   background: var(--red);
-  color: #fff;
+  color: var(--on-dark);
   text-decoration: none;
   font-size: 14px;
   font-weight: 700;
@@ -378,8 +388,8 @@ p {
 }
 .btn.light {
   background: transparent;
-  color: #fff;
-  border-color: #fff;
+  color: var(--on-dark);
+  border-color: var(--on-dark);
 }
 .btn[aria-disabled="true"] {
   background: var(--paper-2);
@@ -511,7 +521,7 @@ a:hover > .arrow {
 .hero-video {
   position: absolute;
   inset: 8% 0 0;
-  background: radial-gradient(70% 70% at 60% 45%, #f7f6f3 0%, var(--paper-2) 55%, #dddbd5 100%);
+  background: radial-gradient(70% 70% at 60% 45%, var(--video-hi) 0%, var(--paper-2) 55%, var(--video-lo) 100%);
   z-index: 0;
 }
 .hero-video .tag {
@@ -583,9 +593,9 @@ a:hover > .arrow {
 .dark {
   position: relative;
   background: var(--ink-dark);
-  color: #f1f0ec;
+  color: var(--paper);
   padding: clamp(80px, 14vw, 180px) var(--gutter);
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--hair-dark);
 }
 .dark h2 {
   font-size: clamp(1.8rem, 1.2rem + 2.6vw, 3.6rem);
@@ -598,7 +608,7 @@ a:hover > .arrow {
 }
 .js-reveal .dark [data-inview] .dim,
 .fx .dark .dim {
-  color: #f1f0ec;
+  color: var(--paper);
 }
 /* nothing lights the dimmed words when motion is reduced (no .fx, no scroll reveal), so they are
    shown lit from the start instead of reading as disabled */
@@ -653,7 +663,7 @@ a:hover > .arrow {
   height: 1.1em;
   margin: 0 0.25em;
   border: 1px solid var(--line-dark);
-  background: #2a2a2a;
+  background: var(--slot-dark);
 }
 
 /* ---------- home: 03 three numbers ---------- */
@@ -769,7 +779,7 @@ html:not(.fx) .tabs a[aria-current] {
   place-items: center;
   padding: 24px;
   min-height: 60dvh;
-  background: radial-gradient(60% 60% at 50% 45%, #f9f8f5 0%, var(--paper) 70%);
+  background: radial-gradient(60% 60% at 50% 45%, var(--stage-hi) 0%, var(--paper) 70%);
 }
 .three .right .stage3d {
   width: min(78vw, 560px);
@@ -894,14 +904,14 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .panel-dark {
   background: linear-gradient(180deg, var(--ink-dark) 0%, var(--ink-dark-2) 70%, var(--ink-dark-3) 100%);
-  color: #fff;
+  color: var(--on-dark);
   padding: clamp(56px, 8vw, 110px) var(--gutter);
   display: grid;
   gap: 18px;
   border-bottom: 1px solid var(--line);
 }
 .panel-dark .kicker {
-  color: #e8e7e2;
+  color: var(--paper-2);
 }
 .panel-dark .cta {
   display: flex;
@@ -940,7 +950,7 @@ html:not(.fx) .tabs a[aria-current] {
   transition: background 200ms;
 }
 .pcard:hover {
-  background: #f6f5f2;
+  background: var(--hover);
 }
 .pcard .head {
   display: flex;
@@ -958,7 +968,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .pcard .stage {
   --tint: var(--tint-1);
-  background: radial-gradient(70% 70% at 50% 40%, #fff 0%, var(--tint) 75%);
+  background: radial-gradient(70% 70% at 50% 40%, var(--surface) 0%, var(--tint) 75%);
   aspect-ratio: 4 / 3.6;
   display: grid;
   place-items: center;
@@ -992,18 +1002,18 @@ html:not(.fx) .tabs a[aria-current] {
   border-radius: 6px 6px 2px 2px;
   background:
     repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.06) 0 2px, transparent 2px 5px),
-    linear-gradient(90deg, #e6e5e0 0%, #ffffff 30%, #f4f3f0 62%, #d9d8d2 100%);
+    linear-gradient(90deg, var(--bottle-shade) 0%, var(--surface) 30%, var(--bottle) 62%, var(--bottle-edge) 100%);
   box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.06);
 }
 .bottle .neck {
   width: 70%;
-  background: linear-gradient(90deg, #dddcd6, #f7f6f3 40%, #e1e0da);
+  background: linear-gradient(90deg, var(--bottle-edge), var(--bottle) 40%, var(--bottle-shade));
 }
 .bottle .body {
   position: relative;
   width: 100%;
   border-radius: 18% 18% 12% 12% / 9% 9% 6% 6%;
-  background: linear-gradient(90deg, #dad9d3 0%, var(--bottle) 26%, #ffffff 42%, var(--bottle) 60%, var(--bottle-shade) 86%, #d3d2cc 100%);
+  background: linear-gradient(90deg, var(--bottle-edge) 0%, var(--bottle) 26%, var(--surface) 42%, var(--bottle) 60%, var(--bottle-shade) 86%, var(--bottle-edge) 100%);
   box-shadow: inset 0 10px 14px -10px rgba(0, 0, 0, 0.12);
   display: grid;
   align-items: center;
@@ -1011,7 +1021,7 @@ html:not(.fx) .tabs a[aria-current] {
 .bottle .label {
   margin: 0 7%;
   height: 56%;
-  background: #fdfdfb;
+  background: var(--bottle);
   display: grid;
   grid-template-rows: auto 1fr auto;
   padding: 8% 9%;
@@ -1132,7 +1142,7 @@ html:not(.fx) .tabs a[aria-current] {
   align-content: start;
 }
 .jcard:hover {
-  background: #f6f5f2;
+  background: var(--hover);
 }
 .jcard .slot {
   aspect-ratio: 3 / 2;
@@ -1196,7 +1206,7 @@ html:not(.fx) .tabs a[aria-current] {
   font-size: 14px;
   padding: 11px 14px;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
 }
 .input::placeholder,
@@ -1356,7 +1366,7 @@ html:not(.fx) .tabs a[aria-current] {
   min-height: 70dvh;
   display: grid;
   place-items: center;
-  background: radial-gradient(60% 60% at 50% 45%, #fff 0%, var(--tint) 70%);
+  background: radial-gradient(60% 60% at 50% 45%, var(--surface) 0%, var(--tint) 70%);
 }
 .pdp .stage .stage3d {
   width: min(80vw, 560px);
@@ -1390,7 +1400,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .label-table {
   border: 1px solid var(--line);
-  background: #fbfbf9;
+  background: var(--surface-2);
   padding: 20px 20px 6px;
 }
 .label-table h2 {
@@ -1438,7 +1448,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .rd-name {
   border: 1px solid var(--line);
-  background: #fbfbf9;
+  background: var(--surface-2);
   padding: clamp(24px, 4vw, 44px);
   display: grid;
   gap: 8px;
@@ -1499,7 +1509,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .soon {
   border: 1px solid var(--line);
-  background: #fbfbf9;
+  background: var(--surface-2);
   padding: clamp(24px, 4vw, 40px);
   display: grid;
   gap: 12px;

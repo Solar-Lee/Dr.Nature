@@ -47,3 +47,7 @@ CODE 依 WCAG 2.2（文字 ≥ 4.5:1、大字與非文字元件 ≥ 3:1，不四
 - 02 標題後半句 `.dim` 的靜止色：舊 #6f6f6b（在 #1a1a1a 上 3.45:1，看起來像停用文字）→ 新 token `--ink-dim` #8a8a86（5.02:1）。範圍：在 #1a1a1a 上 ≥ 4.5:1，中性灰最暗到 #828282（4.53:1；#7f7f7c 只有 4.33:1）；要保留「先暗後亮」的對比感，可在 #828282–#9a9a96（6.16:1）之間調。
 - 系統設定「減少動態」時，沒有任何機制會把暗字點亮（不跑 GSAP，標題也沒有 scroll reveal），所以直接顯示為亮字 `--paper`、不做轉場。
 - 有動畫時（`.fx`）不變：仍然由暗轉亮。沒有 JavaScript 或 GSAP 載入失敗時停在 `--ink-dim`。
+
+### V-11　`globals.css` 的色值全部收進 token（D-03 對照用）
+
+`:root` 之外已沒有任何 hex 色值。新增的角色 token（值不變，除了瓶子插圖）：`--surface` #ffffff（欄位、卡片舞台亮心）、`--surface-2` #fbfbf9（規格表、研發長名片、即將開放面板）、`--hover` #f6f5f2（卡片 hover）、`--stage-hi` #f9f8f5（03 舞台光暈）、`--video-hi` #f7f6f3／`--video-lo` #dddbd5（首頁影片佔位漸層）、`--on-dark` #ffffff（深色面與紅底上的字、框、focus 外框）、`--slot-dark` #2a2a2a、`--hair-dark` #333333（02 底線，裝飾）、`--bottle-edge` #d8d7d1。瓶子示意圖（D-07 會取代）的 9 個陰影色併成 `--surface`／`--bottle`／`--bottle-shade`／`--bottle-edge` 四個，像素差最多 10/255，只在卡片瓶身範圍。D-03 的 `tokens.json` 請沿用這些角色名，CODE 再轉回 CSS 變數。
