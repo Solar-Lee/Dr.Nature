@@ -1,0 +1,144 @@
+{
+  "$comment": "LINE 讀標籤小測驗（LINE-09 題庫；文字由 CODE 撰寫，後端 handler 只讀取）。流程：postback quiz:start → 回 intro 與第 1 題；postback quiz:<q>:<choice> → 回一則「feedback 前導句＋該題 explain」，再回下一題（附 choices 的快速回覆），第 5 題後改回 results。狀態只放在 postback data，同一個 data 重送得到同一個回覆；不符合格式、題號或選項不存在的 data 一律不回覆。沒有獎品、不計總分、不問身體狀況。規則與出處見 content/line/persona.md §7、docs/line/rounds.md。",
+  "version": 1,
+  "id": "label-reading",
+  "postback": {
+    "start": "quiz:start",
+    "answer": "quiz:<q>:<choice>"
+  },
+  "intro": {
+    "text": "讀標籤小測驗，共 5 題，每題點選一個答案。題目只考包裝上的標示怎麼讀，沒有獎品，也不計分。"
+  },
+  "feedback": {
+    "correct": "答對了。",
+    "incorrect": "這題的答案是「{answer}」。"
+  },
+  "questions": [
+    {
+      "q": 1,
+      "text": "第 1 題（共 5 題）：包裝上的「有效日期」，是法規規定一定要標示的項目嗎？",
+      "choices": [
+        {
+          "id": "a",
+          "label": "是，一定要標",
+          "data": "quiz:1:a",
+          "displayText": "是，一定要標"
+        },
+        {
+          "id": "b",
+          "label": "不一定",
+          "data": "quiz:1:b",
+          "displayText": "不一定"
+        }
+      ],
+      "answer": "a",
+      "explain": "依食品安全衛生管理法第 22 條，有效日期是包裝必須標示的項目之一。收到商品後，先看盒上的有效日期。",
+      "sources": [
+        "docs/research/regulatory.md:39（食安法 §22，來源 [6]）",
+        "docs/compliance/claims.md:36",
+        "content/brand/story.md:253"
+      ]
+    },
+    {
+      "q": 2,
+      "text": "第 2 題（共 5 題）：膠囊產品「一份是幾顆」，要看標示的哪裡？",
+      "choices": [
+        {
+          "id": "a",
+          "label": "營養標示的每一份量",
+          "data": "quiz:2:a",
+          "displayText": "營養標示的每一份量"
+        },
+        {
+          "id": "b",
+          "label": "品名旁的數字",
+          "data": "quiz:2:b",
+          "displayText": "品名旁的數字"
+        }
+      ],
+      "answer": "a",
+      "explain": "膠囊狀食品的營養標示，要用「每一份量」加「每日參考值百分比」的格式；每一份量就是建議食用量，而且必須是整數。Dr.Nature 三款一份是幾顆，以標示為準。",
+      "sources": [
+        "docs/research/regulatory.md:40（來源 [14]）",
+        "content/brand/story.md:197"
+      ]
+    },
+    {
+      "q": 3,
+      "text": "第 3 題（共 5 題）：膠囊該怎麼保存，要以哪裡寫的為準？",
+      "choices": [
+        {
+          "id": "a",
+          "label": "包裝上的標示",
+          "data": "quiz:3:a",
+          "displayText": "包裝上的標示"
+        },
+        {
+          "id": "b",
+          "label": "網路上的說法",
+          "data": "quiz:3:b",
+          "displayText": "網路上的說法"
+        }
+      ],
+      "answer": "a",
+      "explain": "保存方式以包裝上的標示為準。Dr.Nature 三款的標示還在定稿，這一欄目前寫「待確認」。",
+      "sources": [
+        "content/brand/story.md:197",
+        "content/brand/story.md:253",
+        "docs/DEV_PLAN.md U-08"
+      ]
+    },
+    {
+      "q": 4,
+      "text": "第 4 題（共 5 題）：包裝上「本產品含有○○」這一行，要以哪裡為準？",
+      "choices": [
+        {
+          "id": "a",
+          "label": "包裝上的標示",
+          "data": "quiz:4:a",
+          "displayText": "包裝上的標示"
+        },
+        {
+          "id": "b",
+          "label": "商品頁的介紹",
+          "data": "quiz:4:b",
+          "displayText": "商品頁的介紹"
+        }
+      ],
+      "answer": "a",
+      "explain": "「本產品含有○○」是法規規定的標示用語。每一款寫了哪些，以標示為準。",
+      "sources": [
+        "docs/research/regulatory.md:49（來源 [18]）",
+        "docs/compliance/claims.md:36"
+      ]
+    },
+    {
+      "q": 5,
+      "text": "第 5 題（共 5 題）：Dr.Nature 三款屬於哪一類食品？",
+      "choices": [
+        {
+          "id": "a",
+          "label": "一般食品",
+          "data": "quiz:5:a",
+          "displayText": "一般食品"
+        },
+        {
+          "id": "b",
+          "label": "有小綠人標章的",
+          "data": "quiz:5:b",
+          "displayText": "有小綠人標章的"
+        }
+      ],
+      "answer": "a",
+      "explain": "三款都是一般食品。本產品為一般食品，非藥品，不具醫療效能。本產品非健康食品，未經健康食品查驗登記。食品要先通過主管機關的查驗登記，才能使用這一類的名稱與小綠人標章；一般食品不得標示或廣告為這一類（法規第 6 條、第 21 條，全文：https://law.moj.gov.tw/LawClass/LawAll.aspx?PCode=L0040012）。",
+      "sources": [
+        "docs/research/regulatory.md:29-32（§6、§21，來源 [7]；查驗登記，來源 [5]）",
+        "docs/research/regulatory.md:86",
+        "docs/compliance/claims.md:7、:40-41"
+      ]
+    }
+  ],
+  "results": {
+    "text": "五題都走完了，謝謝您陪我們讀一遍標籤。這個小測驗沒有獎品，也不計分。標籤上哪一項看不懂，輸入「真人」留言，我們照實回答。\n\n先讀標籤，再決定。"
+  }
+}
