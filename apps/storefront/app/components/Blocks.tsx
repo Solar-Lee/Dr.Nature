@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Bottle } from "./Bottle";
+import { MotionToggle } from "./MotionToggle";
 import { DISCLAIMER, FOOTER, HOME, JOURNAL, LINE_BLOCK, LINE_ID, NAV, PRODUCTS, SPEC } from "@/lib/site";
 
 export function Slot({ label, note = "影像製作中", className = "slot", style }: { label: string; note?: string; className?: string; style?: React.CSSProperties }) {
@@ -25,7 +26,8 @@ export function Marquee() {
     </>
   );
   return (
-    <div className="marquee" aria-label={HOME.s06.marquee.join(" ")}>
+    <div className="marquee">
+      <p className="visually-hidden">{HOME.s06.marquee.join(" ")}</p>
       <div className="track" aria-hidden="true">
         {item}
         {item}
@@ -34,9 +36,14 @@ export function Marquee() {
   );
 }
 
-export function SeriesCards({ withHead = true }: { withHead?: boolean }) {
+/**
+ * The card titles sit one level below the nearest heading: h3 on the home page (under the
+ * section h2), h2 on /products/ where the page h1 is the series title (withHead=false).
+ */
+export function SeriesCards({ withHead = true, cardHeading = "h3" }: { withHead?: boolean; cardHeading?: "h2" | "h3" }) {
+  const CardTitle = cardHeading;
   return (
-    <section aria-labelledby="series-title">
+    <section {...(withHead ? { "aria-labelledby": "series-title" } : { "aria-label": HOME.seriesTitle })}>
       {withHead && (
         <div className="series-head">
           <h2 id="series-title">{HOME.seriesTitle}</h2>
@@ -56,7 +63,7 @@ export function SeriesCards({ withHead = true }: { withHead?: boolean }) {
               <Bottle num={p.num} name={`${SPEC.capsules} 顆膠囊`} tint={p.tint} width={120} />
             </div>
             <div>
-              <h3>{p.name}</h3>
+              <CardTitle>{p.name}</CardTitle>
               <p className="meta">
                 {SPEC.capsules} 顆膠囊 · 效期 {SPEC.shelfLifeYears} 年 · {SPEC.priceText}
               </p>
@@ -124,9 +131,12 @@ export function Footer() {
           <Link href="/" className="wordmark" aria-label="Dr.Nature 首頁">
             Dr<span className="dot">.</span>Nature
           </Link>
+          <div className="foot-motion">
+            <MotionToggle />
+          </div>
         </div>
         <div>
-          <h4>產品</h4>
+          <h2 className="foot-head">產品</h2>
           <ul>
             {PRODUCTS.map((p) => (
               <li key={p.handle}>
@@ -138,7 +148,17 @@ export function Footer() {
           </ul>
         </div>
         <div>
-          <h4>服務</h4>
+          <h2 className="foot-head">關於</h2>
+          <ul>
+            {NAV.primary.map((n) => (
+              <li key={n.href}>
+                <Link href={n.href}>{n.label}</Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h2 className="foot-head">服務</h2>
           <ul>
             {NAV.service.map((n) => (
               <li key={n.href}>
@@ -148,7 +168,7 @@ export function Footer() {
           </ul>
         </div>
         <div>
-          <h4>社群</h4>
+          <h2 className="foot-head">社群</h2>
           <ul>
             {FOOTER.social.map((s) =>
               s.href ? (
@@ -167,8 +187,12 @@ export function Footer() {
         </div>
       </div>
       <div className="legal">
+        <div className="disclaimer-row">
+          {DISCLAIMER.map((l) => (
+            <p key={l}>{l}</p>
+          ))}
+        </div>
         <span>{FOOTER.legal}</span>
-        <span>{DISCLAIMER[0]}</span>
         <span>{FOOTER.company}</span>
       </div>
     </footer>

@@ -1374,3 +1374,90 @@ html:not(.fx) .tabs a[aria-current] {
     transform: none;
   }
 }
+
+/* ---------- a11y utilities (lane D) ---------- */
+/* Text for assistive technology only (marquee text, cart count unit). */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+/* Heading-level fixes keep the old look: the footer column heads moved from h4 to h2 (same rules
+   as the former .sitemap h4), and the /products/ card titles render as h2 (same size as .pcard h3). */
+.sitemap .foot-head {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.8;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  font-weight: 700;
+  text-wrap: wrap;
+}
+.pcard h2 {
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+/* WCAG 2.2.2 pause switch (MotionToggle, footer first column). Paused state is
+   html[data-motion="paused"]; Bottle3D reads the same attribute (lane B). */
+html[data-motion="paused"] .marquee .track {
+  animation-play-state: paused;
+}
+.foot-motion {
+  margin-top: 16px;
+}
+.motion-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  cursor: pointer;
+}
+.motion-toggle[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+/* /faq/#buy and friends: keep the opened item clear of the 56px sticky top bar. */
+.faq details[id] {
+  scroll-margin-top: 72px;
+}
+/* Mobile menu: the 01-06 home-story index sits under its own small head. */
+.menu-story-head {
+  padding: 22px 0 4px;
+}
+/* Breadcrumb (PDP): small type, separators are aria-hidden. */
+.crumbs ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.crumbs li {
+  display: inline-flex;
+  gap: 8px;
+}
+.crumbs a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+.crumbs [aria-current="page"] {
+  color: var(--ink);
+}

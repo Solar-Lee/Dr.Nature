@@ -3,7 +3,8 @@ import { LegalPage } from "../components/LegalPage";
 import { page } from "@/lib/content";
 
 const p = page("privacy");
-export const metadata: Metadata = { title: p.title, description: p.meta_description };
+// preview-copy.json titles already end in 「｜Dr.Nature」; the root title.template adds it again.
+export const metadata: Metadata = { title: p.title.replace(/｜Dr\.Nature$/, ""), description: p.meta_description, alternates: { canonical: "/privacy/" } };
 
 export default function Privacy() {
   return <LegalPage slug="privacy" />;

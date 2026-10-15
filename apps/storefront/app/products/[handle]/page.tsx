@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bottle3D } from "../../components/Bottle3D";
-import { DISCLAIMER, PRODUCTS, SERIES, SPEC } from "@/lib/site";
+import { Breadcrumb } from "../../components/Breadcrumb";
+import { DISCLAIMER, LINE_ID, PRODUCTS, SERIES, SPEC } from "@/lib/site";
 
 type Params = { handle: string };
 export const dynamicParams = false;
@@ -12,7 +13,11 @@ export function generateStaticParams(): Params[] {
 export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
   const { handle } = await params;
   const p = PRODUCTS.find((x) => x.handle === handle);
-  return { title: p ? `${p.num} ${p.name}` : "產品", description: p ? `${p.name}，${SPEC.capsules} 顆膠囊，效期 ${SPEC.shelfLifeYears} 年，官網售價 ${SPEC.priceText}。` : undefined };
+  return {
+    title: p ? `${p.num} ${p.name}` : "產品",
+    description: p ? `${p.name}，${SPEC.capsules} 顆膠囊，效期 ${SPEC.shelfLifeYears} 年，官網售價 ${SPEC.priceText}。` : undefined,
+    alternates: p ? { canonical: `/products/${p.handle}/` } : undefined,
+  };
 }
 
 const PENDING = ["菌種名稱（中英文）", "菌株編號", "每顆含菌數", "建議食用量", "保存方式", "內容物與食品添加物", "營養標示", "素食標示", "原產地", "製造廠", "其他法定標示項目", "國際條碼（EAN-13）"];
@@ -29,6 +34,13 @@ export default async function ProductPage({ params }: { params: Promise<Params> 
         <span className="footnote">{SPEC.bottle} · 即時 3D · 拖曳可旋轉</span>
       </div>
       <div className="pdp-info">
+        <Breadcrumb
+          items={[
+            { href: "/", label: "首頁" },
+            { href: "/products/", label: "產品" },
+            { label: `${p.num} ${p.name}` },
+          ]}
+        />
         <span className="kicker">
           {SERIES} · No. {p.num}
         </span>
@@ -43,8 +55,16 @@ export default async function ProductPage({ params }: { params: Promise<Params> 
           <span className="btn" aria-disabled="true">
             即將開賣
           </span>
-          <Link href="/faq/" className="textlink">
+          <a className="btn ghost" href={`https://line.me/R/ti/p/${LINE_ID}`} target="_blank" rel="noopener">
+            開賣時用 LINE 通知我
+          </a>
+        </div>
+        <div className="buy-row">
+          <Link href="/faq/#buy" className="textlink">
             現在可以購買嗎？
+          </Link>
+          <Link href="/faq/#differences" className="textlink">
+            三款有什麼不同？
           </Link>
         </div>
         <div className="label-table" data-reveal>

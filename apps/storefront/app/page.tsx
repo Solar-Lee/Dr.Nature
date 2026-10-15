@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Bottle3D } from "./components/Bottle3D";
 import { HomeStory } from "./components/HomeStory";
 import { ContactBlocks, JournalGrid, Marquee, SeriesCards, Slot } from "./components/Blocks";
 import { HOME, JOURNAL, PRODUCTS } from "@/lib/site";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 // Home: the six-part story from DESIGN's prototype (01 序 … 06 讀懂自然), then the series cards,
 // 知識誌, LINE / 電子報. Section ids match NAV.story so the left index tracks the scroll.
@@ -24,7 +27,7 @@ export default function Home() {
           </div>
           <Bottle3D num={third.num} name={third.name} className="stage3d" tilt={-0.5} scale={0.9} />
         </div>
-        <Slot label="日常情境影像（D-E03）" className="slot daily-panel" />
+        <Slot label="日常情境影像" className="slot daily-panel" />
       </section>
 
       <section id="s05" className="habits" aria-labelledby="habits-title">
@@ -36,7 +39,7 @@ export default function Home() {
             {HOME.s05.title[1]}
           </h2>
         </div>
-        <div className="scenes">
+        <div className="scenes" tabIndex={0} role="region" aria-label="習慣情境">
           {HOME.s05.scenes.map((s, i) => (
             <figure key={s} className="scene" style={{ margin: 0 }} data-reveal>
               <Slot label={`情境 0${i + 1} · ${s}`} />
@@ -51,7 +54,7 @@ export default function Home() {
 
       <section id="s06" aria-label="讀懂自然">
         <div className="wide">
-          <Slot label="情境全幅影像（D-E03）" className="slot" style={{ minHeight: "38dvh", borderLeft: 0, borderRight: 0 }} />
+          <Slot label="情境全幅影像" className="slot" style={{ minHeight: "38dvh", borderLeft: 0, borderRight: 0 }} />
         </div>
         <Marquee />
         <div className="panel-dark">

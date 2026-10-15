@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { LINE_ID } from "@/lib/site";
 
-export const metadata: Metadata = { title: "團購合作", description: "Dr.Nature 團購合作：照原話轉述就夠了，合作內容開頭標示「合作」或「廣告」。" };
+export const metadata: Metadata = { title: "團購合作", description: "Dr.Nature 團購合作：照原話轉述就夠了，合作內容開頭標示「合作」或「廣告」。", alternates: { canonical: "/wholesale/" } };
 
 export default function Wholesale() {
   return (

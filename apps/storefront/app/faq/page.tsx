@@ -1,8 +1,17 @@
 import type { Metadata } from "next";
+import { FaqHash } from "../components/FaqHash";
 import { faq, page, section } from "@/lib/content";
 
 const p = page("faq");
-export const metadata: Metadata = { title: p.title, description: p.meta_description };
+
+// Stable anchors other pages link to (PDP buy row, /returns/). Every other item is faq-<n>.
+// A renamed question must fail the build instead of silently breaking /faq/#buy.
+const ANCHOR: Record<string, string> = { "現在可以購買嗎？": "buy", "三款有什麼不同？": "differences" };
+for (const q of Object.keys(ANCHOR)) {
+  if (!faq.some((f) => f.q === q)) throw new Error(`faq anchor: no question 「${q}」 in preview-copy.json`);
+}
+// preview-copy.json titles already end in 「｜Dr.Nature」; the root title.template adds it again.
+export const metadata: Metadata = { title: p.title.replace(/｜Dr\.Nature$/, ""), description: p.meta_description, alternates: { canonical: "/faq/" } };
 
 export default function Faq() {
   const intro = section("faq", "intro");
@@ -20,12 +29,13 @@ export default function Faq() {
         <div className="wrap">
           <div className="faq">
             {faq.map((f, i) => (
-              <details key={f.q} open={i === 0}>
+              <details key={f.q} id={ANCHOR[f.q] ?? `faq-${i + 1}`} open={i === 0}>
                 <summary>{f.q}</summary>
                 <p>{f.a}</p>
               </details>
             ))}
           </div>
+          <FaqHash />
         </div>
       </section>
     </>
