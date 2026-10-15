@@ -118,9 +118,18 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<Bottle3DHandle>({ setLabel: () => {}, setScrollRotation: () => {} });
   const [ready, setReady] = useState(false);
+  // The last label / scroll turn asked for, kept for a scene that starts later (three loads lazily,
+  // so ScrollFX may already be at step 02 when the 03 stage's bottle comes up).
+  const wanted = useRef<{ label?: { num: string; name: string }; rot?: number }>({});
   useImperativeHandle(ref, () => ({
-    setLabel: (n, m) => api.current.setLabel(n, m),
-    setScrollRotation: (r) => api.current.setScrollRotation(r),
+    setLabel: (n, m) => {
+      wanted.current.label = { num: n, name: m };
+      api.current.setLabel(n, m);
+    },
+    setScrollRotation: (r) => {
+      wanted.current.rot = r;
+      api.current.setScrollRotation(r);
+    },
   }));
 
   useEffect(() => {
@@ -128,11 +137,12 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
     if (!el) return;
     let disposed = false;
     let cleanup = () => {};
-    (async () => {
+    const start = async () => {
       if (!hasWebGL2()) return; // the static fallback stays
       // The label waits for its fonts (at most 3 s, then the fallback face; it is redrawn once
       // the faces arrive) while three loads in parallel.
-      const firstRuns = labelRuns(num, name, sub);
+      const first = wanted.current.label ?? { num, name };
+      const firstRuns = labelRuns(first.num, first.name, sub);
       const firstFonts = loadLabelFonts(firstRuns);
       const THREE = await import("three");
       await within(firstFonts, 3000, false);
@@ -182,7 +192,7 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         group.add(m);
       }
       // The label shown now; setLabel swaps it, a late font redraws it.
-      let shown = { num, name };
+      let shown = first;
       let drawnWithFonts = false;
       let labelSeq = 0;
       const makeTexture = () => {
@@ -212,7 +222,7 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       scene.add(group);
 
       let rot = 0.35;
-      let scrollRot = 0;
+      let scrollRot = wanted.current.rot ?? 0;
       let dragging = false;
       let lastX = 0;
       let vel = 0;
@@ -220,6 +230,7 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       let last = performance.now();
       let needsFrame = true;
       let lost = false; // WebGL context lost: no frames until it is restored
+      let visible = true; // only an on-screen bottle runs its loop (see the observer below)
       const tick = (t: number) => {
         const dt = Math.min(0.05, (t - last) / 1000);
         last = t;
@@ -230,11 +241,12 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         }
         group.rotation.y = rot + scrollRot;
         renderer.render(scene, camera);
-        needsFrame = !lost && (!reduce || dragging || Math.abs(vel) > 0.0005);
+        el.dataset.frame = String(renderer.info.render.frame); // probes: off-screen bottles stay still
+        needsFrame = visible && !lost && (!reduce || dragging || Math.abs(vel) > 0.0005);
         if (needsFrame) raf = requestAnimationFrame(tick);
       };
       const kick = () => {
-        if (!needsFrame && !lost) {
+        if (!needsFrame && !lost && visible) {
           needsFrame = true;
           last = performance.now();
           raf = requestAnimationFrame(tick);
@@ -270,6 +282,9 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
           kick();
         },
       };
+      // A step change that arrived while the fonts or three were still loading.
+      const w = wanted.current.label;
+      if (w && (w.num !== shown.num || w.name !== shown.name)) api.current.setLabel(w.num, w.name);
 
       const onDown = (e: PointerEvent) => {
         dragging = true;
@@ -318,9 +333,22 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       };
       canvas.addEventListener("webglcontextlost", onLost);
       canvas.addEventListener("webglcontextrestored", onRestored);
+      // Off-screen bottles stop rendering (three continuous loops would keep the GPU busy while
+      // the visitor reads 05/06); the loop restarts when the host scrolls back in.
+      const onScreen =
+        "IntersectionObserver" in window
+          ? new IntersectionObserver((entries) => {
+              const now = entries[entries.length - 1].isIntersecting;
+              if (now === visible) return;
+              visible = now;
+              if (now) kick();
+            })
+          : null;
+      onScreen?.observe(el);
       raf = requestAnimationFrame(tick);
       setReady(true);
       cleanup = () => {
+        onScreen?.disconnect();
         canvas.removeEventListener("webglcontextlost", onLost);
         canvas.removeEventListener("webglcontextrestored", onRestored);
         cancelAnimationFrame(raf);
@@ -334,11 +362,28 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         renderer.domElement.remove();
         api.current = { setLabel: () => {}, setScrollRotation: () => {} };
       };
-    })().catch(() => {
-      /* WebGL unavailable: the static fallback stays visible */
-    });
+    };
+    const run = () =>
+      start().catch(() => {
+        /* WebGL unavailable: the static fallback stays visible */
+      });
+    // three (~185 KB gzip) is fetched only when the stage comes within 300px of the viewport; the
+    // hero's bottle is on screen at load and starts at once, the 03/04 bottles when scrolled near.
+    let near: IntersectionObserver | null = null;
+    if ("IntersectionObserver" in window) {
+      near = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((e) => e.isIntersecting)) return;
+          near?.disconnect();
+          run();
+        },
+        { rootMargin: "300px" },
+      );
+      near.observe(el);
+    } else run();
     return () => {
       disposed = true;
+      near?.disconnect();
       cleanup();
     };
     // The label is swapped through the handle; props only seed the first texture.
