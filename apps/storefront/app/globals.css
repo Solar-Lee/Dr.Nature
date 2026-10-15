@@ -1374,3 +1374,11 @@ html:not(.fx) .tabs a[aria-current] {
     transform: none;
   }
 }
+
+/* ---------- motion (lane B) ---------- */
+/* 05 under the scroll choreography: GSAP writes the scene cards' transform (drift + odd-card
+   stagger), so the scroll reveal only fades them; a transform transition here would lag every
+   scrubbed frame and race GSAP's first read. */
+.fx .scene[data-reveal] {
+  transition-property: opacity;
+}

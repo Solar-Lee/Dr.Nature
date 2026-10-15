@@ -89,14 +89,18 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
           { scale: 0.9, borderRadius: 12, ease: "none", transformOrigin: "50% 100%", scrollTrigger: { trigger: "#s04 .daily-panel", start: "top 70%", end: "bottom 60%", scrub: true } },
         );
 
-        // 05: the scene cards drift sideways with the scroll (no hijack, just parallax).
+        // 05: the scene cards drift sideways with the scroll (no hijack, just parallax). GSAP owns the
+        // cards' whole transform here, odd-card stagger included: it is set explicitly instead of
+        // being read from the CSS, which the reveal transition may be animating at that moment
+        // (WebKit captured a mid-transition offset). The reveal keeps only its fade under .fx.
         const scenes = document.querySelector<HTMLElement>("#s05 .scenes");
         if (scenes) {
           const travel = () => Math.max(0, scenes.scrollWidth - scenes.clientWidth) * 0.6;
+          const stagger = (i: number) => (i % 2 === 0 ? -28 : 0);
           gsap.fromTo(
             "#s05 .scenes > *",
-            { x: 0 },
-            { x: () => -travel(), ease: "none", scrollTrigger: { trigger: "#s05", start: "top bottom", end: "bottom top", scrub: true, invalidateOnRefresh: true } },
+            { x: 0, y: stagger },
+            { x: () => -travel(), y: stagger, ease: "none", scrollTrigger: { trigger: "#s05", start: "top bottom", end: "bottom top", scrub: true, invalidateOnRefresh: true } },
           );
         }
 
