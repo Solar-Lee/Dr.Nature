@@ -73,7 +73,7 @@ export const NAV = {
   ],
   story: [
     { id: "s01", num: "01", label: "序" },
-    { id: "s02", num: "02", label: "我們只說" },
+    { id: "s02", num: "02", label: "規矩" },
     { id: "s03", num: "03", label: "三個編號" },
     { id: "s04", num: "04", label: "日常" },
     { id: "s05", num: "05", label: "習慣" },
@@ -92,7 +92,10 @@ export const HOME = {
   heroEn: "Nature, read by science.",
   heroCta: "認識三款益生菌",
   heroMeta: ["01 日日順 · 02 晶亮 · 03 安和", "60 顆膠囊 · 效期 2 年 · NT$ 1,150"],
-  s02: { a: "保健品，總是說得太多。", b1: "我們只說", b2: "標籤上寫得出來的事。" },
+  // Verbatim from the recommended story, content/brand/story.md:148, split for the a / b1 /
+  // inline image / b2 layout. The old line was removed: story.md:209 (不要 #6, no absolute
+  // 「我們只說」 guarantee) and story.md:295 (row 25, no 「保健品」 put-down of the category).
+  s02: { a: "Dr.Nature 說的每一句話，", b1: "都照一本筆記的", b2: "規矩寫。" },
   s03Kicker: "同一個瓶子，三個編號",
   s04: { kicker: "日常", title: ["放進你", "本來就有的習慣裡。"] },
   s05: { kicker: "習慣", title: ["好的習慣，", "不需要提醒。"], scenes: ["窗邊", "餐桌", "玄關", "書桌"] },
