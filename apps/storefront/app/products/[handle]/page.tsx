@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bottle3D } from "../../components/Bottle3D";
+import { Breadcrumb } from "../../components/Breadcrumb";
 import { DISCLAIMER, LINE_ID, PRODUCTS, SERIES, SPEC } from "@/lib/site";
 
 type Params = { handle: string };
@@ -29,6 +30,13 @@ export default async function ProductPage({ params }: { params: Promise<Params> 
         <span className="footnote">{SPEC.bottle} · 即時 3D · 拖曳可旋轉</span>
       </div>
       <div className="pdp-info">
+        <Breadcrumb
+          items={[
+            { href: "/", label: "首頁" },
+            { href: "/products/", label: "產品" },
+            { label: `${p.num} ${p.name}` },
+          ]}
+        />
         <span className="kicker">
           {SERIES} · No. {p.num}
         </span>
