@@ -111,14 +111,33 @@ export const HOME = {
   seriesLink: "全部產品",
 };
 
+// Categories and sample titles use the brand-level vocabulary of content/brand/story.md:218
+// (標示、標籤、效期、有效日期、收單日) and its two audiences (story.md:158). No eye wording
+// (naming-proposal.md:28, 晶亮 condition), no 換季 (story.md:212,232), no organ names and no
+// SKU-C function words such as 體質 at brand level (story.md:192,204,221).
+// Each category has a static page /journal/c/<slug>/: the export has no server, so a ?cat= query
+// can never filter anything (nginx serves the same /journal/index.html for any query string).
+const JOURNAL_CATS: { name: string; slug: string }[] = [
+  { name: "益生菌知識", slug: "probiotics" },
+  { name: "標示與標籤", slug: "labels" },
+  { name: "效期與保存", slug: "shelf-life" },
+  { name: "家人與團購", slug: "group-buy" },
+];
+const JOURNAL_ALL = "全部";
+
 export const JOURNAL = {
   title: "知識誌",
   en: "ARCHIVE",
-  // Categories and sample titles use the brand-level vocabulary of content/brand/story.md:218
-  // (標示、標籤、效期、有效日期、收單日) and its two audiences (story.md:158). No eye wording
-  // (naming-proposal.md:28, 晶亮 condition), no 換季 (story.md:212,232), no organ names and no
-  // SKU-C function words such as 體質 at brand level (story.md:192,204,221).
-  categories: ["全部", "益生菌知識", "標示與標籤", "效期與保存", "家人與團購"],
+  all: JOURNAL_ALL,
+  categories: [JOURNAL_ALL, ...JOURNAL_CATS.map((c) => c.name)],
+  cats: JOURNAL_CATS,
+  /** Tab target for a category name: /journal/ for 全部, else its static page. Throws at build time on an unknown name. */
+  href(name: string): string {
+    if (name === JOURNAL_ALL) return "/journal/";
+    const c = JOURNAL_CATS.find((x) => x.name === name);
+    if (!c) throw new Error(`unknown journal category ${name}`);
+    return `/journal/c/${c.slug}/`;
+  },
   note: "撰寫中", // sample topics; every post is reviewed (claims-lint + 人工複核) before publishing
   posts: [
     { slug: "storage-after-opening", cat: "益生菌知識", title: "益生菌開封後，怎麼保存比較好？" },

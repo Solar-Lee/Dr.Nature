@@ -68,8 +68,8 @@ export function SeriesCards({ withHead = true }: { withHead?: boolean }) {
   );
 }
 
-export function JournalGrid({ posts = JOURNAL.posts, cat = "全部" }: { posts?: typeof JOURNAL.posts; cat?: string }) {
-  const list = cat === "全部" ? posts : posts.filter((p) => p.cat === cat);
+export function JournalGrid({ posts = JOURNAL.posts, cat = JOURNAL.all }: { posts?: typeof JOURNAL.posts; cat?: string }) {
+  const list = cat === JOURNAL.all ? posts : posts.filter((p) => p.cat === cat);
   return (
     <div className="jgrid">
       {list.map((p, i) => (
