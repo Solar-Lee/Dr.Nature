@@ -399,7 +399,8 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
   }, [sub, tilt, scale]);
 
   return (
-    <div ref={host} className={className} style={{ touchAction: "pan-y", cursor: "grab" }} aria-label={`${name} 3D 瓶身`} role="img">
+    // Horizontal drags turn the bottle; vertical pans scroll and pinches zoom the page as usual.
+    <div ref={host} className={className} style={{ touchAction: "pan-y pinch-zoom", cursor: "grab" }} aria-label={`${name} 3D 瓶身`} role="img">
       {!ready && (
         <div className="slot" style={{ position: "absolute", inset: "12% 20%", border: "none", background: "transparent" }}>
           <span>
