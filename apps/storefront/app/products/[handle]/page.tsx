@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Bottle3D } from "../../components/Bottle3D";
-import { DISCLAIMER, PRODUCTS, SERIES, SPEC } from "@/lib/site";
+import { DISCLAIMER, LINE_ID, PRODUCTS, SERIES, SPEC } from "@/lib/site";
 
 type Params = { handle: string };
 export const dynamicParams = false;
@@ -43,8 +43,16 @@ export default async function ProductPage({ params }: { params: Promise<Params> 
           <span className="btn" aria-disabled="true">
             即將開賣
           </span>
-          <Link href="/faq/" className="textlink">
+          <a className="btn ghost" href={`https://line.me/R/ti/p/${LINE_ID}`} target="_blank" rel="noopener">
+            開賣時用 LINE 通知我
+          </a>
+        </div>
+        <div className="buy-row">
+          <Link href="/faq/#buy" className="textlink">
             現在可以購買嗎？
+          </Link>
+          <Link href="/faq/#differences" className="textlink">
+            三款有什麼不同？
           </Link>
         </div>
         <div className="label-table" data-reveal>
