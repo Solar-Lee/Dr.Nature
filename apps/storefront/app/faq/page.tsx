@@ -10,7 +10,8 @@ const ANCHOR: Record<string, string> = { "現在可以購買嗎？": "buy", "三
 for (const q of Object.keys(ANCHOR)) {
   if (!faq.some((f) => f.q === q)) throw new Error(`faq anchor: no question 「${q}」 in preview-copy.json`);
 }
-export const metadata: Metadata = { title: p.title, description: p.meta_description };
+// preview-copy.json titles already end in 「｜Dr.Nature」; the root title.template adds it again.
+export const metadata: Metadata = { title: p.title.replace(/｜Dr\.Nature$/, ""), description: p.meta_description };
 
 export default function Faq() {
   const intro = section("faq", "intro");
