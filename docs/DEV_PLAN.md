@@ -85,9 +85,9 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 |---|---|---|---|
 | G1 | 部署架構 | Aki | ✅ 混合式（2026-10-13）→ A7 Mac mini＋Docker Desktop＋Cloudflare Tunnel（2026-10-13 18:40）；主機守則 CLAUDE.md §1b 與決定 D1–D25 待核准 |
 | G2 | 產品名稱與功效用詞（日日順／晶亮／舒敏 是否保留；一般食品或申請健康食品） | Aki（CODE 依法規研究提案） | ⏳ 提案已出：[product/naming-proposal.md](product/naming-proposal.md) |
-| G3 | LINE OA webhook 歸屬：① 招商期給 `drnature_bot`（團購既有模式，鏡射到 tuangou 即時收件匣）② 給 OmniCS（消費者客服）③ 寫轉發器同時送兩邊 | Aki | ✅ ① 給團購招商機器人 `drnature_bot`（2026-10-13）；消費者上市前再評估 |
+| G3 | LINE OA webhook 歸屬：① 招商期給 `drnature_bot`（團購既有模式，鏡射到 tuangou 即時收件匣）② 給 OmniCS（消費者客服）③ 寫轉發器同時送兩邊 | Aki | ✅ ① 給團購招商機器人 `drnature_bot`（2026-10-13）→ **2026-10-15 重裁為 ③**：Medusa 接 webhook（驗章、客服人設、會員綁定），驗章後把原始 body 與原 `x-line-signature` 轉發給 `drnature_bot`（LINE-07；轉發網址由 Aki 以 `LINE_OA_FORWARD_URL` 寫進主機 .env，tuangou 端換上新 secret）。切換 webhook URL（LINE-14）與邊緣放行（LINE-15）另行逐項核准 |
 | G4 | 視覺方向三選一（D-01）、Monogram 三選一（D-02） | Aki | ⬜ |
-| G5 | 品牌故事／Slogan 三選一（P1-03、P1-04） | Aki | ⬜ |
+| G5 | 品牌故事／Slogan 三選一（P1-03、P1-04） | Aki | ✅ 2026-10-15 主句採 slogan.md 推薦稿「少說一點，說準一點。／Say less. Say it exactly.」（取代預覽版沿用 DESIGN 原型的「以科學，讀懂自然」——該句違反 slogan.md 規則 4 且未經評審；CC-01 落實）。品牌故事仍用推薦稿 |
 | G6 | 付費素材生成批次核准（每批列出張數與點數） | Aki | ⬜ |
 | G7 | 正式上線（G-LAUNCH 清單全綠） | Aki | ⬜ |
 
@@ -99,7 +99,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 
 | 編號 | 事項 | 擋住 |
 |---|---|---|
-| U-01 | **輪替已外露的憑證**：LINE OA Channel secret／Access token（曾寫在 Pages 檔）；`3. Key/key.md` 內與本專案無關的金鑰另存他處 | 安全 |
+| U-01 | **輪替已外露的憑證**：LINE OA Channel secret／Access token（曾寫在 Pages 檔）；`3. Key/key.md` 內與本專案無關的金鑰另存他處 | 安全 ✅ 2026-10-15 Aki 回報：已輪替並寫進主機 .env（值未經對話；名稱 `LINE_OA_CHANNEL_ID`／`LINE_OA_CHANNEL_SECRET`，LINE-02 白名單合併後生效）。`3. Key/key.md` 搬移未回報 |
 | U-02 | 申請綠界特店（金流＋物流＋電子發票），取得正式金鑰後親手寫入主機 `.env` | P4 正式切換 |
 | U-03 | 選定簡訊商（建議三竹 Mitake 或 Every8d）並開通帳號 | P8 簡訊 |
 | U-04 | Vercel：建立或指定團隊（商用需 Pro）；Supabase：核准建立新專案 `drn-prod`（Pro，避免閒置暫停）。**2026-10-13 查：Supabase 組織「Alex-Lee's Org」是 Free 方案，已有 2 個運作中的專案（kol-groupbuy-system、natrees-line-oa），再建一個會碰到免費方案的上限，且免費專案閒置會暫停 → 需要 Aki 把組織升級 Pro，或另開一個 Pro 組織給 drn-prod** | P0-08、P0-09、P12-06 **2026-10-13 Aki：暫不升級（見 A7）** |
@@ -110,7 +110,7 @@ docs/               計畫、研究、法規、交接；docs/private/（gitignor
 | U-09 | 交易信服務選定（訂單確認、出貨通知）。**也是會員 Email 驗證信的前提：選定前正式站只有 Google 能註冊新會員**（審查 auth-2，docs/ops/customer-login.md §2） | P8、P5-01 Email／LINE 註冊 |
 | U-10 | 定義或核准會員等級門檻（CODE 會先提案） | P5 |
 | U-11 | Meta Business：Pixel 與 CAPI token；GA4、GTM、Search Console 權限 | P8 |
-| U-12 | 研發長肖像與名義使用的書面同意（官網、廣告、包裝） | P7 信任區塊 |
+| U-12 | 研發長肖像與名義使用的書面同意（官網、廣告、包裝） | P7 信任區塊 ✅ 2026-10-15 Aki 回報：已有書面同意，且涵蓋 LINE OA 客服人設、圖文選單、推播（CC-08／LN-02 解除；文件本身不入 repo，由 Aki 保存）。人設仍受 claims.md §4：不稱醫師、揭露利益關係、不背書功效 |
 | U-13 | 綠界物流寄件人：**個人姓名**（2-5 個中文字；C2C 未取件退回寄件門市須出示身分證領取，綠界規定勿填公司名，developers.ecpay.com.tw/8809/）＋手機；並向綠界確認 C2C 合約是否含黑貓宅配 | P4-05 正式切換、宅配上架 |
 | U-14 | 綠界**正式**發票後台：【發票通知方式設定】開啟開立、作廢、中獎通知（Email）給買受人（測試環境不寄，無法替你驗證）；確認是否開通超商 kiosk 列印中獎發票 | 發票上線（要點第二十四點中獎通知義務） |
 | U-15 | 每瓶貨本（COGS）、首批產量、贈品成本（GTM 與會員制的毛利 50% 閘門、R5 都要用） | P1-07、P5-02、P5-07 定案 |
