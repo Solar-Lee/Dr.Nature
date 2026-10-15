@@ -29,3 +29,10 @@ CODE 依 WCAG 2.2（文字 ≥ 4.5:1、大字與非文字元件 ≥ 3:1，不四
 - 欄位樣式合併成一條 `.input` 規則（`.nl input`、`.soon input` 暫時掛在同一條，等 .tsx 加上 `class="input"` 後拿掉）；`.soon input` 的內距從 10px 12px 統一成 11px 14px。
 - PDP 待補標籤 `.pending-list li` 虛線：舊 #9a9a96（紙色上 2.48:1）→ `var(--line-strong)`（3.04:1）。
 - 首頁影片佔位說明字 `.hero-video .tag`：拿掉 `opacity: 0.75`（實際只有 3.25:1）→ `--ink-2` 全不透明，在漸層三個色標上 5.42／6.21／4.85:1。若 DESIGN 要它更淡，最淡到 #5f5f5c（在最深的 #dddbd5 上 4.63:1）；#636360 只剩 4.35:1。
+
+### V-13　觸控目標 ≥ 44px（DESIGN_BRIEF D-10）
+
+- 量測（375px，/、/journal/、/products/daily/）：購物車框與「選單」39.4px、03 tabs 34.5px、知識誌 tabs 29.4px、`.textlink` 27.2px、頂欄 wordmark 22px、頁尾連結 20px。改完三頁可見的 a／button／summary 全部 ≥ 44px。
+- 外觀不變的部分：購物車框、選單、頂欄 wordmark 只加高度（56px 頂欄置中）；`.textlink` 的 1px 底線改成背景線畫在原位置；03 tabs 文字仍在進度線下 10px，多出的高度在下方；知識誌 tabs 文字仍在底線上 4px，多出的高度在上方（每個 tab 都帶 2px 透明底線，選中才變紅，標籤基線一致）。
+- 外觀有變的部分：頁尾連結在 ≤ 1023px 或觸控螢幕上每行 44px（原本約 30px 行距），桌機滑鼠不變。範圍：每個可點目標高度 ≥ 44px；行距可以靠 padding 或 min-height 達成，視覺間距由 DESIGN 決定。
+- 截圖（前／後上下對照）：`/private/tmp/claude-501/drn-lane-e/shots/v13-compare-*.png`（暫存，非 repo 檔）。

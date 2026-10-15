@@ -174,6 +174,11 @@ p {
 }
 .topbar .wordmark {
   font-size: 22px;
+  /* tap targets >= 44px (DESIGN_BRIEF D-10); the 56px bar centres them, so nothing moves.
+     inline-block + line-height, not flex: flex would split "Dr", "." and "Nature" into separate
+     items and drop the kerning between them */
+  display: inline-block;
+  line-height: 44px;
 }
 .topbar-right {
   display: flex;
@@ -191,11 +196,15 @@ p {
   font-weight: 700;
   text-decoration: none;
   min-width: 96px;
+  min-height: 44px;
 }
 .menu summary {
   list-style: none;
   cursor: pointer;
-  padding: 7px 12px;
+  /* 24px line + 2 x 9px + 2 x 1px = 44px without changing the summary's display */
+  padding: 9px 12px;
+  line-height: 24px;
+  min-height: 44px;
   border: 1px solid var(--ink);
   font-size: 13px;
   font-weight: 700;
@@ -384,9 +393,13 @@ a:hover > .arrow {
   transform: translateX(4px);
 }
 .textlink {
+  /* 44px tap height (D-10): 25px line + 2 x 9.5px. The 1px rule under the text is drawn as a
+     background line 1px below the text box, so it stays where the old border-bottom was. */
+  display: inline-block;
+  padding: 9.5px 0;
+  line-height: 25px;
+  background: linear-gradient(var(--ink), var(--ink)) left 0 bottom 7.5px / 100% 1px no-repeat;
   text-decoration: none;
-  border-bottom: 1px solid var(--ink);
-  padding-bottom: 1px;
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
@@ -702,6 +715,10 @@ html:not(.fx) .numstep:not([data-active]) {
   margin-top: 32px;
 }
 .tabs a {
+  /* 44px tap height (D-10); the label stays 10px under the rail, the extra height goes below */
+  display: inline-flex;
+  align-items: flex-start;
+  min-height: 44px;
   text-decoration: none;
   font-size: 12.5px;
   color: var(--ink-2);
@@ -1056,10 +1073,16 @@ html:not(.fx) .tabs a[aria-current] {
   scrollbar-width: none;
 }
 .jtabs a {
+  /* 44px tap height (D-10); the label stays 4px over the active underline, the extra height goes above */
+  display: inline-flex;
+  align-items: flex-end;
+  min-height: 44px;
   text-decoration: none;
   color: var(--ink-2);
   white-space: nowrap;
   padding-bottom: 4px;
+  /* every tab carries the 2px rule (transparent until active) so the labels share one baseline */
+  border-bottom: 2px solid transparent;
 }
 .jtabs a[aria-current] {
   color: var(--ink);
@@ -1222,6 +1245,17 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .sitemap a:hover {
   text-decoration-color: var(--ink);
+}
+/* footer links on phones, tablets and touch screens: 24px line + 2 x 10px = 44px (D-10) */
+@media (max-width: 1023px), (pointer: coarse) {
+  .sitemap ul {
+    gap: 0;
+  }
+  .sitemap a,
+  .sitemap .pending {
+    display: inline-block;
+    padding: 10px 0;
+  }
 }
 .sitemap .pending {
   color: var(--ink-2);
