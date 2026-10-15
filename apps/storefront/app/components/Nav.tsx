@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { NAV, PRODUCTS } from "@/lib/site";
 
 function cur(pathname: string, href: string) {
@@ -96,15 +96,61 @@ export function SideNav() {
   );
 }
 
+/**
+ * Mobile menu (< 1024px). The root layout survives client navigation, so the <details> is
+ * controlled: it closes on a route change, on a hash change, on any link tap inside the panel
+ * (covers same-page /#sNN links, which change neither the pathname nor fire hashchange under the
+ * app router's pushState) and on Escape, which also returns focus to the summary (APG
+ * disclosure-navigation pattern). The page underneath does not scroll while the panel is open.
+ */
 export function TopBar() {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const summaryRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    const close = () => setOpen(false);
+    window.addEventListener("hashchange", close);
+    return () => window.removeEventListener("hashchange", close);
+  }, []);
+
+  // While open: lock page scroll; Escape anywhere closes (the panel covers the viewport, and
+  // WebKit's default Tab order skips links, so focus may not be inside the <details>).
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+      summaryRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const onPanelClick = (e: MouseEvent<HTMLDivElement>) => {
+    if ((e.target as Element).closest("a")) setOpen(false);
+  };
+
   return (
     <header className="topbar">
       <Wordmark />
       <div className="topbar-right">
         <CartBox />
-        <details className="menu">
-          <summary aria-label="開啟選單">選單</summary>
-          <div className="menu-panel">
+        <details className="menu" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+          <summary ref={summaryRef} aria-label="開啟選單">
+            選單
+          </summary>
+          <div className="menu-panel" onClick={onPanelClick}>
             <ul>
               <li>
                 <Link href="/products/">產品</Link>
