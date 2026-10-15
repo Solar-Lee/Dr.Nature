@@ -1380,6 +1380,23 @@ html:not(.fx) .tabs a[aria-current] {
     --bar-h: 0px;
   }
 }
+/* 01 stays under the top bar while 02 slides over it: sticky inside the .stick wrapper (01 + 02,
+   HomeStory) instead of a ScrollTrigger pin, so the hero never switches to position: fixed during
+   the scroll (that switch registered as layout shifts). 02 keeps z-index 1 over it. */
+.fx .stick > #s01 {
+  position: sticky;
+  top: var(--bar-h);
+}
+/* The hero stays for its own height (as the old pin did) even when 02 is shorter: ScrollFX sets
+   --stick-extra = hero height - 02 height; the wrapper grows by it and gives it back below. */
+.fx .stick {
+  margin-bottom: calc(-1 * var(--stick-extra, 0px));
+}
+.fx .stick::after {
+  content: "";
+  display: block;
+  height: var(--stick-extra, 0px);
+}
 /* Smooth anchor scrolling, except under the home choreography (html.fx): there every scroll is
    instant, so GSAP's refresh measurements, the deep-link landing and programmatic scrolls are not
    animated through three pinned viewports (gsap.com/resources/st-mistakes). Under reduced motion

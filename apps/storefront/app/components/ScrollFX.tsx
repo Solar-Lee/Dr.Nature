@@ -2,7 +2,8 @@
 
 // Scroll choreography for the home page (GSAP 3.15 ScrollTrigger), after the two "Scroll up"
 // references and DESIGN's prototype:
-//   01 hero      pinned while 02 slides over it; 02 enters with a staircase column wipe
+//   01 hero      held under 02 as it slides over (CSS sticky, see globals.css motion block);
+//                02 enters with a staircase column wipe
 //   03 三個編號   stage pinned for three steps; the numbers, tabs and the 3D label cycle 01→02→03
 //                and the bottle turns with the scroll
 //   04 日常      the full-bleed panel shrinks into an inset card
@@ -55,8 +56,20 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
       media.add("(prefers-reduced-motion: no-preference)", () => {
         let alive = true;
         document.documentElement.classList.add("fx");
-        // 01 → 02: pin the hero under the dark panel; the panel's dark columns rise in a staircase.
-        ScrollTrigger.create({ trigger: "#s01", start: () => `top ${bar()}px`, end: () => `bottom ${bar()}px`, pin: true, pinSpacing: false });
+        // 01 → 02: the hero stays under the dark panel (position: sticky in the .stick wrapper, so
+        // it never flips to position: fixed mid-scroll -- that flip registered as layout shifts,
+        // CLS 0.63 per pass under wheel input); the panel's dark columns rise in a staircase.
+        // The hero stays put for its own height, as the former pin did; the wrapper ends with 02,
+        // which can be shorter, so it is extended by the difference (--stick-extra; 03 is pulled
+        // back up by as much, so nothing below moves), measured before every refresh.
+        const stick = document.querySelector<HTMLElement>(".stick");
+        const fitStick = () => {
+          const hero = document.getElementById("s01");
+          const s02 = document.getElementById("s02");
+          if (stick && hero && s02) stick.style.setProperty("--stick-extra", `${Math.max(0, hero.offsetHeight - s02.offsetHeight)}px`);
+        };
+        fitStick();
+        ScrollTrigger.addEventListener("refreshInit", fitStick);
         gsap.fromTo(
           "#s02 .stairs span",
           { scaleY: 0 },
@@ -151,7 +164,9 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
           const el = document.getElementById(id);
           if (!el) return;
           const pinned = ScrollTrigger.getAll().find((t) => t.trigger === el && t.pin);
-          const top = Math.max(0, Math.round(pinned ? pinned.start : el.getBoundingClientRect().top + window.scrollY - bar()));
+          // A stuck hero reports its stuck position; its place in the flow is its wrapper's top.
+          const flow = el.parentElement?.classList.contains("stick") && el === el.parentElement.firstElementChild ? el.parentElement : el;
+          const top = Math.max(0, Math.round(pinned ? pinned.start : flow.getBoundingClientRect().top + window.scrollY - bar()));
           let frames = 0;
           const hold = () => {
             if (cancelled || !alive || userMoved) return;
@@ -175,6 +190,8 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
         // Reverted (motion turned to "reduce", or unmount): back to the static layout's 03 state.
         return () => {
           alive = false;
+          ScrollTrigger.removeEventListener("refreshInit", fitStick);
+          stick?.style.removeProperty("--stick-extra");
           document.documentElement.classList.remove("fx");
           document.querySelectorAll<HTMLElement>("#s03 .tabs a").forEach((a) => a.style.removeProperty("--fill"));
           setActive(0);

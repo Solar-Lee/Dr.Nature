@@ -17,58 +17,62 @@ export function HomeStory() {
   const steps = useMemo(() => PRODUCTS.map((p) => ({ num: p.num, name: p.name })), []);
   return (
     <>
-      <section id="s01" className="hero" aria-labelledby="hero-title">
-        <div className="hero-top">
-          <div className="hero-copy">
-            <div className="enter" style={{ ["--i" as string]: 0 }}>
-              <Greeting />
+      {/* 01 + 02 share a wrapper: under the choreography the hero is sticky inside it, so it stays
+          put exactly while 02 passes over it (globals.css, motion block). */}
+      <div className="stick">
+        <section id="s01" className="hero" aria-labelledby="hero-title">
+          <div className="hero-top">
+            <div className="hero-copy">
+              <div className="enter" style={{ ["--i" as string]: 0 }}>
+                <Greeting />
+              </div>
+              <h1 id="hero-title" className="enter" style={{ ["--i" as string]: 1 }}>
+                {HOME.heroTitle[0]}
+                <br />
+                {HOME.heroTitle[1]}
+              </h1>
+              <div className="hero-cta enter" style={{ ["--i" as string]: 2 }}>
+                <Link href="/products/" className="btn">
+                  {HOME.heroCta} <span className="arrow">→</span>
+                </Link>
+                <span className="en">{HOME.heroEn}</span>
+              </div>
             </div>
-            <h1 id="hero-title" className="enter" style={{ ["--i" as string]: 1 }}>
-              {HOME.heroTitle[0]}
-              <br />
-              {HOME.heroTitle[1]}
-            </h1>
-            <div className="hero-cta enter" style={{ ["--i" as string]: 2 }}>
-              <Link href="/products/" className="btn">
-                {HOME.heroCta} <span className="arrow">→</span>
-              </Link>
-              <span className="en">{HOME.heroEn}</span>
+            <div className="hero-meta enter" style={{ ["--i" as string]: 3 }}>
+              <b>{SERIES}</b>
+              {HOME.heroMeta.map((l) => (
+                <span key={l} style={{ display: "block" }}>
+                  {l}
+                </span>
+              ))}
             </div>
           </div>
-          <div className="hero-meta enter" style={{ ["--i" as string]: 3 }}>
-            <b>{SERIES}</b>
-            {HOME.heroMeta.map((l) => (
-              <span key={l} style={{ display: "block" }}>
-                {l}
-              </span>
+          <div className="hero-stage">
+            <div className="hero-video" aria-hidden="true">
+              <span className="tag">品牌影片（D-E01）製作中</span>
+            </div>
+            <Bottle3D num={first.num} name={first.name} className="stage3d" tilt={0.14} scale={1.05} />
+          </div>
+          <p className="giant" aria-hidden="true">
+            Dr<span className="dot">.</span>Nature
+          </p>
+        </section>
+
+        <section id="s02" className="dark" aria-label="我們只說">
+          <div className="stairs" aria-hidden="true">
+            {Array.from({ length: STAIRS }, (_, i) => (
+              <span key={i} />
             ))}
           </div>
-        </div>
-        <div className="hero-stage">
-          <div className="hero-video" aria-hidden="true">
-            <span className="tag">品牌影片（D-E01）製作中</span>
-          </div>
-          <Bottle3D num={first.num} name={first.name} className="stage3d" tilt={0.14} scale={1.05} />
-        </div>
-        <p className="giant" aria-hidden="true">
-          Dr<span className="dot">.</span>Nature
-        </p>
-      </section>
-
-      <section id="s02" className="dark" aria-label="我們只說">
-        <div className="stairs" aria-hidden="true">
-          {Array.from({ length: STAIRS }, (_, i) => (
-            <span key={i} />
-          ))}
-        </div>
-        <h2>
-          {HOME.s02.a}
-          <br />
-          {HOME.s02.b1}
-          <span className="inline-slot" aria-hidden="true" />
-          <span className="dim">{HOME.s02.b2}</span>
-        </h2>
-      </section>
+          <h2>
+            {HOME.s02.a}
+            <br />
+            {HOME.s02.b1}
+            <span className="inline-slot" aria-hidden="true" />
+            <span className="dim">{HOME.s02.b2}</span>
+          </h2>
+        </section>
+      </div>
 
       <section id="s03" aria-label="三個編號">
         <div className="three">
