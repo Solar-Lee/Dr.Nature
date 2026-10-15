@@ -101,6 +101,7 @@
 |---|---|
 | `E2E_BASE_URL` | Playwright 目標站（本機／staging／正式） |
 | `E2E_ALLOW_WRITES` | `1` 才允許 e2e 建立訂單；正式站一律不設 |
+| `PLAYWRIGHT_BROWSERS_PATH` | Playwright 瀏覽器的安裝位置（Playwright 自己讀取，程式不讀；https://playwright.dev/docs/browsers）。Mac mini 一律設 `$HOME/drn/pw-browsers`（CLAUDE.md §1b），`scripts/test-all.sh` 在未設定且該目錄存在時自動帶上 |
 | `DB_HOST` | 後端整合測試的 Postgres 主機（@medusajs/test-utils 2.21.2 只讀這組，不讀 DATABASE_URL；須含 `localhost`） |
 | `DB_PORT` | 同上 |
 | `DB_USERNAME` | 同上 |
