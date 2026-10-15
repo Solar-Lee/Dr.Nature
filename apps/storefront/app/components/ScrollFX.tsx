@@ -60,24 +60,27 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
           });
           bottle.current?.setLabel(steps[i].num, steps[i].name);
         };
+        setActive(0); // matches the server markup until the trigger reports its progress
+        // Step, bottle turn and tab fills all follow the progress. Called on refresh too: GSAP runs
+        // onRefresh after the refresh's own update, so resetting to 01 there would contradict the
+        // progress after a resize, rotation or tab return while the stage is pinned.
+        const apply = (p: number) => {
+          setActive(Math.min(n - 1, Math.floor(p * n)));
+          bottle.current?.setScrollRotation(p * Math.PI * 2 * 0.9);
+          document.querySelectorAll<HTMLElement>("#s03 .tabs a").forEach((a, k) => {
+            const local = Math.max(0, Math.min(1, p * n - k));
+            a.style.setProperty("--fill", String(local));
+          });
+        };
         ScrollTrigger.create({
           trigger: "#s03",
           start: "top top",
           end: () => `+=${window.innerHeight * n}`,
           pin: "#s03 .three",
           scrub: true,
-          onUpdate: (self) => {
-            const p = self.progress;
-            setActive(Math.min(n - 1, Math.floor(p * n)));
-            bottle.current?.setScrollRotation(p * Math.PI * 2 * 0.9);
-            document.querySelectorAll<HTMLElement>("#s03 .tabs a").forEach((a, k) => {
-              const local = Math.max(0, Math.min(1, p * n - k));
-              a.style.setProperty("--fill", String(local));
-            });
-          },
-          onRefresh: () => setActive(0),
+          onUpdate: (self) => apply(self.progress),
+          onRefresh: (self) => apply(self.progress),
         });
-        setActive(0);
 
         // 04: the daily panel shrinks into an inset card as it settles.
         gsap.fromTo(
