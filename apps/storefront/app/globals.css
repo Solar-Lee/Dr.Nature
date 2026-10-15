@@ -27,7 +27,6 @@
 }
 html {
   -webkit-text-size-adjust: 100%;
-  scroll-behavior: smooth;
 }
 body {
   margin: 0;
@@ -1387,6 +1386,15 @@ html:not(.fx) .tabs a[aria-current] {
 @media (min-width: 1024px) {
   :root {
     --bar-h: 0px;
+  }
+}
+/* Smooth anchor scrolling, except under the home choreography (html.fx): there every scroll is
+   instant, so GSAP's refresh measurements, the deep-link landing and programmatic scrolls are not
+   animated through three pinned viewports (gsap.com/resources/st-mistakes). Under reduced motion
+   this does not apply (the reduced-motion block above sets auto). */
+@media (prefers-reduced-motion: no-preference) {
+  html:not(.fx) {
+    scroll-behavior: smooth;
   }
 }
 /* Choreographed heights use svh (the small viewport, stable while a phone's address bar hides or
