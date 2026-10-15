@@ -530,11 +530,15 @@ a:hover > .arrow {
   .hero-stage .stage3d {
     /* explicit size: an absolutely positioned box with width:auto would shrink to the canvas's own
        intrinsic size (circular with the renderer's ResizeObserver) */
+    /* the box's right edge sits at 50% + 0.86 x width (translateX(-14%)) and the CSS tilt widens
+       its bounding box by ~6.5% a side, so width <= (50% - gutter) / 0.93 keeps the bottle inside
+       the hero's right gutter at 900-1200px; height follows through aspect-ratio */
     position: absolute;
     top: 12%;
     left: 50%;
-    width: min(72vh, 600px);
-    height: min(72vh, 600px);
+    width: min(72vh, 600px, calc((50% - var(--gutter)) / 0.93));
+    height: auto;
+    aspect-ratio: 1;
     max-height: none;
     transform: translateX(-14%);
   }
