@@ -14,7 +14,7 @@ export default function Products() {
           同一個瓶子，三個編號。每瓶 {SPEC.capsules} 顆膠囊，效期 {SPEC.shelfLifeYears} 年，官網售價 {SPEC.priceText}。三款都是一般食品，不是藥品。每一款的說明，寫在它自己的頁面上，一款一頁，不加形容詞。
         </p>
       </header>
-      <SeriesCards withHead={false} />
+      <SeriesCards withHead={false} cardHeading="h2" />
       <section className="section">
         <div className="wrap two">
           <div className="prose">

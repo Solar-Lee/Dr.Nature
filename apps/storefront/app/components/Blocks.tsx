@@ -35,7 +35,12 @@ export function Marquee() {
   );
 }
 
-export function SeriesCards({ withHead = true }: { withHead?: boolean }) {
+/**
+ * The card titles sit one level below the nearest heading: h3 on the home page (under the
+ * section h2), h2 on /products/ where the page h1 is the series title (withHead=false).
+ */
+export function SeriesCards({ withHead = true, cardHeading = "h3" }: { withHead?: boolean; cardHeading?: "h2" | "h3" }) {
+  const CardTitle = cardHeading;
   return (
     <section {...(withHead ? { "aria-labelledby": "series-title" } : { "aria-label": HOME.seriesTitle })}>
       {withHead && (
@@ -57,7 +62,7 @@ export function SeriesCards({ withHead = true }: { withHead?: boolean }) {
               <Bottle num={p.num} name={`${SPEC.capsules} 顆膠囊`} tint={p.tint} width={120} />
             </div>
             <div>
-              <h3>{p.name}</h3>
+              <CardTitle>{p.name}</CardTitle>
               <p className="meta">
                 {SPEC.capsules} 顆膠囊 · 效期 {SPEC.shelfLifeYears} 年 · {SPEC.priceText}
               </p>
@@ -127,7 +132,7 @@ export function Footer() {
           </Link>
         </div>
         <div>
-          <h4>產品</h4>
+          <h2 className="foot-head">產品</h2>
           <ul>
             {PRODUCTS.map((p) => (
               <li key={p.handle}>
@@ -139,7 +144,7 @@ export function Footer() {
           </ul>
         </div>
         <div>
-          <h4>服務</h4>
+          <h2 className="foot-head">服務</h2>
           <ul>
             {NAV.service.map((n) => (
               <li key={n.href}>
@@ -149,7 +154,7 @@ export function Footer() {
           </ul>
         </div>
         <div>
-          <h4>社群</h4>
+          <h2 className="foot-head">社群</h2>
           <ul>
             {FOOTER.social.map((s) =>
               s.href ? (

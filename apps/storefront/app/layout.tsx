@@ -23,9 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a className="skip" href="#main">
           跳到主要內容
         </a>
-        <div className="notice" role="note">
+        <aside className="notice" aria-label="預覽版提示">
           {NOTICE}
-        </div>
+        </aside>
         <TopBar />
         <div className="shell">
           <SideNav />

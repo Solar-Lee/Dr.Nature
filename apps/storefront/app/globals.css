@@ -1388,3 +1388,18 @@ html:not(.fx) .tabs a[aria-current] {
   white-space: nowrap !important;
   border: 0 !important;
 }
+/* Heading-level fixes keep the old look: the footer column heads moved from h4 to h2 (same rules
+   as the former .sitemap h4), and the /products/ card titles render as h2 (same size as .pcard h3). */
+.sitemap .foot-head {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.8;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  font-weight: 700;
+  text-wrap: wrap;
+}
+.pcard h2 {
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
