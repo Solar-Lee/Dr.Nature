@@ -168,8 +168,9 @@ p {
   height: 56px;
   padding: 0 var(--gutter);
   background: color-mix(in srgb, var(--paper) 94%, transparent);
+  /* unprefixed only: the build emits both forms from it; with the -webkit- line written after it,
+     Lightning CSS kept only the prefixed one and Chrome, Edge and Firefox lost the blur */
   backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
 }
 .topbar .wordmark {
