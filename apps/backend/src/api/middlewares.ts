@@ -269,5 +269,7 @@ export default defineMiddlewares({
       middlewares: [notOffered],
     })),
     { methods: ["POST"], matcher: "/hooks/payment/:provider", middlewares: [closeBuiltinEcpayWebhook] },
+    // [LINE-04] LINE signs the raw request bytes (x-line-signature); keep them as req.rawBody.
+    { methods: ["POST"], matcher: "/hooks/line/webhook", bodyParser: { preserveRawBody: true, sizeLimit: "1mb" } },
   ],
 })
