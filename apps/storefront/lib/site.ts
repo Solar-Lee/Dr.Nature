@@ -119,7 +119,7 @@ export const JOURNAL = {
   // (naming-proposal.md:28, 晶亮 condition), no 換季 (story.md:212,232), no organ names and no
   // SKU-C function words such as 體質 at brand level (story.md:192,204,221).
   categories: ["全部", "益生菌知識", "標示與標籤", "效期與保存", "家人與團購"],
-  note: "範例題目 · 發布前內部複核",
+  note: "撰寫中", // sample topics; every post is reviewed (claims-lint + 人工複核) before publishing
   posts: [
     { slug: "storage-after-opening", cat: "益生菌知識", title: "益生菌開封後，怎麼保存比較好？" },
     { slug: "read-the-label", cat: "益生菌知識", title: "挑選益生菌，先看包裝上的哪幾項標示" },
@@ -146,11 +146,11 @@ export const LINE_BLOCK = {
 export const FOOTER = {
   social: [
     { label: "Facebook", href: "https://www.facebook.com/share/1Js3iCU583/?mibextid=wwXIfr" },
-    { label: "Instagram", href: null, note: "連結待更正（O-06）" },
+    { label: "Instagram", href: null, note: "即將開放" }, // O-06: the brand overview link is wrong; waits for the corrected URL
     { label: `LINE ${LINE_ID}`, href: `https://line.me/R/ti/p/${LINE_ID}` },
   ],
   legal: "© 2026 Dr.Nature",
-  company: "公司名稱 · 地址 · 食品業者登錄字號：待提供（O-10）",
+  company: "公司資訊：正式上線前公布", // O-10: company name, address and 食品業者登錄字號 not provided yet (U-07)
 };
 
 export const DISCLAIMER = ["本產品為一般食品，非藥品，不具醫療效能。", "本產品非健康食品，未經健康食品查驗登記。"];
