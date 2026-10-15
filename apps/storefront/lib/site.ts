@@ -82,7 +82,7 @@ export const NAV = {
     { id: "s03", num: "03", label: "三個編號" },
     { id: "s04", num: "04", label: "日常" },
     { id: "s05", num: "05", label: "習慣" },
-    { id: "s06", num: "06", label: "讀懂自然" },
+    { id: "s06", num: "06", label: "結語" },
   ],
   service: [
     { href: "/faq/", label: "常見問題" },
@@ -93,8 +93,11 @@ export const NAV = {
 };
 
 export const HOME = {
-  heroTitle: ["以科學，", "讀懂自然。"],
-  heroEn: "Nature, read by science.",
+  // Main slogan, G5 decided by Aki 2026-10-15: content/brand/slogan.md:36-37, used verbatim
+  // (slogan.md:57-58). Replaces DESIGN's prototype line 「以科學，讀懂自然。」, which broke
+  // slogan.md:67 (rule 4: no research/science wording) and had no 評審.
+  heroTitle: ["少說一點，", "說準一點。"],
+  heroEn: "Say less. Say it exactly.",
   heroCta: "認識三款益生菌",
   heroMeta: ["01 日日順 · 02 晶亮 · 03 安和", "60 顆膠囊 · 效期 2 年 · NT$ 1,150"],
   // Verbatim from the recommended story, content/brand/story.md:148, split for the a / b1 /
@@ -106,7 +109,7 @@ export const HOME = {
   // Scene labels are times of day, not places: story.md:212 (不要 #9) and slogan.md:71 rule out
   // within-reach placement scenes until storage conditions (U-08) are known.
   s05: { kicker: "習慣", title: ["好的習慣，", "不需要提醒。"], scenes: ["早晨", "午後", "傍晚", "夜裡"] },
-  s06: { marquee: ["Nature, read by science.", "以科學，讀懂自然。"], kicker: SERIES, title: ["說得剛好的", "一瓶益生菌。"], cta: "認識三款益生菌", cta2: "讀品牌故事" },
+  s06: { marquee: ["Say less. Say it exactly.", "少說一點，說準一點。"], kicker: SERIES, title: ["說得剛好的", "一瓶益生菌。"], cta: "認識三款益生菌", cta2: "讀品牌故事" },
   seriesTitle: "三款，一個系列。",
   seriesLink: "全部產品",
 };
