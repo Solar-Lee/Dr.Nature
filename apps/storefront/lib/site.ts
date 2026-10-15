@@ -133,9 +133,12 @@ export const JOURNAL = {
   ],
 };
 
+// LINE promises follow G3 = ③ (Aki, 2026-10-15): the OA webhook is not live yet, so the block
+// promises only launch and membership notices and says customer service is coming. No 訂單通知 or
+// 補貨提醒 until DEV_PLAN marks LINE-14 done.
 export const LINE_BLOCK = {
   title: "加入 LINE 好友",
-  body: "訂單通知、補貨提醒與會員消息，都在這裡。",
+  body: "正式開賣與會員開放時，會在這裡通知。LINE 客服即將開放。",
   newsletterTitle: "電子報",
   newsletterBody: "每月一封，只寄新文章與新品。",
 };

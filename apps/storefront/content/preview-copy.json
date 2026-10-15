@@ -395,9 +395,12 @@
         },
         "no-personal-data": {
           "heading": "不蒐集個人資料",
-          "body": "除了進入本站的密碼欄位，本預覽版沒有會員註冊、購物車、結帳、表單或留言功能，不會要求你輸入姓名、電話、Email 或任何其他個人資料。",
+          "body": "除了進入本站的密碼欄位，本預覽版不蒐集任何個人資料。購物車、結帳與會員功能尚未開放：頁面上的購物車按鈕只連到會員頁，會員登入與電子報欄位都已停用，不會送出任何資料。本站也沒有留言功能，不會要求你輸入姓名、電話、Email 或任何其他個人資料。",
           "sources": [
-            "orchestrator task text: showcase only, no cart/checkout (must match the build)"
+            "orchestrator task text: showcase only, no cart/checkout (must match the build)",
+            "apps/storefront/app/components/Nav.tsx:20-26 (購物車 0 control links to /account/)",
+            "apps/storefront/app/components/Blocks.tsx:102-113 (newsletter input and button disabled)",
+            "apps/storefront/app/account/page.tsx:18-24 (login input disabled, button aria-disabled)"
           ]
         },
         "cookies": {
@@ -743,9 +746,10 @@
     },
     {
       "q": "現在可以購買嗎？",
-      "a": "還不行。本網站是預覽版，沒有購物車與結帳功能，產品頁的按鈕顯示「即將開賣」。開賣日期確定後另行公布。",
+      "a": "還不行。本網站是預覽版，購物車與結帳功能尚未開放；頁面上的購物車按鈕目前不蒐集任何資料，產品頁的按鈕顯示「即將開賣」。開賣日期確定後另行公布。",
       "sources": [
-        "orchestrator task text: showcase only, buy buttons say 即將開賣 (no repo source for a launch date)"
+        "orchestrator task text: showcase only, buy buttons say 即將開賣 (no repo source for a launch date)",
+        "apps/storefront/app/components/Nav.tsx:20-26 (購物車 0 control links to /account/)"
       ]
     },
     {
