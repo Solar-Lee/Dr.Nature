@@ -1,10 +1,11 @@
 "use client";
 
 // Real-time 3D bottle (three 0.186.1): the opaque white 100 ml PE bottle (PB-100, Ø45.8 × 85.7 mm)
-// with the numbered label drawn on a canvas texture. Auto-rotates slowly, drag to turn; both stop
-// under prefers-reduced-motion. Rendered only on the client; the page keeps a static fallback
-// until the scene is ready. Exposes an imperative handle so ScrollFX can swap the label (01→02→03)
-// and add a scroll-driven rotation while the bottle stays pinned.
+// with the numbered label drawn on a canvas texture. Auto-rotates slowly, drag to turn; the
+// auto-rotation stops under prefers-reduced-motion and while the site's motion pause is on.
+// Rendered only on the client; the page keeps a static fallback until the scene is ready. Exposes
+// an imperative handle so ScrollFX can swap the label (01→02→03) and add a scroll-driven rotation
+// while the bottle stays pinned.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 export type Bottle3DHandle = {
@@ -150,6 +151,10 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       // Auto-rotation follows prefers-reduced-motion live (dragging always works).
       const reduceQuery = matchMedia("(prefers-reduced-motion: reduce)");
       let reduce = reduceQuery.matches;
+      // ...and the site's motion pause (WCAG 2.2.2): the pause control sets
+      // html[data-motion="paused"] and dispatches "drn:motion" on window.
+      const motionPaused = () => document.documentElement.dataset.motion === "paused";
+      let paused = motionPaused();
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       el.appendChild(renderer.domElement);
@@ -239,14 +244,14 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         const dt = Math.min(0.05, (t - last) / 1000);
         last = t;
         if (!dragging) {
-          if (!reduce) rot += 0.25 * dt;
+          if (!reduce && !paused) rot += 0.25 * dt;
           vel *= 0.92;
           rot += vel;
         }
         group.rotation.y = rot + scrollRot;
         renderer.render(scene, camera);
         el.dataset.frame = String(renderer.info.render.frame); // probes: off-screen bottles stay still
-        needsFrame = visible && !lost && (!reduce || dragging || Math.abs(vel) > 0.0005);
+        needsFrame = visible && !lost && ((!reduce && !paused) || dragging || Math.abs(vel) > 0.0005);
         if (needsFrame) raf = requestAnimationFrame(tick);
       };
       const kick = () => {
@@ -368,11 +373,17 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         kick();
       };
       reduceQuery.addEventListener("change", onReduceChange);
+      const onMotion = () => {
+        paused = motionPaused();
+        kick();
+      };
+      window.addEventListener("drn:motion", onMotion);
       raf = requestAnimationFrame(tick);
       setReady(true);
       cleanup = () => {
         onScreen?.disconnect();
         reduceQuery.removeEventListener("change", onReduceChange);
+        window.removeEventListener("drn:motion", onMotion);
         canvas.removeEventListener("webglcontextlost", onLost);
         canvas.removeEventListener("webglcontextrestored", onRestored);
         cancelAnimationFrame(raf);
