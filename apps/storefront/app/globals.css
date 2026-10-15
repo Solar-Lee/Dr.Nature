@@ -1430,3 +1430,7 @@ html[data-motion="paused"] .marquee .track {
   background: var(--ink);
   color: var(--paper);
 }
+/* /faq/#buy and friends: keep the opened item clear of the 56px sticky top bar. */
+.faq details[id] {
+  scroll-margin-top: 72px;
+}

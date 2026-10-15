@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
+import { FaqHash } from "../components/FaqHash";
 import { faq, page, section } from "@/lib/content";
 
 const p = page("faq");
+
+// Stable anchors other pages link to (PDP buy row, /returns/). Every other item is faq-<n>.
+// A renamed question must fail the build instead of silently breaking /faq/#buy.
+const ANCHOR: Record<string, string> = { "現在可以購買嗎？": "buy", "三款有什麼不同？": "differences" };
+for (const q of Object.keys(ANCHOR)) {
+  if (!faq.some((f) => f.q === q)) throw new Error(`faq anchor: no question 「${q}」 in preview-copy.json`);
+}
 export const metadata: Metadata = { title: p.title, description: p.meta_description };
 
 export default function Faq() {
@@ -20,12 +28,13 @@ export default function Faq() {
         <div className="wrap">
           <div className="faq">
             {faq.map((f, i) => (
-              <details key={f.q} open={i === 0}>
+              <details key={f.q} id={ANCHOR[f.q] ?? `faq-${i + 1}`} open={i === 0}>
                 <summary>{f.q}</summary>
                 <p>{f.a}</p>
               </details>
             ))}
           </div>
+          <FaqHash />
         </div>
       </section>
     </>
