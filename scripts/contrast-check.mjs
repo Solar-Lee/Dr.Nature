@@ -122,9 +122,10 @@ const pairs = [
   ["btn:hover: white on red-2 (L340-341)", WHITE, t("red-2"), "text"],
   ["btn disabled: ink-2 on paper-2 (L359-361)", t("ink-2"), t("paper-2"), "exempt: disabled control (1.4.3)"],
   ["btn.light border: white on panel-dark end stop (.btn.light, .panel-dark)", WHITE, panelStops[2], "non-text"],
-  // hero caption over the stage gradient (ink-2 at opacity .75, L494-496)
-  ["hero-video tag: ink-2 @ .75 on paper-2 (L485, L494-496)", blend(t("ink-2"), t("paper-2"), 0.75), t("paper-2"), "text"],
-  ["hero-video tag: ink-2 @ .75 on #f7f6f3 (L485, L494-496)", blend(t("ink-2"), "#f7f6f3", 0.75), "#f7f6f3", "text"],
+  // hero caption over the stage gradient (.hero-video .tag, full opacity)
+  ["hero-video tag: ink-2 on paper-2 (.hero-video .tag)", t("ink-2"), t("paper-2"), "text"],
+  ["hero-video tag: ink-2 on #f7f6f3 (.hero-video .tag)", t("ink-2"), "#f7f6f3", "text"],
+  ["hero-video tag: ink-2 on #dddbd5 gradient end (.hero-video .tag)", t("ink-2"), "#dddbd5", "text"],
   // 02 dark section
   ["dark: #f1f0ec on ink-dark (.dark)", "#f1f0ec", DARK, "text"],
   ["dark .dim resting: #6f6f6b on ink-dark, h2 >= 28.8px bold (.dark .dim)", "#6f6f6b", DARK, "large"],
@@ -139,11 +140,12 @@ const pairs = [
   ["panel-dark: white on mid-end midpoint (.panel-dark)", WHITE, mix(panelStops[1], panelStops[2], 0.5), "text"],
   ["panel-dark kicker: #e8e7e2 on every stop, worst = end (.panel-dark .kicker)", "#e8e7e2", panelStops[2], "text"],
   // forms
-  ["nl input placeholder: #8a8a86 on surface (L1044-1045)", "#8a8a86", SURFACE, "text"],
-  ["soon input:disabled: #8a8a86 on surface (L1321-1322)", "#8a8a86", SURFACE, "exempt: disabled control (1.4.3)"],
-  ["nl input border: line on surface (L1040-1041)", t("line"), SURFACE, "non-text"],
-  ["soon input border: line on surface (L1318-1319)", t("line"), SURFACE, "non-text"],
-  ["pending-list dashed border: #9a9a96 on paper (L1221)", "#9a9a96", t("paper"), "non-text"],
+  ["input placeholder: ink-2 on surface (.input::placeholder)", t("ink-2"), SURFACE, "text"],
+  ["input:disabled text: ink-2 on surface (.input:disabled)", t("ink-2"), SURFACE, "exempt: disabled control (1.4.3)"],
+  ["nl input border: line-strong on surface, inside (.input / .nl input)", t("line-strong"), SURFACE, "non-text"],
+  ["nl input border: line-strong on paper, outside (.contact)", t("line-strong"), t("paper"), "non-text"],
+  ["soon input border: line-strong on surface-2, outside (.soon)", t("line-strong"), SURFACE_2, "non-text"],
+  ["pending-list dashed border: line-strong on paper (.pending-list li)", t("line-strong"), t("paper"), "non-text"],
   // focus indicator (2px outline, L49-51) on every surface it can land on
   ["focus ring: red on paper (L49-50)", t("red"), t("paper"), "non-text"],
   ["focus ring: red on surface (L49-50)", t("red"), SURFACE, "non-text"],

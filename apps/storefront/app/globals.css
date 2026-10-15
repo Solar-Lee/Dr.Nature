@@ -11,6 +11,7 @@
   --red: #d7261b;
   --red-2: #b81f15;
   --line: #cfcdc6;
+  --line-strong: #8a8a86; /* form-field and pending-tag boundaries: 3.47:1 on #fff, 3.04:1 on paper */
   /* dark surfaces (02 statement, 06 panel); white text needs every stop <= #767672 (4.56:1) */
   --ink-dark: #1a1a1a;
   --ink-dark-2: #4a4a48;
@@ -506,7 +507,6 @@ a:hover > .arrow {
   font-size: 11.5px;
   color: var(--ink-2);
   letter-spacing: 0.06em;
-  opacity: 0.75;
 }
 .stage3d {
   position: relative;
@@ -1137,17 +1137,30 @@ html:not(.fx) .tabs a[aria-current] {
   flex-wrap: wrap;
   margin-top: 6px;
 }
-.nl input {
-  flex: 1 1 220px;
+/* one text-field style. `.nl input` and `.soon input` are hooks for the two fields until their
+   markup carries class="input" (Blocks.tsx newsletter, account/page.tsx); then drop the hooks. */
+.input,
+.nl input,
+.soon input {
   font: inherit;
   font-size: 14px;
   padding: 11px 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   background: #fff;
   color: var(--ink);
 }
-.nl input::placeholder {
-  color: #8a8a86;
+.input::placeholder,
+.nl input::placeholder,
+.soon input::placeholder {
+  color: var(--ink-2);
+}
+.input:disabled,
+.nl input:disabled,
+.soon input:disabled {
+  color: var(--ink-2);
+}
+.nl input {
+  flex: 1 1 220px;
 }
 .nl button {
   font: inherit;
@@ -1323,7 +1336,7 @@ html:not(.fx) .tabs a[aria-current] {
 .pending-list li {
   font-size: 12.5px;
   padding: 5px 10px;
-  border: 1px dashed #9a9a96;
+  border: 1px dashed var(--line-strong);
   color: var(--ink-2);
   line-height: 1.3;
 }
@@ -1415,16 +1428,6 @@ html:not(.fx) .tabs a[aria-current] {
 .soon label {
   font-size: 13px;
   color: var(--ink-2);
-}
-.soon input {
-  font: inherit;
-  font-size: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  background: #fff;
-}
-.soon input:disabled {
-  color: #8a8a86;
 }
 
 /* ---------- motion ---------- */
