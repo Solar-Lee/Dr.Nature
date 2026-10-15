@@ -148,6 +148,16 @@ export function Footer() {
           </ul>
         </div>
         <div>
+          <h2 className="foot-head">關於</h2>
+          <ul>
+            {NAV.primary.map((n) => (
+              <li key={n.href}>
+                <Link href={n.href}>{n.label}</Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
           <h2 className="foot-head">服務</h2>
           <ul>
             {NAV.service.map((n) => (
@@ -177,8 +187,12 @@ export function Footer() {
         </div>
       </div>
       <div className="legal">
+        <div className="disclaimer-row">
+          {DISCLAIMER.map((l) => (
+            <p key={l}>{l}</p>
+          ))}
+        </div>
         <span>{FOOTER.legal}</span>
-        <span>{DISCLAIMER[0]}</span>
         <span>{FOOTER.company}</span>
       </div>
     </footer>

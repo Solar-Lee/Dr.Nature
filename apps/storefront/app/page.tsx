@@ -24,7 +24,7 @@ export default function Home() {
           </div>
           <Bottle3D num={third.num} name={third.name} className="stage3d" tilt={-0.5} scale={0.9} />
         </div>
-        <Slot label="日常情境影像（D-E03）" className="slot daily-panel" />
+        <Slot label="日常情境影像" className="slot daily-panel" />
       </section>
 
       <section id="s05" className="habits" aria-labelledby="habits-title">
@@ -51,7 +51,7 @@ export default function Home() {
 
       <section id="s06" aria-label="讀懂自然">
         <div className="wide">
-          <Slot label="情境全幅影像（D-E03）" className="slot" style={{ minHeight: "38dvh", borderLeft: 0, borderRight: 0 }} />
+          <Slot label="情境全幅影像" className="slot" style={{ minHeight: "38dvh", borderLeft: 0, borderRight: 0 }} />
         </div>
         <Marquee />
         <div className="panel-dark">
