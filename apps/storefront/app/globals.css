@@ -1278,6 +1278,29 @@ html:not(.fx) .tabs a[aria-current] {
   border-top: 1px solid var(--line);
   padding-top: 16px;
 }
+/* Legal grid (VI-06). The footer markup puts both disclaimer lines in .disclaimer-row (one element
+   holding both lines, or one .disclaimer-row per line) as direct children of .legal, then
+   FOOTER.legal and FOOTER.company. Until that markup exists nothing below matches, so the flex row
+   above stays as it is; engines without :has() keep the flex row with the disclaimers on their
+   own full-width line. Phones stack everything; from 760px © sits left and the company line right. */
+.footer .legal .disclaimer-row {
+  flex-basis: 100%;
+  display: grid;
+  gap: 4px;
+}
+.footer .legal:has(> .disclaimer-row) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px 16px;
+}
+.footer .legal:has(> .disclaimer-row) > .disclaimer-row {
+  grid-column: 1 / -1;
+}
+@media (min-width: 760px) {
+  .footer .legal:has(> .disclaimer-row) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
 
 /* ---------- generic pages ---------- */
 .page-head {
