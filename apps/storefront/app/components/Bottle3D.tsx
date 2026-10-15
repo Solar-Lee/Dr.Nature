@@ -60,6 +60,23 @@ function loadLabelFonts(runs: [string, string][]) {
 const within = <T,>(p: Promise<T>, ms: number, fallback: T) =>
   Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
 
+// WebGL 2 pre-check, the same test as three's capabilities/WebGL.js isWebGL2Available(), run once
+// per page. Without it three logs console errors before the static fallback takes over. The probe
+// context is released right away so it does not count toward the browser's context limit.
+let webgl2: boolean | undefined;
+function hasWebGL2() {
+  if (webgl2 === undefined) {
+    try {
+      const gl = window.WebGL2RenderingContext ? document.createElement("canvas").getContext("webgl2") : null;
+      webgl2 = !!gl;
+      gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch {
+      webgl2 = false;
+    }
+  }
+  return webgl2;
+}
+
 function drawLabel(num: string, name: string, sub: string) {
   const c = document.createElement("canvas");
   c.width = 1024;
@@ -112,6 +129,7 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
     let disposed = false;
     let cleanup = () => {};
     (async () => {
+      if (!hasWebGL2()) return; // the static fallback stays
       // The label waits for its fonts (at most 3 s, then the fallback face; it is redrawn once
       // the faces arrive) while three loads in parallel.
       const firstRuns = labelRuns(num, name, sub);
@@ -201,6 +219,7 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       let raf = 0;
       let last = performance.now();
       let needsFrame = true;
+      let lost = false; // WebGL context lost: no frames until it is restored
       const tick = (t: number) => {
         const dt = Math.min(0.05, (t - last) / 1000);
         last = t;
@@ -211,11 +230,11 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
         }
         group.rotation.y = rot + scrollRot;
         renderer.render(scene, camera);
-        needsFrame = !reduce || dragging || Math.abs(vel) > 0.0005;
+        needsFrame = !lost && (!reduce || dragging || Math.abs(vel) > 0.0005);
         if (needsFrame) raf = requestAnimationFrame(tick);
       };
       const kick = () => {
-        if (!needsFrame) {
+        if (!needsFrame && !lost) {
           needsFrame = true;
           last = performance.now();
           raf = requestAnimationFrame(tick);
@@ -283,9 +302,27 @@ export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
       resize();
       const ro = new ResizeObserver(resize);
       ro.observe(el);
+      // Context lost after startup (GPU reset, too many contexts): show the static slot again and
+      // stop the loop; three restores its own state, then the loop restarts.
+      const canvas = renderer.domElement;
+      const onLost = () => {
+        lost = true;
+        cancelAnimationFrame(raf);
+        needsFrame = false;
+        setReady(false);
+      };
+      const onRestored = () => {
+        lost = false;
+        setReady(true);
+        kick();
+      };
+      canvas.addEventListener("webglcontextlost", onLost);
+      canvas.addEventListener("webglcontextrestored", onRestored);
       raf = requestAnimationFrame(tick);
       setReady(true);
       cleanup = () => {
+        canvas.removeEventListener("webglcontextlost", onLost);
+        canvas.removeEventListener("webglcontextrestored", onRestored);
         cancelAnimationFrame(raf);
         ro.disconnect();
         el.removeEventListener("pointerdown", onDown);
