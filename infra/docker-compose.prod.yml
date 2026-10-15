@@ -1,26 +1,40 @@
-# [P12-02] Dr.Nature backend on the shared VPS (CLAUDE.md §1: everything prefixed drn; only
-# 127.0.0.1:3961 published; Redis not published; network drn_net only).
-# On the host: ~/drn/docker-compose.prod.yml next to ~/drn/.env (written by Aki, never in chat;
-# names in docs/ENV.md). Postgres is the Supabase project drn-prod (U-04), not a container.
-#   DRN_TAG=<git-sha> docker compose -f docker-compose.prod.yml up -d
-# Upgrades: stop the old drn-worker BEFORE starting the new one (an old worker on the Redis
-# event bus would consume events for subscribers it does not have; P12-03).
+# [P12-02] Dr.Nature backend on the Mac mini (DEV_PLAN A7; CLAUDE.md: every resource prefixed
+# drn). Runs on Docker Desktop through ~/drn/bin/drn-docker (fixed DOCKER_HOST and DOCKER_CONFIG).
+# On the host: ~/drn/docker-compose.prod.yml next to ~/drn/.env (written by Aki with
+# drn-gen-env.sh, never in chat; names in docs/ENV.md) and ~/drn/cloudflared/ (tunnel files).
+#   ~/drn/bin/drn-compose up -d --wait            (= drn-docker compose -p drn -f this file)
+# Rules:
+#  - `compose config` only with -q (the rendered config contains the secrets from .env).
+#  - The image tag is always drn-backend:current; only the first start, drn-deploy.sh and
+#    drn-rollback.sh move that tag (deployment review C1). Upgrades go through drn-deploy.sh:
+#    stop the old drn-worker BEFORE starting the new one (an old worker on the Redis event bus
+#    would consume events for subscribers it does not have), migrate, then up.
+#  - Postgres and Redis publish no host port; the only host port is 127.0.0.1:3961 -> backend.
+#  - drn-cloudflared (profile edge) is the only service on drn_edge besides drn-backend; it is
+#    started only when ~/drn/state/edge-enabled exists (drn-compose adds --profile edge).
+#  - No TZ anywhere: the worker's cron schedules are UTC (src/jobs/*.ts document that).
+# Images other than drn-backend are pinned by index digest (Docker Hub, 2026-10-14):
+#   postgres:16-alpine 2026-09-21, redis:7-alpine 2026-09-21, cloudflare/cloudflared:2026.10.0 2026-10-05.
 name: drn
 
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
 x-backend: &backend
-  image: drn-backend:${DRN_TAG:?set DRN_TAG to the image tag}
+  image: drn-backend:current
+  pull_policy: never
   env_file: .env
-  # Supabase CA (DATABASE_SSL_CA_PATH=/app/ca/supabase-ca.crt); downloaded by Aki next to .env.
   volumes:
-    - ./supabase-ca.crt:/app/ca/supabase-ca.crt:ro
+    - drn_uploads:/app/.medusa/server/static
   restart: unless-stopped
   networks: [drn_net]
   depends_on:
+    drn-postgres:
+      condition: service_healthy
     drn-redis:
       condition: service_healthy
-  logging:
-    driver: json-file
-    options: { max-size: "10m", max-file: "3" }
+  logging: *logging
 
 services:
   drn-backend:
@@ -31,6 +45,7 @@ services:
       REDIS_URL: redis://drn-redis:6379
     ports:
       - "127.0.0.1:3961:9000"
+    networks: [drn_net, drn_edge]
     mem_limit: 1536m
 
   drn-worker:
@@ -41,25 +56,75 @@ services:
       DISABLE_MEDUSA_ADMIN: "true"
       REDIS_URL: redis://drn-redis:6379
     mem_limit: 1024m
-    healthcheck:
-      disable: true
 
-  drn-redis:
-    image: redis:7-alpine
-    container_name: drn-redis
-    command: ["redis-server", "--maxmemory", "200mb", "--maxmemory-policy", "noeviction", "--appendonly", "no", "--save", ""]
+  drn-postgres:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    container_name: drn-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+    volumes:
+      - drn_pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     networks: [drn_net]
-    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    stop_grace_period: 60s
+    oom_score_adj: -500
+    mem_limit: 1024m
+    logging: *logging
+
+  drn-redis:
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    container_name: drn-redis
+    command: ["redis-server", "--maxmemory", "200mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes", "--appendfsync", "everysec", "--save", ""]
+    volumes:
+      - drn_redisdata:/data
+    restart: unless-stopped
+    networks: [drn_net]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
-    logging:
-      driver: json-file
-      options: { max-size: "10m", max-file: "3" }
+    oom_score_adj: -500
+    mem_limit: 256m
+    logging: *logging
+
+  drn-cloudflared:
+    # Entrypoint of the image is ["cloudflared","--no-autoupdate"] (verified 2026-10-14 with
+    # image inspect). Locally-managed tunnel: credentials and ingress rules live in
+    # ~/drn/cloudflared (600, written by drn-tunnel-setup.sh after `cloudflared tunnel login`),
+    # mounted read-only; no token passes through the clipboard or the environment.
+    image: cloudflare/cloudflared:2026.10.0@sha256:9b49eed8f62806d5d45ddf59ecefb5710429598ea6d3fcccd2af938f621b2b07
+    container_name: drn-cloudflared
+    profiles: [edge]
+    command: ["tunnel", "--config", "/home/nonroot/.cloudflared/config.yml", "run"]
+    volumes:
+      - ./cloudflared:/home/nonroot/.cloudflared:ro
+    restart: unless-stopped
+    networks: [drn_edge]
+    depends_on:
+      drn-backend:
+        condition: service_healthy
+    mem_limit: 256m
+    logging: *logging
+
+volumes:
+  drn_pgdata:
+    name: drn_pgdata
+  drn_redisdata:
+    name: drn_redisdata
+  drn_uploads:
+    name: drn_uploads
 
 networks:
   drn_net:
     name: drn_net
+  drn_edge:
+    name: drn_edge

@@ -1,0 +1,29 @@
+{
+  "name": "@drn/storefront",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Dr.Nature preview storefront (static export, P7 preview for the client demo)",
+  "scripts": {
+    "dev": "next dev --port 3010",
+    "build": "next build",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "dependencies": {
+    "gsap": "3.15.0",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.11",
+    "@types/react": "19.0.5",
+    "@types/react-dom": "19.0.5",
+    "@types/three": "0.186.0",
+    "typescript": "5.9.3"
+  }
+}

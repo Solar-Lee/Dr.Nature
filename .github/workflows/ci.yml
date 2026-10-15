@@ -56,3 +56,30 @@ jobs:
         run: bash scripts/test-all.sh
       - name: Build backend
         run: pnpm --dir apps/backend run build
+
+  e2e:
+    # [P11-02a] Storefront device matrix (e2e/, @playwright/test 1.64.1): builds the static export and
+    # runs the 7 engine x device projects. scripts/test-all.sh skips this suite when CI is set because
+    # this job runs it. Firefox is installed too because firefox-desktop is one of the projects.
+    # `--with-deps` also installs the browsers' system packages (https://playwright.dev/docs/browsers).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from package.json packageManager)
+        with:
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Browsers (Chromium, WebKit, Firefox and their system packages)
+        run: pnpm --dir e2e exec playwright install --with-deps chromium webkit firefox
+      - name: Build the storefront export (apps/storefront/out)
+        run: pnpm --dir apps/storefront exec next build
+      - name: Device matrix
+        run: pnpm --dir e2e exec playwright test

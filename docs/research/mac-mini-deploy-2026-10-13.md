@@ -1,0 +1,668 @@
+# 研究：Mac mini 正式部署（2026-10-13）
+
+來源：2026-10-13 CODE 工作階段的部署研究工作流（7 個主題＋批評複查），只讀查證。本檔只收 `verified` 與 `partial` 的發現，並附原始證據（網址或套件原始碼位置）。CLAUDE.md §3.4：法規、功效、價格等只能引用本目錄內有來源的內容。
+
+去識別：本 repo 是公開的，這裡刻意不收主機本身的盤點（使用者名稱、其他服務、監聽埠、區網曝露等）；那些只留在主機上的 `~/drn/logs/inventory-*.txt`。
+
+注意：
+- 研究當時預設容器執行環境是 Colima；2026-10-13 晚 Aki 已安裝 Docker Desktop，正式環境改用 Docker Desktop（DEV_PLAN A7、P12-13）。Colima 相關發現保留作為比較。
+- `partial` 表示只查到部分來源或有前提，引用時要連同 notes 一起看。
+- `MED/`、`UT/`、`CLI/` 等縮寫是 node_modules/.pnpm 內 @medusajs 套件 2.21.2 的 dist 路徑。
+
+
+## Medusa 2.21.2 正式模式
+
+- **verified**：(a) workerMode 由 repo 的 medusa-config.ts 讀 MEDUSA_WORKER_MODE（預設 shared，只做型別轉換、不驗證值）並寫進 projectConfig.workerMode；框架只有在 config 沒給 workerMode 時才讀環境變數並驗證 shared/worker/server。repo 一定會給值，所以拼錯（例如 Worker）不會被擋下。
+  - 證據：BE/medusa-config.ts:45-48,142; FW/config/config.js:110-126,152-155
+  - 備註：建議 compose 只用小寫 server／worker。
+- **verified**：(a) 各模式載入內容：worker 模式時 loadEntrypoints 直接 return，不載 express 中介層、API 路由、Admin；scheduled jobs 只在 worker 或 shared 載入；subscribers 與 workflows 三種模式都會註冊。
+  - 證據：MED/loaders/index.js:25-31,52-56,127-138
+  - 備註：server 模式不跑 jobs；worker 模式不提供 API 與 Admin。
+- **verified**：(a) 模組層：module 的 worker_mode !== server 才會消化事件與 workflow 背景工作。event-bus-redis 只有 worker／shared 會建 BullMQ Worker；workflow-engine-redis 只有 worker／shared 會建 job queue、cleaner queue 和 Worker（處理 retry、step timeout、transaction timeout、排程）。server 只負責把事件與工作推進 Redis。
+  - 證據：FW/medusa-app-loader.js:184,222; UT/event-bus/index.js:23-28; P/@medusajs+event-bus-redis@2.21.2_*/node_modules/@medusajs/event-bus-redis/dist/services/event-bus-redis.js:120-133; P/@medusajs+workflow-engine-redis@2.21.2_*_6tpxoh4rxu7mrqsocsx274zadm/node_modules/@medusajs/workflow-engine-redis/dist/loaders/redis.js:80 及 utils/workflow-orchestrator-storage.js:69-81,117-135
+  - 備註：沒有 REDIS_URL 時，repo 不註冊 redis 模組，會退回 event-bus-local 與 workflow-engine-inmemory（UT/modules-sdk/definition.js:44,56）。這時 server 與 worker 兩個容器各自在記憶體裡運作，事件不會跨容器，而且啟動不會報錯。
+- **verified**：(a) worker 容器一樣會 listen PORT，而且有 /health：start.js 在 loaders 之後一律註冊 /health 並 listen，不分模式。現有 compose 對 drn-worker 關掉了 healthcheck，其實可以用同一個 /health。
+  - 證據：MED/commands/start.js:213-216,244-252; ROOT/infra/docker-compose.prod.yml:44-45
+  - 備註：worker 的 port 不需要發佈到宿主機。
+- **verified**：(a) 一次性 CLI 指令會把 MEDUSA_WORKER_MODE 強制設為 server 再載入 config，所以不會消化事件、不跑 jobs，包括 db:migrate、db:migrate:scripts、user、exec、db:rollback、migrate-search。
+  - 證據：MED/commands/db/migrate.js:140; MED/commands/db/run-scripts.js:95; MED/commands/user.js:15; MED/commands/exec.js:46
+  - 備註：migration scripts 產生的事件會進 Redis，之後由 drn-worker 處理。
+- **verified**：(a) 另有 cluster 模式（medusa start --cluster --servers --workers），用單一容器多個 process 分 server 和 worker，可以取代兩個容器。
+  - 證據：CLI/create-cli.js:505-518; MED/commands/start.js:284-331
+  - 備註：A7 命名已固定 drn-backend 與 drn-worker 兩個容器，這只是備選。
+- **verified**：(b) Admin 預設值：defineConfig 給 backendUrl = MEDUSA_BACKEND_URL || '/'、path '/app'、maxUploadFileSize 1MB，再用使用者的 admin 物件覆蓋。repo 寫的是 backendUrl: process.env.MEDUSA_BACKEND_URL，所以 env 沒設時 backendUrl 是 undefined，會蓋掉 '/'。
+  - 證據：UT/common/define-config.js:501-511; BE/medusa-config.ts:152-155
+  - 備註：admin.disable 讀 DISABLE_MEDUSA_ADMIN === 'true'。
+- **verified**：(b) 後端網址在建置時就寫死進 Admin bundle：admin-bundler 用 vite define 把 __BACKEND_URL__ 設為 options.backendUrl ?? ''。同時寫死的還有 __BASE__（admin.path）、__AUTH_TYPE__（ADMIN_AUTH_TYPE）、__JWT_TOKEN_STORAGE_KEY__（ADMIN_JWT_TOKEN_STORAGE_KEY）、__MAX_UPLOAD_FILE_SIZE__、__STOREFRONT_URL__。medusa build 的 compiler 會把 configModule.admin 原封傳給 bundler。
+  - 證據：AB/index.js:1307-1320,1354-1361,1442-1450; FW/build-tools/compiler.js:145-187
+  - 備註：執行期的 MEDUSA_BACKEND_URL 不會改變已建好的 Admin。
+- **verified**：(b) backendUrl 為空時的退路：dashboard 是 __BACKEND_URL__ ?? '/'，空字串不是 nullish，所以保持 ''；js-sdk 的 getBaseUrl('' 或 '/') 會回傳 window.location.origin。因此建置時沒設 MEDUSA_BACKEND_URL，Admin 會呼叫它所在的同一個網域。現有 Dockerfile 建置時沒有任何 env，.dockerignore 也排除了 .env*，所以映像跟網域無關，Admin 放在 https://api.dr.nature.smilelife.tw/app 時會直接打同網域 API。
+  - 證據：DASH/dist/chunk-NFEK63OE.mjs:3-4; DASH/src/lib/client/client.ts:3-13; SDK/client.js:15-24,138,270-275; ROOT/infra/backend.Dockerfile:12-18; ROOT/.dockerignore:1-14
+  - 備註：只有在 Admin 和 API 分開放不同網域時，才需要在建置時帶入正式網址並重新建置。auth 預設是 session（cookie）模式。
+- **verified**：(b) medusa build 的輸出位置：後端編譯到 tsconfig outDir（./.medusa/server），Admin 到 <outDir>/public/admin，也就是 apps/backend/.medusa/server/public/admin。--admin-only 才會輸出到 .medusa/admin。執行期 Admin loader 從 path.join(rootDirectory,'./public/admin') 提供檔案，rootDirectory 就是 cwd（容器裡是 /app/.medusa/server）。
+  - 證據：BE/tsconfig.json outDir; FW/build-tools/compiler.js:53-54,184-186,316-320; MED/utils/admin-consts.js:5-6; MED/loaders/admin.js:26-31,50-55
+  - 備註：Admin 啟用但找不到 index.html 時 serve() 會丟錯，medusa start 會記錄 Error starting server 並以 exit 1 結束（AB/index.js:1641-1648；MED/commands/start.js:275-277）。
+- **verified**：(b) admin.disable 為 true 時不掛 Admin，build 也會略過 Admin。admin.path 不可以是 /auth、/store、/admin。NODE_ENV=development 時改用 vite dev server，其他情況提供 build 好的檔案，並設 Cache-Control 與 SPA fallback。
+  - 證據：MED/loaders/admin.js:10,33-43; FW/build-tools/compiler.js:159-162; AB/index.js:1650-1667
+  - 備註：worker 模式反正不會呼叫 Admin loader，DISABLE_MEDUSA_ADMIN=true 只是多一層保險。
+- **verified**：(b) medusa build 載入 config 時 throwOnValidationError=false，所以缺 JWT_SECRET／COOKIE_SECRET 不會中止建置。但 medusa-config.ts 頂層程式碼一樣會執行：DB TLS 檢查（DATABASE_URL 不是本機時）和 EMAIL_PROVIDER 檢查。
+  - 證據：MED/commands/build.js:9-13; BE/medusa-config.ts:20-42,105-109
+  - 備註：Docker 建置時沒有 DATABASE_URL，主機名稱是空字串，算本機，所以不會丟錯。
+- **verified**：(c) /health 是 start.js 註冊的靜態路由，回 200 和 'OK'，不檢查 DB 或 Redis。它在 loaders 完成之後才 listen，所以只代表程序已經啟動完成（liveness）。SIGTERM／SIGINT 會優雅關閉；每 6 小時送一次 telemetry PING；production 不印 Admin URL。
+  - 證據：MED/commands/start.js:114-124,244-271
+  - 備註：HTTP access log 會跳過 /health（FW/http/express-loader.js:21,108-113）。要做真正的 readiness，需要另外寫一個查 DB 與 Redis 的路由。
+- **verified**：(c) 只有 start 預設 NODE_ENV=production。db:migrate、db:migrate:scripts、build 預設 development；user 和 exec 完全不設 NODE_ENV。
+  - 證據：CLI/create-cli.js:247-249,255-257,519-520,540-541,592-598,603-609
+  - 備註：映像有 ENV NODE_ENV=production（infra/backend.Dockerfile:21），在容器裡執行沒問題。在主機上直接執行時，記得明確帶 NODE_ENV=production，否則 config 驗證只會警告，不會擋。
+- **verified**：(d) Medusa 2.21.2 一律設 app.set('trust proxy', 1)；express-session 的選項是 proxy: true、cookie name connect.sid、resave true、saveUninitialized false。production 或 staging 時 cookie 是 secure: true、sameSite: 'lax'，maxAge 預設 10 小時；projectConfig.cookieOptions 最後展開，可以覆蓋。有 redisUrl 時 session 存在 Redis（connect-redis，前綴 sess:）。
+  - 證據：FW/http/express-loader.js:30-35,45-64,75-83
+  - 備註：repo 沒有設 cookieOptions 或 sessionOptions。cookie 沒有 domain，所以只屬於 api 這個主機名稱。
+- **verified**：(d) 因為 proxy: true，express-session 判斷 https 時直接讀 X-Forwarded-Proto 的第一個值。cookie 是 secure 但請求不算 https 時，它會直接不送 Set-Cookie，也不報錯。dashboard 預設 session 模式，登入時呼叫 POST /auth/session，這個路由只寫 req.session 就回 200。所以 origin 收不到 X-Forwarded-Proto: https 時，Admin 會看起來登入成功，但下一個請求就 401。
+  - 證據：P/express-session@1.19.0/node_modules/express-session/index.js:103,236-245,638-662; MED/api/auth/session/route.js:5-8; SDK/auth/index.js:459-460,590-593
+  - 備註：直接用 http://127.0.0.1:3961 測正式模式時，瀏覽器拿不到 session cookie。煙霧測試要用 curl 帶 -H 'X-Forwarded-Proto: https'，或改用 bearer token。
+- **partial**：(d) Cloudflare 官方文件說 X-Forwarded-Proto 會帶訪客連到 Cloudflare 時用的協定；X-Forwarded-For 與 CF-Connecting-IP 會送到 origin。但 cloudflared 的 origin 參數文件沒有寫 tunnel 會不會原樣轉送這些標頭。
+  - 證據：https://developers.cloudflare.com/fundamentals/reference/http-headers/ (dateModified 2026-10-09); https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/cloudflared-parameters/origin-parameters/ (dateModified 2026-04-17)
+  - 備註：TODO(需查證)：tunnel 建好後實測，確認 Admin 登入回應有 Set-Cookie: connect.sid=...; Secure; HttpOnly; SameSite=Lax，且後續的 /admin/users/me 回 200。
+- **verified**：(e) medusa-config.ts 的 projectConfig 讀這些變數：DATABASE_URL、DATABASE_SSL_CA_PATH（DB 不是本機時必填）、REDIS_URL、MEDUSA_WORKER_MODE、STORE_CORS、ADMIN_CORS、AUTH_CORS、JWT_SECRET、COOKIE_SECRET。authMethodsPerActor 是 user=[emailpass]，customer 依 auth providers 而定。admin 讀 DISABLE_MEDUSA_ADMIN 與 MEDUSA_BACKEND_URL。featureFlags 開 rbac，modules 另外明確列出 @medusajs/medusa/rbac。
+  - 證據：BE/medusa-config.ts:12,20-48,137-161
+  - 備註：STORE_CORS 等用了 '!' 斷言，但沒設時會以 undefined 蓋掉預設值，buildHttpConfig 再補成空字串（FW/config/config.js:65-67）。不會擋啟動，但跨網域呼叫會被瀏覽器拒絕。
+- **verified**：(e) 有 REDIS_URL 時才註冊的 Redis 模組：event-bus-redis（redisUrl、jobOptions 的 removeOnComplete／removeOnFail 為 age 3600、count 1000）、workflow-engine-redis（redis.redisUrl）、locking 搭 locking-redis（is_default）。cache 沒有設定，所以用預設的 cache-inmemory；caching 模組（caching-redis）不會載入，因為 defineConfig 只在 Medusa Cloud 且有 CACHE_REDIS_URL 時才加。
+  - 證據：BE/medusa-config.ts:44,52-82; UT/common/define-config.js:271-288,311-371; UT/modules-sdk/definition.js:41
+  - 備註：auth 模組依賴 Modules.CACHE（in-memory）保存 OAuth state，只有一個 server 程序時可用（medusa-config.ts:125-135 有註記）。package.json 有裝 @medusajs/caching，但沒有啟用。
+- **verified**：(e) 其他模組與 provider 的變數：auth 模組（emailpass 必有；Google 讀 GOOGLE_OAUTH_CLIENT_ID 與 GOOGLE_OAUTH_CLIENT_SECRET 加 STOREFRONT_URL；LINE 讀 LINE_LOGIN_CHANNEL_ID、LINE_LOGIN_CHANNEL_SECRET、LINE_LOGIN_API_BASE_URL 加 STOREFRONT_URL）。ECPAY_ENV 有值時註冊 payment 模組，provider 是 ./src/modules/ecpay，讀 ECPAY_ENV、ECPAY_MERCHANT_ID、ECPAY_HASH_KEY、ECPAY_HASH_IV、MEDUSA_BACKEND_URL、STOREFRONT_URL、ECPAY_API_BASE_URL、ECPAY_AUTO_REFUND、ECPAY_CREDIT_CHECK_CODE、ECPAY_ACCEPT_SIMULATED_PAYMENTS。ECPAY_LOGISTICS_MERCHANT_ID 有值時註冊 fulfillment 模組（manual 加 ./src/modules/ecpay-logistics），讀 ECPAY_LOGISTICS_CONTRACT、_API_BASE_URL、_HASH_KEY、_HASH_IV、_SENDER_NAME、_SENDER_CELLPHONE、_SENDER_ZIPCODE、_SENDER_ADDRESS 加 ECPAY_ENV 與兩個網址。電子發票不是模組，但 ECPAY_ENV 和 ECPAY_INVOICE_MERCHANT_ID 都有值時，會在啟動時驗證 ECPAY_INVOICE_*。EMAIL_PROVIDER 也在啟動時驗證。
+  - 證據：BE/src/lib/auth/config.ts:14-62; BE/src/lib/ecpay/config.ts:43-90,116-151,166-197; BE/src/lib/email/config.ts:15-27; BE/medusa-config.ts:87-123,130-135
+  - 備註：ECPay 的 ReturnURL 和 PaymentInfoURL 是 MEDUSA_BACKEND_URL 加 /hooks/ecpay/...，所以執行期 .env 一定要設 https://api.dr.nature.smilelife.tw（ecpay/config.ts:13-14,56,76-79）。
+- **verified**：(e) 沒有設定、所以用 Medusa 預設的模組：file（file-local）、notification（notification-local，channel feed）、search（search-postgres native）、translation（旗標關閉）。defineConfig 也會讀 AUTH_MFA_ENCRYPTION_KEY 給 auth 的 MFA 用；沒設不影響啟動，只有使用 MFA 時才會丟錯。
+  - 證據：UT/common/define-config.js:172-184,202-288,404; P/@medusajs+auth@2.21.2_*/node_modules/@medusajs/auth/dist/providers/mfa/totp.js:100-105
+  - 備註：AUTH_MFA_ENCRYPTION_KEY 不在 docs/ENV.md 白名單。
+- **verified**：(f) 證實交接文件的說法：db:migrate 在沒有 --skip-scripts 時，用 fork 跑 db:migrate:scripts，但完全沒看子程序的離場碼，之後 return true 並 exit 0。所以 script 失敗時 db:migrate 仍回 0。只有 search 子步驟失敗會 return false 並 exit 1。
+  - 證據：MED/commands/db/migrate.js:103-123,124-138,145-159
+  - 備註：repo 的 migrate 腳本是 'medusa db:migrate --skip-scripts && medusa db:migrate:scripts'（BE/package.json:13），兩步分開跑才看得到 scripts 的離場碼。
+- **verified**：(f) db:migrate:scripts：script 丟錯時 MigrationScriptsMigrator.run 會記錄並 rethrow，main 的 catch 會 exit 1。但如果某支 script 因為另一個程序持有 advisory lock 而被判定在別處執行中，會直接 continue 並回 0，等於沒跑卻成功。只有 finished_at 有值才算完成，失敗或中斷的 script 下次會重跑。整段執行會先向 LOCKING 模組（有 REDIS_URL 時是 Redis）取得 migration-scripts-running 鎖。
+  - 證據：FW/migrations/run-migration-scripts.js:24-98,142-200; MED/commands/db/run-scripts.js:19-56,94-116
+  - 備註：驗收要用 SQL 確認 script_migrations 的 drn-0001 到 drn-0007 都有 finished_at（docs/ops/deploy-backend.md:41 已寫）。執行 migration 時 drn-redis 必須已經啟動。
+- **verified**：(f) db:migrate 的 sync-links 與 search index 步驟，遇到要刪除或更新的連結表或索引時會跳出 @inquirer/checkbox 互動選單；只有 --execute-safe-links／--execute-all-links（search 是 --execute-safe-search／--execute-all-search）才會跳過選單。全新資料庫通常只有 create 動作，不會問；升級時可能會在沒有 TTY 的容器裡卡住。
+  - 證據：MED/commands/db/sync-links.js:72-124; MED/commands/db/migrate-search.js:44-62; CLI/create-cli.js:205-246
+  - 備註：正式環境不互動執行時，建議第一步改成 'medusa db:migrate --skip-scripts --execute-safe-links --execute-safe-search'。
+- **verified**：(f) repo 的 7 支 migration scripts，執行一次後以檔名記錄。drn-0001 建台灣商店（TWD 含稅）、Taiwan region、5% 稅區、倉庫與台灣服務區，並把 Official Store 設為預設銷售通路。drn-0002 建團購通路，以及兩個前台各自的 publishable key 並連到對應通路。drn-0003 依 src/data/catalog.json 建商品，只建還沒有的 handle，兩個通路都上架，庫存 0。drn-0004 建 RBAC 員工角色；policy 缺少時丟錯。drn-0005 把 region 的金流設成只有 pp_ecpay_ecpay；沒有 ECPAY_* 就丟錯。drn-0006 建 ECPay 物流運送選項（三家超商啟用、黑貓宅配建立但不啟用、NT$0）；沒有 ECPAY_LOGISTICS_* 就丟錯。drn-0007 建付費會員分級的客戶群組。
+  - 證據：BE/src/migration-scripts/drn-0001-tw-store-region-tax.ts:1-12; drn-0002-sales-channels-and-keys.ts:1-9; drn-0003-catalog.ts:1-6; drn-0004-rbac-roles.ts:1-6,25-31; drn-0005-ecpay-payment-provider.ts:1-4,21-28; drn-0006-ecpay-logistics-shipping.ts:1-5,30-36; drn-0007-membership-groups.ts:1-3
+  - 備註：七支都會先查是否已存在才建立，正式環境都需要，也都可以重跑。db:migrate:scripts 必須帶完整的正式 .env（ECPAY stage 變數），否則 drn-0005、drn-0006 會一直留在 pending。Medusa 核心另外會跑 MED/migration-scripts 底下的 6 支（含 create-super-admin-role）。
+- **verified**：(g) src/scripts 沒有 seed 檔；正式環境需要的 region、通路、商品、角色、群組都由 migration scripts 建立。dev-add-test-stock 只在 NODE_ENV=development 或 test 且資料庫是本機時才執行，其他情況丟錯。ecpay-stage-e2e 與 ecpay-invoice-stage-e2e 要求 development 加本機 DB 加 ECPAY_ENV=stage。ecpay-stage-probe、ecpay-logistics-stage-probe、ecpay-invoice-stage-probe、ecpay-tradenoaio-stage-probe 只檢查 ECPAY_ENV=stage。print-publishable-keys 唯讀，正式環境可用，不加 reveal 參數就遮蔽輸出。
+  - 證據：BE/src/scripts/dev-add-test-stock.ts:1-3,16-30; ecpay-stage-e2e.ts:28-29; ecpay-invoice-stage-e2e.ts:29-30; ecpay-stage-probe.ts:26-27; ecpay-logistics-stage-probe.ts:38-39; ecpay-invoice-stage-probe.ts:40-41; ecpay-tradenoaio-stage-probe.ts:14-15; print-publishable-keys.ts:1-5
+  - 備註：注意：MVP 正式主機會設 ECPAY_ENV=stage，所以 4 支 probe 在正式機上不會被擋。它們用 ECPay 公開沙箱商店，只對外部 stage 主機建交易，但正式環境不該執行。build 只排除 integration-tests、test、unit-tests、src/admin（FW/build-tools/compiler.js:55-60），這些 script 會一起編進映像的 /app/.medusa/server/src/scripts/*.js。
+- **verified**：(h) CLI 參數：'medusa user' 有 -e/--email、-p/--password、-i/--id、--invite（布林，預設 false）。加 --invite 時，它以 server 模式載入（不載入對外入口），執行 create-invite-step，再用 logger.info 印出 Invite token，並提示到 [your-admin-url]/invite?token=<token> 開啟。RBAC 開啟、且 role_super_admin 存在時，邀請會帶這個角色。
+  - 證據：CLI/create-cli.js:569-599; MED/commands/user.js:11-52
+  - 備註：不要用 -p，密碼會留在 shell history，也可能被代理看到。user 指令不設 NODE_ENV，在容器裡沿用映像的 production。
+- **verified**：(h) role_super_admin 由 RBAC 模組在載入時 upsert 建立，附帶 *:* policy，所以跑完 migration 之後再發邀請，就會帶 super admin。接受邀請時，會依邀請上的角色建立使用者。邀請 token 預設 24 小時有效。
+  - 證據：P/@medusajs+rbac@2.21.2_*/node_modules/@medusajs/rbac/dist/loaders/initial-data.js:4-26; P/@medusajs+core-flows@2.21.2_*/node_modules/@medusajs/core-flows/dist/invite/workflows/accept-invite.js:39-50; P/@medusajs+user@2.21.2_*/node_modules/@medusajs/user/dist/services/user-module.js:23,37-39,63
+  - 備註：接受邀請的網址是 https://api.dr.nature.smilelife.tw/app/invite?token=<token>：route path 是 /invite，basename 是 __BASE__ = admin.path /app（DASH/src/dashboard-app/routes/get-route.map.tsx:2274-2275；DASH/src/routes/invite/invite.tsx:49-53；AB/index.js:1355）。
+- **verified**：(i) 沒有設定 file 模組，所以用預設的 file-local。upload_dir 預設是 process.cwd()/static，私有檔也放在同一個 static 目錄（知道檔名就能公開讀取）。backend_url 預設 http://localhost:9000/static，上傳後寫進 DB 的 URL 會指向 localhost。Express 固定把 /static 對應到 baseDir/static。容器 cwd 是 /app/.medusa/server，所以實際路徑是 /app/.medusa/server/static。
+  - 證據：UT/common/define-config.js:277-287; P/@medusajs+file-local@2.21.2_*/node_modules/@medusajs/file-local/dist/services/local-file.js:48-60,62-80; FW/http/express-loader.js:158-159; ROOT/infra/backend.Dockerfile:25
+  - 備註：drn_uploads 要掛在 /app/.medusa/server/static。drn-worker 也要掛同一個 volume，因為在 worker 執行的 workflow（例如匯入或匯出）寫的檔案也會落在 worker 的 cwd/static；這點是推論，TODO(需查證)。backend_url 必須明確設成 https://<backend>/static。現行 compose 沒有任何上傳用的 volume。
+- **partial**：(i) Docker 文件說，空的 volume 掛上去時會把容器內該目錄原有的內容複製進去（可用 volume-nocopy 關閉），但沒有說明擁有者與權限。映像以 USER node 執行，掛載點如果不存在，或屬於 root，上傳可能 EACCES。
+  - 證據：https://docs.docker.com/engine/storage/volumes/; ROOT/infra/backend.Dockerfile:22-25
+  - 備註：TODO(需查證)：在 Dockerfile 先建 /app/.medusa/server/static 並 chown node:node，再實際寫入測試。
+- **verified**：(j) 日誌：logger 是 @medusajs/cli 的 winston reporter。LOG_LEVEL 預設 'http'；LOG_FILE 有值時另外寫檔；NODE_ENV 不是 dev 開頭時，console 用 JSON 格式（加 timestamp 與 error stack），沒有另外切換 JSON 的變數。HTTP access log 在非 dev 時由 morgan 輸出 JSON 到 stdout（client_ip、request_id、method、path、status、duration 等），跳過 /health，LOG_LEVEL 高於 http 時也不輸出。
+  - 證據：CLI/reporter/index.js:14-41; FW/logger/index.js:7-8; FW/http/express-loader.js:108-155
+  - 備註：Telemetry 可以用 MEDUSA_DISABLE_TELEMETRY 關閉（P/@medusajs+telemetry@2.21.2/node_modules/@medusajs/telemetry/dist/store.js:21）。LOG_LEVEL、LOG_FILE、MEDUSA_DISABLE_TELEMETRY 都不在 docs/ENV.md 白名單，使用前要先補進去。
+- **verified**：正式環境（NODE_ENV=production）會拒絕啟動的條件。Medusa 核心：缺 JWT_SECRET 或 COOKIE_SECRET 時 rejectErrors 會在 production throw（build 例外）。repo 的 medusa-config：DB 主機不是本機又缺 DATABASE_SSL_CA_PATH，或 CA 讀不到；EMAIL_PROVIDER 設為 log 或其他未實作的值；Google／LINE 只設了一半，或有設 OAuth 卻缺 STOREFRONT_URL，或 STOREFRONT_URL 不是 https；ECPAY_ENV 有值但缺 MERCHANT_ID、HASH_KEY、HASH_IV、MEDUSA_BACKEND_URL、STOREFRONT_URL，或值不是 stage／prod，或 prod 時設了 ECPAY_API_BASE_URL 或 ECPAY_ACCEPT_SIMULATED_PAYMENTS，或 ECPAY_AUTO_REFUND=true 卻缺 ECPAY_CREDIT_CHECK_CODE；物流與發票有對應的必填與 prod 禁用公開測試商店檢查。另外 Admin 啟用但 public/admin/index.html 不存在。
+  - 證據：FW/config/config.js:49-54,79-92; BE/medusa-config.ts:28-42,105-109; BE/src/lib/email/config.ts:15-27; BE/src/lib/auth/config.ts:14-40; BE/src/lib/ecpay/config.ts:43-90,116-151,166-192; AB/index.js:1641-1648
+  - 備註：不會拒絕、但很危險：正式環境缺 REDIS_URL 只會記錄 'redisUrl not found. A fake redis instance will be used.'（FW/config/config.js:103-106），然後改用記憶體模組。缺 ECPAY_ENV 也能啟動，只是 drn-0005 會一直 pending。
+- **verified**：現行 compose 的 drn-redis 是 --appendonly no --save ''。Redis 重啟後，BullMQ 佇列（事件、workflow retry 與 timeout）和 Admin session 都會消失。
+  - 證據：ROOT/infra/docker-compose.prod.yml:47-50; FW/http/express-loader.js:75-82; P/@medusajs+event-bus-redis@2.21.2_*/node_modules/@medusajs/event-bus-redis/dist/services/event-bus-redis.js:120-133
+  - 備註：A7 命名清單有 drn_redisdata，看起來原本就打算持久化，需要把 compose 改成 AOF。
+
+## macOS 常開與自動恢復
+
+- **verified**：pmset 的閒置計時器設成 0 代表「永不」（適用 sleep、disksleep、displaysleep）。修改設定必須用 root。-a/-b/-c/-u 分別套用到全部電源／電池／牆上電源／UPS。womp 等同系統設定裡的「Wake for network access」，autorestart 是「斷電後自動重新開機」。pmset 和系統設定改的是同一個檔案（/Library/Preferences/SystemConfiguration/com.apple.PowerManagement.plist）。
+  - 證據：/usr/share/man/man1/pmset.1（本機 macOS 26.4 25E246，`man pmset` 輸出第 28-35、43-44、50、316-324 行）
+  - 備註：man page 底部標的日期是 2012-11-09，內容很舊，但仍是本機實際隨附的版本。裡面沒有 tcpkeepalive 的說明。
+- **verified**：在 Apple silicon、macOS 26 以上，只要「遠端登入」已開而且有網路，重開機後可以透過 SSH 解鎖 FileVault。
+  - 證據：https://support.apple.com/guide/security/sec8447f5049/web （Managing FileVault in macOS，2026-01-28）；https://support.apple.com/guide/deployment/intro-to-filevault-dep82064ec40/web （2026-09-17）
+  - 備註：只能用密碼驗證。因為 OpenSSH 的設定檔（包含 authorized_keys）都在 Data 磁碟區，解鎖前讀不到，所以這一步不能用金鑰登入。
+- **verified**：本機 man page 寫明：FileVault 開著時，Data 磁碟區在開機期間和開機後都是鎖住的，要等某個帳號用密碼驗證過才會解開。遠端登入開著時，可以用 SSH 密碼驗證來解鎖，但這次連線不會給 shell。解鎖後 macOS 會短暫中斷 SSH，等 Data 磁碟區掛載好、相依服務啟動後，SSH 和其他已開啟的服務才可以用。這項功能從 macOS 26 Tahoe 開始提供。
+  - 證據：/usr/share/man/man7/apple_ssh_and_filevault.7（1 July 2025，DESCRIPTION 與 HISTORY 段）；/usr/share/man/man8/fdesetup.8 的「REMOTE UNLOCKING VIA SSH」段（`man fdesetup` 輸出第 448-461 行）
+  - 備註：實際流程：第一次 ssh 輸入密碼解鎖，連線斷掉後再連一次。
+- **verified**：launchd 的 daemon（/System/Library/LaunchDaemons、/Library/LaunchDaemons）在開機初始化時就會載入；agent 則是在使用者登入、啟動該使用者的 launchd 時才載入，而且只在該使用者登入期間執行。
+  - 證據：https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html （封存文件，Updated 2016-09-13）；/usr/share/man/man8/launchd.8 的 NOTES 與 FILES 段
+  - 備註：launchd.plist(5) 說明：LimitLoadToSessionType 只對 agent 有效（/usr/share/man/man5/launchd.plist.5）。
+- **partial**：/Library 屬於 Data 磁碟區（Apple 列出的使用者可寫路徑包括 /Applications、/Library、/Users、/usr/local、/private、/var）。再加上 Data 磁碟區在 FileVault 解鎖前是鎖住的，可以推得：意外重開機後，連 /Library/LaunchDaemons 的服務、Homebrew 套件（cloudflared、colima）、Docker 資料卷，都要等解鎖後才會啟動。
+  - 證據：https://support.apple.com/guide/security/role-of-apple-file-system-seca6147599e/web （2024-12-19）；/usr/share/man/man7/apple_ssh_and_filevault.7
+  - 備註：這是把兩份一手文件合起來推論的結果。/opt/homebrew 不在 Apple 列出的路徑中，但它在可寫區，應該也在 Data 磁碟區，TODO(需查證)。
+- **verified**：`brew services` 不加 sudo 時，服務會寫到 ~/Library/LaunchAgents，在登入時啟動；加 sudo 時寫到 /Library/LaunchDaemons，在開機時啟動，並可以用 `--sudo-service-user` 指定以哪個使用者身分執行。colima 安裝說明的建議是 `brew services start colima`，用途寫的是「登入時重新啟動」。
+  - 證據：本機 Homebrew 6.0.21 `brew services --help` 與 `brew info colima` 的輸出（Caveats 段）
+  - 備註：Colima FAQ 也只建議用 brew services 自動啟動：https://raw.githubusercontent.com/abiosoft/colima/main/docs/FAQ.md
+- **verified**：Lima 2.2 以上：`limactl autostart enable --condition=boot <instance>` 會建立系統層 LaunchDaemon（/Library/LaunchDaemons/io.lima-vm.daemon.<instance>.plist），在任何使用者登入前啟動，用 `--user` 指定執行身分（預設是 $USER），預設開啟 keep-alive。不加 condition 時則是在 ~/Library/LaunchAgents 建立登入時才啟動的 agent。
+  - 證據：https://lima-vm.io/docs/usage/autostart/
+  - 備註：目前 brew 提供的 lima 是 2.2.1（固定事實），符合版本需求。Colima 自己的文件沒有背書這種開機啟動方式，Colima 在 Lima 中的實例名稱是否為 `colima`、docker.sock 路徑會不會變，都 TODO(需查證)。
+- **partial**：Docker Desktop 的自動啟動選項是「Start Docker Desktop when you sign in to your computer」，跟使用者登入綁在一起。OrbStack 的 headless 文件只寫可以用 `orb` 指令（不開 GUI）操作，沒有提到開機時（登入前）啟動，而且不開 GUI 時不支援自動更新。
+  - 證據：https://docs.docker.com/desktop/settings-and-maintenance/settings/ ；https://docs.orbstack.dev/headless
+  - 備註：兩者都沒有官方的「開機後、不登入也能執行」方案。網路上有人把 OrbStack 包成 LaunchDaemon（https://arda.pw/posts/mac-mini-persistent-web-server/ ），但只是單一部落格，不建議採用。
+- **verified**：`sudo cloudflared service install` 會把 cloudflared 裝成 launch daemon，在系統開機時啟動（設定檔在 /etc/cloudflared）；不加 sudo 則是 launch agent，登入時才啟動（設定檔在 ~/.cloudflared/）。
+  - 證據：https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/as-a-service/macos/ （Last updated Apr 17, 2026）
+  - 備註：使用遠端管理 token 的安裝方式由 Cloudflare 主題另外查證。
+- **verified**：macOS 26「軟體更新」的「自動更新」有三個選項：Download new updates when available、Install macOS updates、Install Security Responses and system files。路徑是 系統設定 > 一般 > 軟體更新 > 自動更新 旁邊的（i）。
+  - 證據：https://support.apple.com/guide/mac-help/mchla7037245/26/mac/26 ；https://support.apple.com/guide/mac-help/mchlpx1065/26/mac/26
+  - 備註：這兩頁 Apple 文件都沒有說明「自動安裝 macOS 更新」會不會在沒有確認的情況下自動重開機，TODO(需查證)。
+- **verified**：背景更新（Background Security Improvements、安全組態更新、系統資料檔）不會讓 Mac 重開機，只是部分要等下次重開機才生效。BSI 的開關在 系統設定 > 隱私權與安全性 > Background Security Improvements > Automatically Install。
+  - 證據：https://support.apple.com/en-us/101591 （About background updates in macOS，2025-12-08）；https://support.apple.com/en-us/102657 （2026-09-14）
+  - 備註：所以保持這些安全更新開啟，不會造成突然重開機。
+- **verified**：UPS 用 USB 接到 Mac 後，可以在 系統設定 > 能源 > UPS Options 設定斷電時以「時間」或「電量」為條件關機，設多個條件時先達到的就觸發。pmset 對應的是 `-u haltlevel / haltafter / haltremain`（-1 代表關閉），而且只有桌機和伺服器有效。`pmset -g ps` 會顯示電池和 UPS 狀態，`pmset -g ups` 顯示關機門檻。
+  - 證據：https://support.apple.com/guide/mac-help/mchlp2987/26/mac/26 ；/usr/share/man/man1/pmset.1（UPS SPECIFIC ARGUMENTS 段，`man pmset` 輸出第 184-201、83-84 行）
+  - 備註：本機 `pmset -g ps` 目前只顯示「Now drawing from 'AC Power'」，`pmset -g ups` 沒有輸出，也就是沒有偵測到 UPS。
+- **partial**：Schneider（APC）的 FAQ 說明 Mac 用 USB 接 APC Smart-UPS／Back-UPS 時，直接用 Apple 內建的 UPS 關機設定，並可以用 `system_profiler SPUSBDataType` 確認連線。TidBITS 社群在 2026-03 回報：CyberPower 搭配 macOS Tahoe 和 M4 Mac mini 可以正常使用，內建選項有限，廠商軟體功能比較多。
+  - 證據：https://www.se.com/us/en/faqs/FA159690/ （最後修改 2026-04-22）；https://talk.tidbits.com/t/ups-shutdown-in-tahoe/33144
+  - 備註：社群回報屬於個別經驗。兩家廠商都沒有在官方頁面列出 Tahoe 相容性。
+- **verified**：Mac mini（2024，M4，16GB／256GB）的耗電：閒置 4 W、最大 65 W。
+  - 證據：https://support.apple.com/en-us/103253 （2026-09-21）
+  - 備註：本機是 460 GB 等級的 SSD，官方數字是 256GB 配置，差異應該很小。UPS 容量要把路由器、光纖數據機、交換器的耗電一起算進去。
+- **partial**：`systemsetup` 有 `-setrestartfreeze on|off`（當機後自動重開）和 `-setrestartpowerfailure on|off`。
+  - 證據：/usr/share/man/man8/systemsetup.8（July 30, 2020；`man systemsetup` 輸出第 122-134 行）
+  - 備註：man page 日期較舊，在 Apple silicon、macOS 26 上是否有效，TODO(需查證)：以 `sudo systemsetup -getrestartfreeze` 確認。
+- **partial**：`pmset repeat wakeorpoweron <weekdays> <HH:mm:ss>` 可以設定固定的開機／喚醒排程，最多一組重複的 power on 和一組 power off。
+  - 證據：/usr/share/man/man1/pmset.1（SCHEDULED EVENT ARGUMENTS 段與 EXAMPLES，`man pmset` 輸出第 203-218、288-291 行）
+  - 備註：用途是當安全網：UPS 讓 Mac 正常關機後，如果市電在 UPS 電池用完前就恢復、UPS 也沒切斷輸出，Mac 沒有經歷斷電，autorestart 不會觸發。這個情境以及 Apple silicon 能否被排程從關機狀態喚醒，都 TODO(需查證)。
+
+## Cloudflare Tunnel／Access／WAF
+
+- **verified**：(a) 遠端管理 tunnel 的建立流程：Cloudflare 後台 Networking > Tunnels > Create Tunnel → 命名 → 在 Setup Environment 選作業系統與架構 → 複製 Install and Run 指令到主機執行 → 連上後按 Continue。對外路由現在叫「Published application」，路徑是 Routes > Add route > Published application，填 Hostname（子網域＋網域）與 Service URL。
+  - 證據：https://developers.cloudflare.com/tunnel/get-started/ （Last updated Sep 30, 2026）；https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/ （Jun 23, 2026）
+  - 備註：舊稱「Public hostname」。目前頁面用語是 published application route。
+- **partial**：(a) 在後台新增 published application route 時，Cloudflare 會自動建立 DNS 記錄，指向 <UUID>.cfargotunnel.com（限 full setup 的 zone）。記錄型別是 CNAME；官方 API 範例寫的是 "type":"CNAME","proxied":true。cfargotunnel.com 只替同一個 Cloudflare 帳號內的記錄轉送流量。
+  - 證據：https://developers.cloudflare.com/tunnel/concepts/routing/ （Sep 11, 2026）；https://developers.cloudflare.com/tunnel/get-started/ API 範例；https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/ 「In a full DNS setup, Cloudflare automatically creates DNS records」
+  - 備註：文件沒有明寫後台自動建的那筆一定是 proxied，只有 API 範例寫 proxied:true。TODO(需查證)：建好後在 DNS > Records 確認是橘雲。
+- **verified**：(a) 主機名稱上若已有記錄，儲存路由會出現錯誤「An A, AAAA, or CNAME record with that host already exists」，官方處理方式是改用別的主機名稱，或刪掉既有記錄。所以沿用 api.dr.nature.smilelife.tw 時，必須先刪除目前指向 151.145.69.134 的 A 記錄（DNS only）。另外，tunnel 停止時 DNS 記錄不會自動刪除，訪客會看到 1016 錯誤。
+  - 證據：https://developers.cloudflare.com/tunnel/troubleshooting/ （Sep 11, 2026）；https://developers.cloudflare.com/tunnel/concepts/routing/ ；dig +short A api.dr.nature.smilelife.tw → 151.145.69.134（2026-10-13 實測）
+  - 備註：刪除 published application route 時會不會一併刪掉 DNS 記錄，文件沒寫。TODO(需查證)
+- **verified**：(b) Homebrew 今天的 cloudflared 穩定版是 2026.10.0（有 bottle，Apache-2.0），GitHub 最新 release 也是 2026.10.0（2026-10-05）。官方 macOS 安裝方式就是 brew install cloudflared。
+  - 證據：`brew info cloudflared` 輸出「stable 2026.10.0 (bottled)」；GitHub API releases：2026.10.0 published 2026-10-05T17:43:45Z；https://developers.cloudflare.com/tunnel/downloads/ （Sep 11, 2026）
+  - 備註：Cloudflare 只支援距最新版一年內的版本。
+- **verified**：(b) `sudo cloudflared service install` 以 root 身分建立 LaunchDaemon，開機即啟動；不加 sudo 則建立 LaunchAgent，要使用者登入後才跑。root 安裝的 plist 位置是 /Library/LaunchDaemons/com.cloudflare.cloudflared.plist，label 為 com.cloudflare.cloudflared，設定 RunAtLoad=true、KeepAlive{SuccessfulExit=false}（異常結束才重啟）、ThrottleInterval=5。plist 寫入後以 `launchctl load` 載入。
+  - 證據：https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/as-a-service/macos/ （Sep 11, 2026）；cloudflared 原始碼 cmd/cloudflared/macos_service.go（installPath()、newLaunchdTemplate()、installLaunchd() 的 log 訊息「Installing cloudflared client as a system launch daemon. cloudflared client will run at boot」）
+  - 備註：plist 沒有 UserName 鍵，所以以 root 身分執行（依 launchd.plist(5) 的系統網域行為推論，屬 partial）。
+- **verified**：(b) token 的存放方式：帶 token 執行 service install 時，token 寫入設定目錄的檔案 /Library/Application Support/com.cloudflare.cloudflared/token（權限 0600），plist 的 ProgramArguments 是 `<cloudflared路徑> tunnel run --token-file <該路徑>`，token 本身不會出現在 plist 裡。這項改動是 commit 45c0f22e97（2026-07-15，「VULN-118896: MacOS service: use --token-file instead of --token」），2026.7.2 起的版本都包含，2026.10.0 也有。uninstall 時會刪掉 token 檔。
+  - 證據：cloudflared cmd/cloudflared/macos_service.go（configPath()=resolveLibraryPath("Application Support", launchdIdentifier)、installLaunchd 內 writeTokenToConfigDir/buildArgsForTokenFile、uninstall 內 removeTokenFile）；cmd/cloudflared/common_service.go（defaultTokenFile="token"、tokenPerms 0o600、buildArgsForTokenFile 回傳 "tunnel","run","--token-file"）；GitHub compare 45c0f22e97...2026.10.0 status=ahead
+  - 備註：run-parameters 文件的 macOS plist 範例仍是舊的 `run --token <TOKEN VALUE>` 寫法（https://developers.cloudflare.com/tunnel/reference/run-parameters/ ，Sep 11, 2026），已過時，以原始碼為準。
+- **verified**：(b) 日誌位置是 /Library/Logs/com.cloudflare.cloudflared.err.log 與 /Library/Logs/com.cloudflare.cloudflared.out.log。cloudflared 預設把日誌寫到 stderr；若要自動輪替，可加 --log-directory（滿 1 MB 輪替，保留 5 份）。
+  - 證據：https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/as-a-service/macos/ ；macos_service.go stdoutPath()/stderrPath()；https://developers.cloudflare.com/tunnel/observability/ （Oct 2, 2026）
+  - 備註：/Library/Logs 下這兩個檔案本身不會輪替。TODO(需查證)：長期是否要加 newsyslog 設定，由主機守則另行決定。
+- **verified**：(b) 更新方式：先 `brew upgrade cloudflared`，再依序 `sudo launchctl stop com.cloudflare.cloudflared`、`sudo launchctl unload /Library/LaunchDaemons/com.cloudflare.cloudflared.plist`、`sudo launchctl load …`、`sudo launchctl start com.cloudflare.cloudflared`。用套件管理工具安裝的版本沒有內建自動更新，更新期間服務會重啟、短暫中斷。
+  - 證據：https://developers.cloudflare.com/tunnel/guides/update-cloudflared/ （Sep 11, 2026）；https://developers.cloudflare.com/tunnel/reference/run-parameters/#autoupdate-freq
+  - 備註：plist 裡的執行檔路徑來自 os.Executable()。用 sudo /opt/homebrew/bin/cloudflared 安裝時，應記錄的是 symlink 路徑，所以 brew upgrade 後仍然有效。官方範例 plist 也用 /opt/homebrew/bin/cloudflared。TODO(需查證)：安裝後用 `sudo plutil -p` 確認第一個參數。
+- **partial**：(b) FileVault 開啟時，開機後資料卷會維持鎖定，要等某個帳號用密碼驗證才解鎖。macOS 26 起，若開了 Remote Login，可以用 SSH 密碼遠端解鎖，解鎖後才會啟動依賴資料卷的服務。因此 cloudflared 雖然是 LaunchDaemon，重開機後仍要等 FileVault 解鎖才會連上。
+  - 證據：本機 `man apple_ssh_and_filevault`（7）：「the data volume is locked and unavailable during and after booting, until an account has been authenticated using a password」、「appeared in macOS 26 Tahoe」；https://support.apple.com/en-us/124963 （Jul 27, 2026）「FileVault can now be unlocked over ssh after a restart if Remote Login is enabled」
+  - 備註：「/Library/LaunchDaemons 與 /opt/homebrew 都在資料卷上，所以解鎖前不會啟動」是依 man page 的推論。TODO(需查證)：實際重開機觀察 err.log 的時間點。
+- **verified**：(b) cloudflared 在非容器環境會開一個 metrics server，綁在 127.0.0.1 上 20241 到 20245 之間第一個可用的 port。這個 port 只綁本機。
+  - 證據：https://developers.cloudflare.com/tunnel/observability/#default-metrics-server-address
+  - 備註：不與 3961 衝突，但應記入 Mac mini 的 port 盤點。
+- **verified**：(c) Universal SSL 在 full setup 的 zone 只涵蓋根網域與第一層子網域，原文是 deeper subdomains「are not covered and will not serve a valid certificate」。官方給的解法只有兩個：購買 ACM（之後可開 Total TLS 或手動下訂進階憑證），或上傳自訂憑證。
+  - 證據：https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/limitations/ （Last updated Oct 9, 2026）
+  - 備註：Tunnel 疑難排解頁也寫明多層子網域會出現 ERR_SSL_VERSION_OR_CIPHER_MISMATCH（https://developers.cloudflare.com/tunnel/troubleshooting/ ）。
+- **verified**：(c) smilelife.tw 目前實際送出的邊緣憑證：CN=smilelife.tw，SAN 為 smilelife.tw 與 *.smilelife.tw，簽發者 Google Trust Services WE1，演算法 ECDSA P-256，到期日 2027-01-09。由此可知：drn-api.smilelife.tw（第一層）在涵蓋範圍內；api.dr.nature.smilelife.tw（第三層）與 dr.nature.smilelife.tw（第二層）開代理後都不在涵蓋範圍內。
+  - 證據：`openssl s_client -connect smilelife.tw:443 -servername www.smilelife.tw | openssl x509 -noout -subject -issuer -dates -ext subjectAltName`（2026-10-13 實測）
+  - 備註：Free 方案的 Universal 憑證只有 ECDSA，沒有 RSA（limitations 頁的 Certificate type 段）。
+- **verified**：(c) ACM 在 Free 方案以付費附加項目提供，價格每月 10 美元（按 zone 計）。進階憑證可以涵蓋多層子網域，一張最多 50 個主機名稱，其中必須包含 zone apex。萬用字元只涵蓋一層。
+  - 證據：https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/ （Aug 14, 2026）；https://www.cloudflare.com/plans/network-cdn/ 「Advanced Certificate Manager … $10/mo」
+  - 備註：開發者文件本身沒寫價格，價格出自 cloudflare.com 的方案頁。
+- **verified**：(c) Total TLS 需要先買 ACM，且 zone 必須是 full setup。關鍵限制：Total TLS「does not issue certificates for any hostnames used with … Cloudflare Tunnel」。所以就算買了 ACM，tunnel 用的主機名稱仍要手動下訂進階憑證。
+  - 證據：https://developers.cloudflare.com/ssl/edge-certificates/additional-options/total-tls/ （Apr 16, 2026）Limitations 段
+- **verified**：(c) 上傳自訂憑證只有 Business 與 Enterprise 方案可用，Free 與 Pro 不行。
+  - 證據：https://developers.cloudflare.com/ssl/edge-certificates/custom-certificates/ （Sep 10, 2026）
+- **verified**：(d) Free 方案透過代理的上傳上限（Maximum Upload Size）是 100 MB。單一請求的 URL 上限 16 KB，請求標頭合計上限 128 KB。
+  - 證據：https://developers.cloudflare.com/cache/concepts/default-cache-behavior/ （Sep 14, 2026）Upload limits 表；https://developers.cloudflare.com/fundamentals/reference/connection-limits/ （Jul 23, 2026）
+- **partial**：(d) 邊緣到源站的 Proxy Read Timeout 是 125 秒，超過回 524；Proxy Write Timeout 是 30 秒；只有 Enterprise 能調整。Tunnel 端的源站參數預設值：connectTimeout 30s、tlsTimeout、keepAliveTimeout 1m30s、keepAliveConnections 100、tcpKeepAlive 30s。
+  - 證據：https://developers.cloudflare.com/fundamentals/reference/connection-limits/ ；https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/ （Jul 23, 2026）；https://developers.cloudflare.com/tunnel/reference/origin-parameters/ （Sep 11, 2026）
+  - 備註：connection-limits 頁對 tunnel 只寫「參考 origin configuration」，沒有明說 125 秒的 524 是否同樣適用 tunnel 流量。TODO(需查證)。綠界回呼本來就應該在數秒內回 1|OK。
+- **verified**：(d) WebSockets 所有方案都支援。另外，經過 Tunnel 的回應預設會緩衝，只有 Content-Type: text/event-stream 的回應會邊收邊送。
+  - 證據：https://developers.cloudflare.com/network/websockets/ （Aug 14, 2026）；https://developers.cloudflare.com/tunnel/troubleshooting/ 「Cloudflare Tunnel is buffering my streaming response」段
+  - 備註：MVP 後端用不到 WebSocket。
+- **verified**：(e) Bot Fight Mode 作用於整個網域，不能針對端點設定，也不能透過 WAF custom rules 或 Page Rules 略過，因為它不在 Ruleset Engine 上跑，Skip/Bypass/Allow 都無效。官方明說它「may challenge API or mobile app traffic」。唯一的例外：若 IP Access rule 先命中該請求，Bot Fight Mode 就不會觸發。
+  - 證據：https://developers.cloudflare.com/bots/get-started/bot-fight-mode/ （Aug 3, 2026）Considerations 與 Limitations 段；https://developers.cloudflare.com/waf/custom-rules/skip/ 「you cannot skip Bot Fight Mode (available on the Free plan)」
+  - 備註：smilelife.tw 與 www 目前解析到 Cloudflare IP（代理中），表示同一 zone 有其他網站，切換 Bot Fight Mode 會一起影響它們。
+- **verified**：(e) Browser Integrity Check 預設開啟，會挑戰沒有 User-Agent 或 User-Agent 不標準的訪客。可以用 Skip 動作的 products（API 值 `bic`）或 configuration rule 依主機名稱、路徑關掉。Security Level 在新版後台只剩 Under Attack mode 的開關，threat score 一律為 0。
+  - 證據：https://developers.cloudflare.com/waf/tools/browser-integrity-check/ （Aug 3, 2026）；https://developers.cloudflare.com/waf/tools/security-level/ （Apr 16, 2026）
+  - 備註：綠界伺服器回呼帶什麼 User-Agent 未知。TODO(需查證)：在測試環境看 Security Events。
+- **verified**：(e) IP Access rules 所有方案都能用。設成 Allow 會略過 custom rules、rate limiting 與 WAF Managed Rules，官方舉的典型用途就包含「payment providers」。
+  - 證據：https://developers.cloudflare.com/waf/tools/ip-access-rules/ （Aug 14, 2026）
+  - 備註：可作為放行綠界固定 IP 的方法，也能避開 Bot Fight Mode。
+- **verified**：(e) 綠界官方注意事項有四點：綠界主機 IP 不固定，需要固定 IP 可線上申請；只支援 80 與 443 port；API 只支援 TLS 1.1 以上；若商家使用 CDN，ReturnURL 要設主機的網址，不要設 CDN 的網址。
+  - 證據：https://developers.ecpay.com.tw/22701/ （頁面未標日期）
+  - 備註：走 Tunnel 時沒有其他對外入口，主機網址就等於經過 Cloudflare 的網址。這條 CDN 警語是否適用，要在 stage 環境實測或問綠界。TODO(需查證)
+- **verified**：(e) repo 裡需要從外部伺服器打進來的回呼路徑有三條：/hooks/ecpay/payment（ReturnURL）、/hooks/ecpay/payment-info（PaymentInfoURL）、/hooks/ecpay/logistics（物流 ServerReplyURL），都由 MEDUSA_BACKEND_URL 加路徑組成。超商地圖回傳（mapReplyUrl）是由瀏覽器 POST 到前台 STOREFRONT_URL/checkout/ecpay/cvs-store，不經過後端。程式碼裡沒有電子發票的外部回呼端點。
+  - 證據：apps/backend/src/lib/ecpay/config.ts:40-41,76,79,112,147-148
+  - 備註：因此改主機名稱只需改 MEDUSA_BACKEND_URL 的值，綠界後台不需要逐筆設定。
+- **verified**：(f) Access self-hosted 應用可以只保護特定路徑；所有 Access 應用預設拒絕。路徑規則要注意：`example.com/alpha/*` 不涵蓋 `example.com/alpha` 本身，所以 /app 與 /app/* 要分開列。多條規則重疊時，較具體的路徑優先；沒有被任何 Access 應用涵蓋的路徑（/store、/auth、/hooks）不受影響。官方建議先建 Access 應用，再建 tunnel 路由。
+  - 證據：https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/ （Apr 17, 2026）；https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/ （Apr 17, 2026）
+- **verified**：(f) 同源 SPA 的行為：Access 驗證每個請求的 CF_Authorization cookie。Cookie Path Attribute 預設關閉，cookie 作用於整個網域；HttpOnly 預設開啟；SameSite 預設 None。Fetch 必須帶 credentials 才會送 cookie。Medusa 2.21.2 後台的 js-sdk 預設 auth.type="session"，fetch 帶 credentials:"include"，所以 /app 頁面發出的 /admin/* 請求會帶上 cookie。
+  - 證據：https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/ （Aug 3, 2026）；https://developers.cloudflare.com/cloudflare-one/access-controls/troubleshooting/ AJAX/CORS 段；node_modules/.pnpm/@medusajs+js-sdk@2.21.2/node_modules/@medusajs/js-sdk/dist/esm/client.js:89-92；@medusajs/dashboard dist/chunk-NFEK63OE.mjs:3-10（authType 預設 "session"）
+  - 備註：Cookie Path Attribute 必須保持關閉，否則 /app 登入後打 /admin 會要求再登入一次。
+- **partial**：(f) CORS 與 preflight 的坑有兩個。第一，瀏覽器送 OPTIONS preflight 時不帶 cookie，所以跨來源請求打到 Access 保護的路徑會被回 403。後台與 API 同源，不會觸發 preflight，所以不受影響（這點是推論）。第二，Access session 過期時，fetch 會被導向 team domain，在前端呈現為 CORS 錯誤，使用者要重新整理 /app 再登入。
+  - 證據：https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/cors/ （Aug 25, 2026）；https://developers.cloudflare.com/cloudflare-one/access-controls/troubleshooting/
+  - 備註：「同源所以不受影響」是推論。TODO(需查證)：上線後實測登入、操作，並刻意讓 Access session 過期。Medusa 的 session maxAge 預設 10 小時（express-loader.js:60），建議 Access session 至少 24 小時。
+- **verified**：(f) Access Free 方案：0 元、永久、上限 50 人；超過改按使用者付費，每人每月 7 美元（年繳）。使用者完成一次驗證就占用一個席位；席位用完後，新使用者會被擋。
+  - 證據：https://www.cloudflare.com/sase/products/access/ ；https://developers.cloudflare.com/cloudflare-one/team-and-resources/users/seat-management/ （May 1, 2026）
+  - 備註：開 Zero Trust Free 是否必須綁信用卡，官方頁沒寫，只有社群回報。TODO(需查證)
+- **partial**：(f) 「Protect with Access」（源站參數 access.required）會讓 cloudflared 在轉送前驗證 Cf-Access-Jwt-Assertion，範圍是整條 published application route。若對整個主機名稱開啟，/hooks 也會被擋。ingress 規則支援以正規表示式比對 path，所以可以另外加一條只比對 ^/(app|admin)(/|$) 的路由來開啟它。
+  - 證據：https://developers.cloudflare.com/tunnel/reference/origin-parameters/#access ；https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/configuration-file/ （How traffic is matched 段）
+  - 備註：後台的 published application route 有 path 欄位（create-remote-tunnel 頁寫「add any path if needed」），但是否接受正規表示式，要在後台實際確認。TODO(需查證)
+- **verified**：(g) 訪客 IP 相關標頭：CF-Connecting-IP 帶的是連到 Cloudflare 的那個用戶端 IP。X-Forwarded-For 若原請求沒有，值與 CF-Connecting-IP 相同；若原請求已有，Cloudflare 會把連線端 IP 附加在最後。True-Client-IP 只有 Enterprise 方案有。
+  - 證據：https://developers.cloudflare.com/fundamentals/reference/http-headers/ （Oct 9, 2026）
+- **partial**：(g) cloudflared 2026.10.0 轉送請求時，沒有看到自行加入 X-Forwarded-For 的程式碼。只有在設定 httpHostHeader 時才加 X-Forwarded-Host；User-Agent 缺失時送空字串。由此推定源站看到的 X-Forwarded-For 就是 Cloudflare 邊緣設的值。
+  - 證據：cloudflared tag 2026.10.0：proxy/proxy.go:251-271；ingress/origin_proxy.go:37-51（只 grep 這幾個檔案）
+  - 備註：沒有掃完整個 repo。TODO(需查證)：上線後記錄一次請求的 X-Forwarded-For 與 CF-Connecting-IP 做比對。
+- **verified**：(h) Tunnel Health Alert（狀態變化 Healthy/Inactive/Down/Degraded）與 Tunnel Creation or Deletion Event，兩種通知都是「Included with All Cloudflare Zero Trust plans」。投遞方式：Email 所有方案都有；Webhooks 所有方案都有（沒有付費 zone 的帳號最多 100 個目的地）；PagerDuty 要 Business 以上。
+  - 證據：https://developers.cloudflare.com/notifications/notification-available/ （Oct 2, 2026）；https://developers.cloudflare.com/notifications/ ；https://developers.cloudflare.com/notifications/get-started/configure-webhooks/
+- **verified**：(h) Tunnel 狀態只反映 cloudflared 與 Cloudflare 之間的連線，不代表後端服務活著：tunnel 顯示 Healthy 時，Medusa 仍可能掛掉回 502。Cloudflare 的 Health Checks 在 Free 方案不能用（0 個）。
+  - 證據：https://developers.cloudflare.com/tunnel/observability/ 「Tunnel status scope」段；https://developers.cloudflare.com/health-checks/ （Aug 14, 2026）Availability 表
+  - 備註：「看得見的警報」需求必須另外補源站存活檢查。
+
+## 本 repo 的部署面
+
+- **verified**：(a) 綠界金流 ReturnURL：後端路由 POST /hooks/ecpay/payment。送給綠界的絕對網址＝MEDUSA_BACKEND_URL（去尾斜線）＋/hooks/ecpay/payment。驗章、綁 session、比對金額後，只有真的入帳才回純文字「1|OK」，其他情況非 ACK，綠界會重送。
+  - 證據：apps/backend/src/lib/ecpay/config.ts:40,56,76; apps/backend/src/lib/ecpay/aio.ts:118; apps/backend/src/api/hooks/ecpay/payment/route.ts:32-124
+  - 備註：ECPay 未設定時這支路由回 503「0|Not configured」（route.ts:40-46）。/hooks/* 在 Medusa 2.21.2 沒有 publishable key、auth 或 CORS 中介層（route.ts:19）。
+- **verified**：(a) 綠界 PaymentInfoURL（ATM／超商代碼／條碼取號通知）：POST /hooks/ecpay/payment-info，絕對網址＝MEDUSA_BACKEND_URL＋/hooks/ecpay/payment-info。只有離線付款方式會帶這個欄位，同樣須回「1|OK」。
+  - 證據：apps/backend/src/lib/ecpay/config.ts:41,79; apps/backend/src/lib/ecpay/aio.ts:132-139; apps/backend/src/api/hooks/ecpay/payment-info/route.ts:1-38
+- **partial**：(a) OrderResultURL 與 ClientBackURL 不是後端路由，而是瀏覽器導回前台頁：STOREFRONT_URL＋/checkout/ecpay/result（離線付款不送 OrderResultURL）與 STOREFRONT_URL＋/account/orders。MVP 的 dr.nature.smilelife.tw 是 VPS nginx 靜態暫時頁（try_files → index.html），付款完成後的瀏覽器 POST 會打到暫時頁。不影響伺服器對伺服器的 ReturnURL。
+  - 證據：apps/backend/src/lib/ecpay/config.ts:77-78; apps/backend/src/lib/ecpay/aio.ts:123-129; infra/nginx/drn.conf:25-40
+  - 備註：nginx 對靜態檔的 POST 回應碼（推測 405）未實測：TODO(需查證)，部署後用 curl -X POST https://dr.nature.smilelife.tw/checkout/ecpay/result 確認。
+- **verified**：(a) Medusa 內建的 POST /hooks/payment/:provider 已對 ecpay_ecpay／pp_ecpay_ecpay 關閉（以解碼後的參數比對），綠界只會打 /hooks/ecpay/*。
+  - 證據：apps/backend/src/api/middlewares.ts:175-189,227
+- **verified**：(a) 綠界物流狀態通知（ServerReplyURL）：POST /hooks/ecpay/logistics，絕對網址＝MEDUSA_BACKEND_URL＋/hooks/ecpay/logistics，在 Express/Create 建單時送出，須回「1|OK」。官方文件明載測試環境沒有模擬物流狀態通知，所以沙箱期間收不到真實的物流回呼。
+  - 證據：apps/backend/src/lib/ecpay/config.ts:112,147; apps/backend/src/lib/ecpay/logistics.ts:209; apps/backend/src/modules/ecpay-logistics/service.ts:243; apps/backend/src/api/hooks/ecpay/logistics/route.ts:1-11; https://developers.ecpay.com.tw/7420/ （「測試環境尚無提供模擬物流狀態通知功能」）
+  - 備註：MVP 驗收「物流回呼可從公開 HTTPS 收到」只能用我方以正確 MD5 簽章自送的通知證明，或以錯誤簽章請求回 400「0|CheckMacValue Error」證明路徑可達。重送規則：連 3 次後改隔天，持續 3 天。
+- **verified**：(a) 電子地圖選店的回傳也是瀏覽器 POST 到前台頁 STOREFRONT_URL＋/checkout/ecpay/cvs-store（未簽章）。地圖表單由 GET /store/ecpay/logistics/map-form 產生，後端沒有接收選店結果的路由。前台是暫時頁時，選店流程無法經 UI 完成。
+  - 證據：apps/backend/src/lib/ecpay/config.ts:148; apps/backend/src/lib/ecpay/logistics.ts:33-53; apps/backend/src/api/store/ecpay/logistics/map-form/route.ts:1-28
+- **verified**：(a) 由前台或後台轉呼叫、綠界不會直接打的自訂路由：POST /store/orders/:id/ecpay/cvs-store（重選門市 → UpdateStoreInfo）、POST /store/orders/:id/ecpay/repay（重新付款）、GET /admin/orders/:id/ecpay-logistics/print、POST /admin/orders/:id/ecpay-logistics/return-store、POST /admin/orders/:id/ecpay-invoice/issue 與 /void。後台路由都已補上 RBAC 政策。
+  - 證據：apps/backend/src/api/store/orders/[id]/ecpay/cvs-store/route.ts:1-25; apps/backend/src/api/store/orders/[id]/ecpay/repay/route.ts:1-21; apps/backend/src/api/admin/orders/[id]/ecpay-logistics/print/route.ts:1-14; apps/backend/src/api/middlewares.ts:77-85
+- **verified**：(a) 電子發票沒有任何入站回呼：程式只對外呼叫 einvoice(-stage).ecpay.com.tw/B2CInvoice/*。需要 ReturnURL 的線上折讓 AllowanceByCollegiate 沒有實作，所以發票不需要公開網址。
+  - 證據：apps/backend/src/lib/ecpay/invoice-client.ts:17; apps/backend/src/lib/ecpay/config.ts:190; docs/research/ecpay.md:63
+  - 備註：「發票回呼可收到」這條 MVP 驗收實際上不存在。發票的沙箱驗證是付款後由我方訂閱者對外開立，並用 GetIssue 查得。
+- **verified**：(a) LINE／Google 登入的 callback 註冊在前台：STOREFRONT_URL＋/auth/callback/google 與 /auth/callback/line。前台頁再把 code＋state 轉給 Medusa 內建的 GET/POST /auth/customer/{google|line}/callback，後端網址不登記在 Google 或 LINE。正式環境 STOREFRONT_URL 必須是 https，金鑰必須成對。
+  - 證據：apps/backend/src/lib/auth/config.ts:10,14-24,34-40,45,56; node_modules/@medusajs/medusa/dist/api/auth/[actor_type]/[auth_provider]/callback/route.js:6-32; docs/ops/customer-login.md:10-11,52-54
+  - 備註：MVP 前台是暫時頁，OAuth 無法完成，GOOGLE_OAUTH_* 與 LINE_LOGIN_* 應保持不設（U-17）。
+- **verified**：(b) 綠界相關排程（ECPAY_ENV 未設或 NODE_ENV=test 時不跑）：
+- drn-ecpay-payment-reconcile，*/10：信用卡與 Apple Pay 在建立後 40／120／1440 分補查 QueryTradeInfo（payment(-stage).ecpay.com.tw），每輪最多 15 次、間隔 2 秒，遇 403 全域暫停 30 分。
+- drn-ecpay-unpaid-cancel，*/15：在鎖內查每筆交易，未付款就 cancelOrderWorkflow 並寫 metadata ecpay_auto_canceled，每輪最多 20 次查詢。
+- drn-ecpay-daily-reconcile，30 2 * * *（台北 10:30）：下載前一天的 TradeNoAio 對帳檔（vendor(-stage).ecpay.com.tw），比對 DN 開頭的交易，漏登時嚴格查詢後補登，其他差異發 [ECPAY-ALERT]。
+  - 證據：apps/backend/src/jobs/ecpay-payment-reconcile.ts:1-30,121-132; apps/backend/src/jobs/ecpay-unpaid-cancel.ts:1-17,174-184; apps/backend/src/jobs/ecpay-daily-reconcile.ts:1-16,195-206; apps/backend/src/lib/ecpay/reconcile-file.ts:8-10; apps/backend/src/lib/ecpay/aio.ts:9-17
+  - 備註：正式環境的 TradeNoAio 要把呼叫端 IP 加入白名單（reconcile-file.ts:3、U-16）。Mac mini 走家用網路時，對外 IP 是否固定未知：TODO(需查證)。程式註解以 UTC 解讀 cron（ecpay-daily-reconcile.ts:202）；容器不要設 TZ，排程是否依容器時區計算未查證：TODO(需查證)。
+- **verified**：(b) drn-ecpay-invoice-retry，*/15：只有 ECPAY_ENV 與 ECPAY_INVOICE_MERCHANT_ID 都設定時才跑。每輪處理最多 25 筆近 30 天內已付款但未開立或需重開的訂單，對外呼叫綠界 B2C 發票 API。drn-membership-daily，0 19 * * *（台北 03:00）：沒有外部呼叫，但在 production 且 membership-tiers.json 的 status 為 "proposal" 時只記 warn 並跳過。
+  - 證據：apps/backend/src/jobs/ecpay-invoice-retry.ts:1-18,71-81; apps/backend/src/lib/ecpay/config.ts:195-197; apps/backend/src/jobs/membership-daily.ts:9-26; apps/backend/src/lib/membership/config.ts:122-128; apps/backend/src/data/membership-tiers.json:4
+- **verified**：(b) 正式環境有作用的訂閱者：
+- drn-auth-verification-email（auth.verification_requested）：寄信服務未設定時通知員工。
+- drn-ecpay-cancel-race（order.canceled）：管理員取消與入帳競態時告警並標記。
+- drn-ecpay-invoice-canceled（order.canceled）：已取消訂單若有有效發票就告警，不自動作廢。
+- drn-ecpay-invoice-issue（payment.captured、order.placed）：開立發票。
+- drn-membership-recompute（payment.refunded、order.canceled）：正式模式下同樣因 proposal 設定而被擋。
+訂閱者與排程都在 worker 執行。舊 worker 會吃掉 Redis 事件匯流排上的事件，所以換版要先停舊 worker。
+  - 證據：apps/backend/src/subscribers/auth-verification-email.ts:20-34; apps/backend/src/subscribers/ecpay-cancel-race.ts:22-25; apps/backend/src/subscribers/ecpay-invoice-canceled.ts:24-27; apps/backend/src/subscribers/ecpay-invoice-issue.ts:38-41; apps/backend/src/subscribers/membership-recompute.ts:14,39-42; infra/docker-compose.prod.yml:6-7; https://docs.medusajs.com/learn/production/worker-mode
+- **verified**：(c) 告警的主要形式是 logger.error 帶標籤。[ECPAY-ALERT] 約 30 處，涵蓋：
+- ReturnURL：已付款但找不到 session、金額不符
+- PaymentInfoURL：金額不符
+- 取消後才付款、重複付款
+- 取消競態
+- 補查：403 限流、金額不符、補登失敗
+- 未付款取消：查到已付款但金額不符、補登失敗、無法取消
+- 每日對帳的各種差異
+- 重新付款：金額不符
+- 需人工退款 manual_pending
+- 物流：找不到出貨、AllPayLogisticsID 不符、已取消出貨收到狀態、需處理的狀態碼、建單結果未知、無法取消或需後台作廢
+- 重選門市與退件門市未確認
+- 發票：已取消仍有有效發票、金額不符、設定錯誤
+另有 [PROMO-ALERT]（活動結束後才成立的訂單）、[EMAIL-ALERT]（未設定寄信服務）、[MEMBERSHIP-ALERT]（等級重算失敗）。
+  - 證據：apps/backend/src/api/hooks/ecpay/payment/route.ts:73-74,88; apps/backend/src/api/hooks/ecpay/payment-info/route.ts:69; apps/backend/src/lib/ecpay/record-payment.ts:81,96; apps/backend/src/lib/ecpay/cancel-race.ts:79; apps/backend/src/jobs/ecpay-payment-reconcile.ts:82,94,115; apps/backend/src/jobs/ecpay-unpaid-cancel.ts:105,123,140; apps/backend/src/jobs/ecpay-daily-reconcile.ts:50; apps/backend/src/lib/ecpay/repay.ts:123; apps/backend/src/modules/ecpay/service.ts:471; apps/backend/src/api/hooks/ecpay/logistics/route.ts:67,89,101,106; apps/backend/src/modules/ecpay-logistics/service.ts:291,359,363; apps/backend/src/api/store/orders/[id]/ecpay/cvs-store/route.ts:91; apps/backend/src/api/admin/orders/[id]/ecpay-logistics/return-store/route.ts:48; apps/backend/src/workflows/ecpay/issue-ecpay-invoice.ts:83; apps/backend/src/lib/ecpay/cart-checks.ts:74; apps/backend/src/lib/pricing/cart-promotions.ts:118; apps/backend/src/subscribers/auth-verification-email.ts:24; apps/backend/src/lib/membership/engine.ts:195; apps/backend/src/subscribers/membership-recompute.ts:35
+  - 備註：另有不帶標籤的 logger.error：ReturnURL 處理失敗、綠界會重送（payment/route.ts:118）；發票重試失敗（ecpay-invoice-retry.ts:61）。
+- **verified**：(c) 唯一會出現在 Medusa 後台的告警：未設定 EMAIL_PROVIDER 時，每天一則 notification（channel "feed"、template "admin-ui"、idempotency_key 每日一筆），由預設的 notification-local provider 送到 Admin 通知面板。
+  - 證據：apps/backend/src/lib/email/config.ts:30-45; node_modules/.pnpm/@medusajs+framework@2.21.2_*/node_modules/@medusajs/utils/dist/common/define-config.js:236-247; https://docs.medusajs.com/resources/infrastructure-modules/notification/local
+  - 備註：這是現成可重用的「告警進後台」模式。告警內容只有訂單 id、金額與交易編號，沒有驗證碼，適合走 feed。
+- **partial**：(c) 寫在資料上的告警旗標：
+- 訂單 metadata：ecpay_paid_twice、ecpay_paid_after_cancel、ecpay_auto_canceled
+- 付款 data：ecpay_manual_refunds（manual_pending）、ecpay_refunds
+在後台只能逐筆打開訂單看 metadata／JSON，沒有清單或篩選。src/admin 沒有任何 widget 或自訂頁，只有 i18n。
+  - 證據：apps/backend/src/lib/ecpay/record-payment.ts:87-91; apps/backend/src/workflows/ecpay/flag-paid-after-cancel.ts:22-23; apps/backend/src/jobs/ecpay-unpaid-cancel.ts:132-135; apps/backend/src/modules/ecpay/service.ts:462-473; ls apps/backend/src/admin（README.md、i18n、tsconfig.json、vite-env.d.ts）
+  - 備註：儲存位置已查證；Medusa 2.21.2 後台訂單頁如何呈現 metadata 未實際打開確認：TODO(需查證)。
+- **verified**：(c) 告警的落點：HTTP 路由（hooks、store、admin、請求內的 provider 呼叫）寫在 drn-backend 的 stdout；排程與訂閱者寫在 drn-worker 的 stdout。compose 用 json-file 輪替 10m×3，每個容器最多約 30MB 後就被覆蓋。沒有任何程式或排程監看 -ALERT] 行。營運 SOP 目前要人自己看「後端日誌」。
+  - 證據：infra/docker-compose.prod.yml:21-23; docs/ops/ecpay-manual-refund.md:9-12; docs/ops/ecpay-logistics-c2c.md:32; https://docs.medusajs.com/learn/production/worker-mode
+  - 備註：MVP「告警可見」的缺口：(1) 沒有把告警送到人會看的地方（後台通知、推播都沒有；寄信服務 U-09 未定）；(2) 兩個容器的日誌分開且會輪替；(3) worker 健康檢查被關閉；(4) 沒有對外網址的存活監測；(5) 沒有排程「確實有跑」的心跳；(6) 備份失敗沒有告警。
+- **verified**：(d) Medusa 框架本身：NODE_ENV=production 時缺 JWT_SECRET 或 COOKIE_SECRET 會拋錯，不會改用預設的 supersecret。
+  - 證據：node_modules/.pnpm/@medusajs+framework@2.21.2_*/node_modules/@medusajs/framework/dist/config/config.js:49-55,79-91
+- **verified**：(d) EMAIL_PROVIDER：不設時為 "none"，可以開機；"log" 在 NODE_ENV=production 會拒絕；其他任何值在 U-09 實作前都拒絕。所以開機不需要寄信服務。代價是 Email／LINE 註冊的驗證請求回 503，並每天在後台發一則通知。
+  - 證據：apps/backend/src/lib/email/config.ts:15-27; apps/backend/medusa-config.ts:108-109; apps/backend/src/subscribers/auth-verification-email.ts:22-26
+- **verified**：(d) 登入相關守門：GOOGLE_OAUTH_* 與 LINE_LOGIN_* 必須成對；有設任一組時必須有 STOREFRONT_URL，且 production 必須是 https://。LINE_LOGIN_API_BASE_URL 在 NODE_ENV=production 會拒絕。
+  - 證據：apps/backend/src/lib/auth/config.ts:14-24,31-40; apps/backend/src/modules/line-auth/service.ts:51-52
+- **verified**：(d) 金流守門：ECPAY_ENV 只接受 stage 或 prod，而且不與 NODE_ENV 綁定，所以 NODE_ENV=production 加 ECPAY_ENV=stage 是允許的。設了 ECPAY_ENV 就必須有 MEDUSA_BACKEND_URL、STOREFRONT_URL、ECPAY_MERCHANT_ID、ECPAY_HASH_KEY、ECPAY_HASH_IV。ECPAY_API_BASE_URL 與 ECPAY_ACCEPT_SIMULATED_PAYMENTS 只在 ECPAY_ENV=prod 才拒絕；ReturnURL 與 PaymentInfoURL 必須是 https 也只在 prod 檢查。
+  - 證據：apps/backend/src/lib/ecpay/config.ts:51-90; apps/backend/src/modules/ecpay/service.ts:147-176; apps/backend/medusa-config.ts:87-98
+  - 備註：缺口：stage 模式下若誤設 ECPAY_API_BASE_URL，QueryTradeInfo、TradeNoAio、CreditDetail 會改打替身，不會被擋（config.ts:60-63,82-89）。runbook 已寫「不要設」（docs/ops/deploy-backend.md:31）。
+- **verified**：(d) 物流守門：只有設了 ECPAY_LOGISTICS_MERCHANT_ID 才註冊物流 provider。註冊後必須有 HASH_KEY、HASH_IV、SENDER_NAME（2-5 個中文字的個人姓名）、SENDER_CELLPHONE（09xxxxxxxx），stage 也在開機時驗證。prod 模式還會拒絕公開測試特店 2000132／2000933，並要求 ServerReplyURL 為 https。發票守門：只有設了 ECPAY_INVOICE_MERCHANT_ID 才檢查，KEY 與 IV 必須各 16 字元，prod 模式拒絕 2000132。
+  - 證據：apps/backend/src/lib/ecpay/config.ts:114-150,164-197; apps/backend/src/modules/ecpay-logistics/service.ts:126-142; apps/backend/medusa-config.ts:105-123
+- **verified**：(d) 遷移的前置條件：drn-0005 沒有 pp_ecpay_ecpay、drn-0006 沒有 ecpay_logistics provider 時都會失敗並保持 pending。所以正式 .env 在執行 db:migrate:scripts 前就要有 ECPAY_ENV、金流三值、物流三值與寄件人。DEV_PLAN P12-06 的驗收只檢查 drn-0001～0004，runbook 寫的是 0001～0007，兩者不一致。
+  - 證據：apps/backend/src/migration-scripts/drn-0005-ecpay-payment-provider.ts:1-25; apps/backend/src/migration-scripts/drn-0006-ecpay-logistics-shipping.ts:1-45; docs/DEV_PLAN.md:292; docs/ops/deploy-backend.md:41; apps/backend/package.json:13
+- **partial**：(d) ECPAY_ACCEPT_SIMULATED_PAYMENTS：在 stage 允許。沒開時，SimulatePaid=1 的通知會回「1|OK」但不入帳。測試環境的 ATM 與超商代碼只能從廠商後台「模擬付款」，送出的是 SimulatePaid=1，所以只有 ATM／超商／條碼的端到端測試需要開。信用卡用公開測試卡付款不需要。
+  - 證據：apps/backend/src/api/hooks/ecpay/payment/route.ts:78-81; docs/research/ecpay-stage-probe-2026-10-13.md:23; docs/research/ecpay.md:35; docs/DEV_PLAN.md:185
+  - 備註：Apple Pay 的 stage 付款屬模擬性質，通知是否帶 SimulatePaid=1 未查證：TODO(需查證)。公開測試特店 3002607 的廠商後台帳密是公開的（docs/research/ecpay.md:34），開著這個旗標時任何人都能把我方的 stage 訂單模擬成已付款。
+- **verified**：(d) 開發與 E2E 腳本在正式主機上都拒跑：dev-add-test-stock 只接受 NODE_ENV=development|test 且本機資料庫；ecpay-stage-e2e 與 ecpay-invoice-stage-e2e 只接受 development、localhost 資料庫與 stage。drn-0003 建商品時庫存為 0。所以正式主機上的沙箱付款演練要靠新的 runbook，並在後台手動給測試庫存。
+  - 證據：apps/backend/src/scripts/dev-add-test-stock.ts:17-28; apps/backend/src/scripts/ecpay-stage-e2e.ts:7,28; apps/backend/src/scripts/ecpay-invoice-stage-e2e.ts:12,29; apps/backend/src/migration-scripts/drn-0003-catalog.ts:1-6
+- **verified**：(e) 白名單中屬於 VPS／Supabase 的名稱與說明：
+- 章節標題寫「VPS 容器」。
+- DATABASE_URL 的用途寫「專屬 Supabase 專案」。
+- DATABASE_SSL_CA_PATH 是 Supabase CA 專用。
+- FILE_S3_*（6 個）寫「Supabase Storage…避免占用 VPS 磁碟」，而且程式完全沒有使用這組變數。
+- .env.example 第 1、4 行的註解提到 VPS 與 Supabase。
+  - 證據：docs/ENV.md:7,11,12,53-58; .env.example:1,4; grep FILE_S3 apps/backend/src apps/backend/medusa-config.ts（無結果）
+- **verified**：(e) scripts/check-env-names.mjs 只掃 .env.example 與 apps/*/.env.example，而且只檢查一個方向（example 裡的名稱必須在白名單內）。它不掃 compose、Dockerfile、shell 腳本或程式碼。所以只出現在 compose 的新名稱（POSTGRES_*、TUNNEL_TOKEN、DRN_TAG）不會讓檢查變紅，但 CLAUDE.md §2 仍要求先登錄白名單。
+  - 證據：scripts/check-env-names.mjs:10-28; CLAUDE.md §2
+  - 備註：現有缺口：
+- DRN_TAG（infra/docker-compose.prod.yml:11）、NODE_ENV、dev compose 的 POSTGRES_USER／PASSWORD／DB（infra/docker-compose.dev.yml:8-11）都不在 docs/ENV.md。
+- .env.example 缺少 STOREFRONT_URL、ECPAY_LOGISTICS_CONTRACT／SENDER_* 等開機必要名稱。
+- **verified**：(e) 自架 drn-postgres 需要的新名稱：官方 postgres 映像必填 POSTGRES_PASSWORD（不可空白）；選填 POSTGRES_USER（預設 postgres）、POSTGRES_DB（預設等於 POSTGRES_USER），也可改用 *_FILE 版本。PostgreSQL 17 以下要把資料卷掛在 /var/lib/postgresql/data（18 起改成依版本的路徑）。初始化腳本只在資料目錄為空時執行。如果 cloudflared 以容器執行，還需要 TUNNEL_TOKEN 或 TUNNEL_TOKEN_FILE（2025.4.0 起支援）。
+  - 證據：https://raw.githubusercontent.com/docker-library/docs/master/postgres/content.md; https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/cloudflared-parameters/run-parameters/ （2026-04-17 更新）
+  - 備註：如果選擇改程式讓內部資料庫走明文，還需要一個新的開關變數，名稱待定，要先登錄 docs/ENV.md。
+- **verified**：(f) infra/docker-compose.prod.yml 的 VPS／Supabase 假設與缺漏：
+- 檔頭註解寫共用 VPS、Postgres 是 Supabase（1-4）。
+- 掛載 ./supabase-ca.crt（13-15）。
+- 沒有 drn-postgres 服務，也沒有 depends_on 資料庫。
+- 沒有 drn_pgdata／drn_redisdata／drn_uploads 資料卷。
+- Redis 關閉持久化：--appendonly no --save ""（50）。
+- worker 健康檢查被關閉（44-45），但 Medusa 的 start 在 worker 模式同樣監聽 9000 並註冊 /health，可以直接打開。
+  - 證據：infra/docker-compose.prod.yml:1-4,10-23,36-45,50,63-65; node_modules/@medusajs/medusa/dist/commands/start.js:244-248
+- **verified**：(f) Redis 裡不只有 session：還有 BullMQ 事件佇列（event-bus-redis）、workflow-engine-redis 的狀態、locking-redis，以及 Admin 的 express-session store。compose 關閉持久化，重啟會遺失尚未處理的事件。DEV_PLAN P12-08 寫「drn-redis 無需備份（僅 session）」不正確。
+  - 證據：apps/backend/medusa-config.ts:52-82; node_modules/.pnpm/@medusajs+event-bus-redis@2.21.2_*/node_modules/@medusajs/event-bus-redis/dist/services/event-bus-redis.js:4,120-127; node_modules/.pnpm/@medusajs+framework@2.21.2_*/node_modules/@medusajs/framework/dist/http/express-loader.js:70-82; docs/DEV_PLAN.md:294
+  - 備註：影響部分有補救：發票重試排程與對帳排程會補做，但其他訂閱者（例如取消競態檢查）事件遺失就不會重跑。
+- **partial**：(f) infra/backend.Dockerfile 用 pnpm 9.15.9 執行 `pnpm --filter @drn/backend deploy --prod /out`。pnpm v10.0.0 的發行說明寫，deploy「現在」改為從工作區 lockfile 產生專屬 lockfile，沒有共用 lockfile 或強制 legacy 時則不用 lockfile。由此推論 v9 的 deploy 不依 pnpm-lock.yaml 安裝，與檔頭「只從 pnpm-lock.yaml 取得相依」以及 CLAUDE.md §3 衝突。
+  - 證據：infra/backend.Dockerfile:4-5,11,14-18; https://github.com/pnpm/pnpm/releases/tag/v10.0.0
+  - 備註：pnpm 9 deploy 實際的解析行為沒有找到 v9 官方文件：TODO(需查證)。驗證方式：在映像內列出 @medusajs/* 與關鍵間接相依的版本，和 pnpm-lock.yaml 比對。
+- **verified**：(f) Dockerfile 其他檢查：
+- 註解寫「與 VPS 同架構、不在主機上 build」（1-2），要改。
+- HEALTHCHECK 用 node 全域 fetch 打 127.0.0.1:9000/health，在 Node 22 沒問題（fetch 自 v21.0.0 起穩定）。/health 是靜態 OK，不檢查資料庫。
+- 映像以 USER node 執行，WORKDIR /app/.medusa/server，CMD 用 /app/node_modules/.bin/medusa start。
+  - 證據：infra/backend.Dockerfile:1-2,20-29; https://nodejs.org/docs/latest-v22.x/api/globals.html （fetch History：v21.0.0 No longer experimental）; node_modules/@medusajs/medusa/dist/commands/start.js:244-247
+- **partial**：(f) 建置內容：build context 包含 apps/backend 全部（含 src/data/*.json，tsconfig 開了 resolveJsonModule），足夠 medusa build 使用。Admin 在建置階段沒有 MEDUSA_BACKEND_URL，__BACKEND_URL__ 會是空字串，後台改用同源相對路徑，搭配 Admin 由同一個 API 網域提供可以運作。CI 只做 build（ci.yml:57-58），從沒啟動過建好的 .medusa/server，也沒在映像內跑過遷移。
+  - 證據：.dockerignore:3-14; apps/backend/tsconfig.json:21; apps/backend/src/lib/membership/config.ts:8; apps/backend/src/migration-scripts/drn-0003-catalog.ts:18; node_modules/.pnpm/@medusajs+admin-bundler@2.21.2_*/node_modules/@medusajs/admin-bundler/dist/index.js:1316,1356; apps/backend/node_modules/@medusajs/dashboard/dist/chunk-NFEK63OE.mjs:3; .github/workflows/ci.yml:57-58
+  - 備註：建好的映像能否正常載入 JSON 並完成遷移未實測，列入 P12-03／P12-06 驗收。.dockerignore 沒排除 apps/backend/static，本機開發時的上傳檔可能被包進映像（目前目錄不存在）。
+- **verified**：(f) 檔案儲存：medusa-config 沒有設定 file 模組，所以使用預設的 file-local。上傳寫進 cwd/static（容器內 /app/.medusa/server/static），網址預設 http://localhost:9000/static，容器重建就消失。Medusa 官方說 Local File Provider 只供開發使用。P3-06 仍是 ⛔。
+  - 證據：apps/backend/medusa-config.ts:161; node_modules/.pnpm/@medusajs+framework@2.21.2_*/node_modules/@medusajs/utils/dist/common/define-config.js:278-286; node_modules/.pnpm/@medusajs+file-local@2.21.2_*/node_modules/@medusajs/file-local/dist/services/local-file.js:53-60; https://docs.medusajs.com/resources/infrastructure-modules/file/local; docs/DEV_PLAN.md:175
+- **verified**：(f) docs/ops/deploy-backend.md 的 VPS／Supabase 步驟：
+- 目標是 Supabase drn-prod（3）。
+- U-04 Supabase Pro、U-05 A 記錄 → 151.145.69.134、CA 檔（11-13）。
+- DATABASE_URL 與 DATABASE_SSL_CA_PATH 照 Supabase 填（19-20）。
+- 與 docs/private/server-inventory.md 比對（38）。
+- docker save | gzip | ssh 傳映像（39）。
+- nginx drn.conf ＋ certbot webroot（43）。
+- 部署後 nginx md5 diff（44）。
+- 回滾靠 Supabase 時間點還原（52）。
+  - 證據：docs/ops/deploy-backend.md:3,11-13,19-20,38-44,52
+- **partial**：(f) Admin 預設 session 登入（authType 預設 "session"）。Medusa 在 production 把 session cookie 設成 Secure、SameSite=lax，並設 trust proxy=1。所以經 Cloudflare Tunnel 時，到達 Express 的請求必須帶 X-Forwarded-Proto: https，否則 Admin 登入的 cookie 不會被設定。Cloudflare 會在邊緣設 X-Forwarded-Proto，但 cloudflared 轉到源站時是否保留，官方頁面沒有寫。
+  - 證據：apps/backend/node_modules/@medusajs/dashboard/dist/chunk-NFEK63OE.mjs:4; node_modules/.pnpm/@medusajs+framework@2.21.2_*/node_modules/@medusajs/framework/dist/http/express-loader.js:30-35,45-62,83; https://developers.cloudflare.com/fundamentals/reference/http-headers/ （2026-10-09 更新）
+  - 備註：TODO(需查證)：上線後實際從公開網址登入 /app，作為驗收的一部分。
+- **verified**：(f) .nvmrc 寫 24，但 package.json engines（>=22.22.0）、Dockerfile（22.22.3）、CI（node-version 22）都是 22，在 Mac mini 用 nvm 會選到不同的主版本。
+  - 證據：.nvmrc:1; package.json:6-8; infra/backend.Dockerfile:9; .github/workflows/ci.yml:48-50
+- **verified**：(g) 目前 DEV_PLAN 的 P12 各列與舊假設：
+- P12-01：比對 VPS 盤點。
+- P12-02：compose 沒有 Postgres。
+- P12-03：Mac 建映像後用 docker save 傳到主機。
+- P12-04：nginx drn.conf。
+- P12-05：certbot。
+- P12-06：對 Supabase 遷移，驗收只查 0001～0004，回滾靠 Supabase 時間點還原。
+- P12-07：Vercel。
+- P12-08：Supabase 每日備份，Redis 被誤寫成僅 session。
+- P12-09：VPS 部署前後 diff。
+- P12-10：正式站 smoke 加一筆真實訂單。
+- P12-11：回滾演練（含 Vercel）。
+- P12-12：VPS 暫時頁，✅。
+第 283 行已註明 P12-02～11 要依 A7 改寫。
+  - 證據：docs/DEV_PLAN.md:283,287-298
+- **verified**：(h) 應用程式碼沒有寫死 VPS IP、nginx 或 Supabase 位址。相關內容只有：medusa-config.ts:17 的註解與 28-42 的「非本機就要 CA」邏輯；正式網域只出現在單元測試與 drn-setup 的銷售通路描述字串（不影響行為）。所有回呼網址都由 MEDUSA_BACKEND_URL 與 STOREFRONT_URL 組成，換主機名只要改 .env 值，不必改程式。VPS 與 Supabase 的假設集中在 infra/docker-compose.prod.yml、infra/backend.Dockerfile 註解、infra/nginx/drn.conf（僅暫時頁）與文件。
+  - 證據：git grep -n -i '151\.145\|supabase\|nginx\|certbot\|3961\|smilelife' -- apps scripts infra .github; apps/backend/medusa-config.ts:17,28-42; apps/backend/src/lib/drn-setup.ts:15; apps/backend/src/lib/ecpay/__tests__/config.unit.spec.ts:8-18
+- **partial**：(h／主機外) 綠界網路規範：ReturnURL 應指向主機本身的網址，不要設成 CDN 網址，以免主機收不到付款結果（原文情境是海外主機搭配 CDN）。API 只支援 80／443，ReturnURL 不可帶 port，只支援 TLS 1.2。入站來源為 postgate.ecpay.com.tw，測試環境另加 postgate-stage.ecpay.com.tw，不需申請 IP。
+  - 證據：https://developers.ecpay.com.tw/2858/; docs/research/ecpay.md:12,36
+  - 備註：Tunnel 會讓 Cloudflare 位於綠界與主機之間，必須實測 postgate 的 POST 不會被 Cloudflare 的安全功能（挑戰、Bot 防護）擋下：TODO(需查證)。
+
+## 備份、告警與法規
+
+- **verified**：pg_dump 在資料庫同時被使用時仍能產生一致的備份，且不會阻擋其他讀寫者；-Fc 自訂格式預設壓縮，用 pg_restore 還原
+  - 證據：https://www.postgresql.org/docs/16/app-pgdump.html
+  - 備註：所以夜間備份不必停站。驗收時用『備份前後筆數夾住還原筆數』的方式比對，不要求筆數完全相等
+- **verified**：pg_dump 只備份單一資料庫，不含角色與表空間；角色要用 pg_dumpall -g（--globals-only），--no-role-passwords 可以不匯出密碼
+  - 證據：https://www.postgresql.org/docs/16/app-pg-dumpall.html ; https://www.postgresql.org/docs/16/app-pgdump.html
+  - 備註：本專案的應用角色由 POSTGRES_USER 在初始化時建立，重建時可以從 .env 重生，所以 globals 不是必要，但檔案很小又不含密碼，建議一併保存
+- **verified**：pg_restore 預設遇錯會繼續，結束時才回報錯誤數；--exit-on-error 遇錯即停；-1 包成單一交易，隱含 --exit-on-error；-l 列出目錄；沒有給檔名時讀標準輸入；-j 平行還原只接受一般檔案，不接受 pipe 或 stdin
+  - 證據：https://www.postgresql.org/docs/16/app-pgrestore.html
+  - 備註：演練用 `docker exec -i ... pg_restore ... < 檔案`，走 stdin，所以不能用 -j。資料量小，可以接受
+- **verified**：官方 postgres 映像在容器內的本機連線使用 trust 驗證，從容器內連線不需要密碼；initdb 預設的驗證方式就是 trust；POSTGRES_DB 未設定時預設等於 POSTGRES_USER
+  - 證據：https://raw.githubusercontent.com/docker-library/docs/master/postgres/content.md ; https://www.postgresql.org/docs/16/app-initdb.html
+  - 備註：備份指令寫成 `docker exec drn-postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc'`，變數在容器內展開，任何秘密都不會出現在主機的命令列或日誌
+- **verified**：映像初始化時的暫時伺服器設 listen_addresses=''，只聽 unix socket；正式啟動後才聽 TCP
+  - 證據：https://raw.githubusercontent.com/docker-library/postgres/master/16/bookworm/docker-entrypoint.sh
+  - 備註：所以演練容器的就緒檢查要用 `pg_isready -h 127.0.0.1`，避免在初始化途中就開始還原
+- **verified**：docker run --rm 會在容器結束時一併刪除容器與其匿名資料卷；--network none 讓容器只剩 loopback；docker network create --internal 的網路無法對外
+  - 證據：https://docs.docker.com/reference/cli/docker/container/run/ ; https://docs.docker.com/engine/network/drivers/none/ ; https://docs.docker.com/reference/cli/docker/network/create/
+  - 備註：還原演練用 --rm 加 --network none，最隔離，用完也不會留下含個資的資料卷
+- **verified**：launchd 的 StartCalendarInterval：電腦睡著錯過時，醒來後補跑，多次錯過合併成一次；電腦關機時錯過，就等下一個排定時間。StartInterval 在睡眠期間錯過不會補
+  - 證據：man launchd.plist（本機 macOS 26.4 man 頁 StartInterval/StartCalendarInterval 段，約第 348-366 行）；https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/ScheduledJobs.html（Updated 2016-09-13）
+  - 備註：所以每支排程都要配外部心跳（Healthchecks 的 grace 時間），漏跑才會被看到
+- **verified**：LaunchAgent 只在該使用者登入期間執行；agent 的 UserName 鍵會被忽略，只對系統網域有效；使用者層級的 agent 放在 ~/Library/LaunchAgents；新式指令是 launchctl bootstrap/bootout gui/<uid>，load/unload 已列為舊指令
+  - 證據：https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html ; man launchd.plist（UserName、InitGroups 段、FILES 段）; man launchctl（gui/<uid>、bootstrap、kickstart、LEGACY SUBCOMMANDS）
+  - 備註：Docker 執行環境（OrbStack、Colima、Docker Desktop）都是使用者層級的 VM，docker CLI 透過使用者家目錄的 context 或 socket 連線，所以應該用 LaunchAgent，不用以 root 身分跑的 LaunchDaemon。各執行環境的 socket 路徑：TODO(需查證，視容器執行環境的選擇而定)
+- **verified**：目前 pmset 的 sleep 是 1，代表系統閒置 1 分鐘就睡眠；autorestart 是 0
+  - 證據：任務給的固定事實；man pmset（第 42 行：sleep - system sleep timer (value in minutes, or 0 to disable)；第 50 行：autorestart）
+  - 備註：睡眠時備份會延到喚醒後才跑，對外 API 也會斷線
+- **verified**：macOS 存取 Desktop、Documents、Downloads、iCloud Drive、網路卷宗、可移除卷宗之前，都需要使用者同意
+  - 證據：https://support.apple.com/guide/security/secddd1d86a6/web（Controlling app access to files in macOS）
+  - 備註：repo 放在 ~/Desktop，所以 LaunchAgent 不能直接執行 repo 裡的腳本，要先安裝到 ~/drn/bin。寫到外接碟或 iCloud Drive 也會被擋。由 launchd 啟動的 /bin/bash 被擋時，是跳出詢問還是直接拒絕：TODO(需查證)
+- **verified**：Homebrew 的 age 穩定版是 1.3.2，授權 BSD-3-Clause，有 Tahoe/Sequoia arm64 瓶裝版；支援 -R recipients 檔（只需要公鑰就能加密）、-i identity、可指定多個收件人；用 age-keygen -y 從私鑰推出公鑰
+  - 證據：https://formulae.brew.sh/formula/age ; https://github.com/FiloSottile/age
+  - 備註：本機目前沒有安裝 age、rclone、gpg（`command -v`）
+- **verified**：gnupg 2.5.24，授權 GPL-3.0-or-later，有 10 個執行期依賴（含 pinentry）；openssl enc 不支援 GCM/CCM 等驗證式加密，而且官方表示未來也不會支援
+  - 證據：https://formulae.brew.sh/formula/gnupg ; https://docs.openssl.org/3.5/man1/openssl-enc/
+  - 備註：openssl enc 加密的檔案若被竄改無法察覺，不建議用。gpg 可以用，但依賴多、設定繁瑣
+- **verified**：R2 的 API 權杖可以設成 Object Read & Write，並限定在指定的 bucket；Secret Access Key 只顯示一次。bucket lock 在保留期內禁止刪除和覆寫，優先於 lifecycle 規則；lifecycle 通常在到期後 24 小時內刪除
+  - 證據：https://developers.cloudflare.com/r2/api/tokens/ ; https://developers.cloudflare.com/r2/buckets/bucket-locks/（2026-04-30）; https://developers.cloudflare.com/r2/buckets/object-lifecycles/（2026-04-21）
+  - 備註：Mac 上的權杖即使外洩，bucket lock 也能防止近期備份被刪除
+- **verified**：R2 的位置提示（例如 apac）是盡力而為、不保證；司法管轄區只有 eu、fedramp、us，沒有台灣
+  - 證據：https://developers.cloudflare.com/r2/reference/data-location/（2026-08-19）
+  - 備註：牽涉個資國際傳輸的告知義務，見數位發展部辦法第 10 條
+- **verified**：rclone 1.75.2，授權 MIT；R2 設定為 type=s3、provider=Cloudflare、region=auto、endpoint=https://ACCOUNT_ID.r2.cloudflarestorage.com、acl=private；使用 Object Read & Write 權杖時，可能需要 no_check_bucket = true
+  - 證據：https://formulae.brew.sh/formula/rclone ; https://rclone.org/s3/（Cloudflare R2 段）
+- **verified**：個資法現行有效版本（112-05-31）：第 27 條要求非公務機關保有個資檔案者，應採行適當安全措施，防止個資被竊取、竄改、毀損、滅失或洩漏；第 12 條規定違法致個資被侵害時，應查明後以適當方式通知當事人
+  - 證據：https://law.moj.gov.tw/LawClass/LawOldVer.aspx?pcode=I0050021
+- **verified**：個資法 114-11-11 修正公布：刪除第 27 條，改成新增的第 20-1 條（安全維護義務）；第 12 條增加『符合一定通報範圍者應向主管機關通報』；主管機關為個人資料保護委員會；施行日期由行政院定之，目前『最後生效日期：未定』
+  - 證據：https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=I0050021 ; https://law.moj.gov.tw/LawClass/LawHistory.aspx?pcode=I0050021
+  - 備註：全國法規資料庫的整編截止日為 115-10-02。修正條文施行後，第 48 條第 2 項規定違反通報義務處 2 萬至 20 萬元，並令限期改正，屆期未改正者按次處罰
+- **verified**：個資法施行細則第 12 條列出的安全措施，包括事故之預防、通報及應變機制，資料安全稽核機制，使用紀錄、軌跡資料及證據保存等 11 款；第 22 條規定『適當方式通知』指即時以電子郵件、簡訊等方式通知
+  - 證據：https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=I0050022（修正日期 105-03-02）
+- **verified**：數位經濟相關產業個人資料檔案安全維護管理辦法（數位發展部，112-10-12 發布，第 20 條規定自發布日施行）適用於附表一的 4871 電子購物及郵購業（以網際網路方式零售商品）。重點：第 8 條，危及正常營運或大量當事人權益的事故，要在知悉後 72 小時內依附表二格式通報數位發展部；第 11 條，有備份必要時應對備份採取適當保護，有加密必要時應加密；第 16 條，紀錄保存至少 5 年；第 18 條，資本額 1,000 萬元以上或個資達 5,000 筆者，每 12 個月至少實施及檢討一次；第 10 條，國際傳輸要告知當事人傳輸區域
+  - 證據：https://law.moj.gov.tw/LawClass/LawAll.aspx?PCODE=K0010162 ; 行政院公報 https://gazette2.nat.gov.tw/EG_FileManager/eguploadpub/eg029192/ch05/type1/gov87/num13/images/AA.pdf（附表一、第 16 條說明欄）
+  - 備註：公報第 16 條的說明欄，把『資料備份及確認其有效性之紀錄』列為落實執行安全維護計畫的證據，所以還原演練的紀錄要保存 5 年
+- **verified**：Healthchecks.io：免費 Hobbyist 方案可監看 20 個工作、每個工作保留 100 筆紀錄；端點有成功（/<uuid>）、/start、/fail、/<exit-status>（0 為成功）、/log，可以用 rid 配對 start 與結束；每次 ping 最多保存 100 kB 內容；官方建議的 curl 寫法是 `curl -fsS -m 10 --retry 5 -o /dev/null`；檢查可以設定 Period/Grace 或 cron 加時區
+  - 證據：https://healthchecks.io/pricing/ ; https://healthchecks.io/docs/http_api/ ; https://healthchecks.io/docs/bash/ ; https://healthchecks.io/docs/configuring_checks/
+  - 備註：價格頁沒有限制商業用途。不能用多個帳號規避免費方案的上限
+- **partial**：UptimeRobot 免費方案：50 個監看、5 分鐘間隔；服務條款第 3 節寫明可用於任何用途，包括商業用途（條款 changelog 2026-05-26）
+  - 證據：https://uptimerobot.com/pricing/ ; https://uptimerobot.com/terms/
+  - 備註：免費方案可用的通知管道（Email、手機 App 推播、有限的整合）沒有逐項寫明：TODO(需查證)。網路上 2024 年有文章說免費方案限非商業用途，但與目前的條款不符，以條款為準
+- **verified**：Cloudflare Standalone Health Checks 免費方案的額度是 0（Pro 起才有）；Health Checks 狀態通知也要 Pro 以上。Tunnel Health Alert 與 Tunnel 建立／刪除通知，所有 Zero Trust 方案都能用，可以用 email 或 webhook 送出
+  - 證據：https://developers.cloudflare.com/health-checks/ ; https://developers.cloudflare.com/notifications/notification-available/（2026-10-02）; https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/monitor-tunnels/notifications/
+- **verified**：Medusa 2.21.2 的 /health 只回傳固定的 200 OK，不檢查資料庫或 Redis
+  - 證據：node_modules/.pnpm/@medusajs+medusa@2.21.2_*/node_modules/@medusajs/medusa/dist/commands/start.js:244-246
+  - 備註：外部監看 /health 只能證明 Tunnel 和 Node 程序活著，主機心跳還要另外用 pg_isready 檢查資料庫
+- **verified**：Medusa 的資料表名稱是 "order"、"customer"、"payment"、"payment_collection"
+  - 證據：@medusajs/order dist/migrations/Migration20240219102530.js:32；@medusajs/customer dist/migrations/Migration20240124154000.js:8；@medusajs/payment dist/migrations/Migration20240806072619.js:15；Migration20250115160517.js:15
+  - 備註：order 是保留字，SQL 裡必須加雙引號
+- **verified**：prod compose 目前沒有 drn-postgres 服務（仍寫著 Postgres 用 Supabase）；P12-08 的備份任務也還是 Supabase 版本
+  - 證據：infra/docker-compose.prod.yml:4,13-15；docs/DEV_PLAN.md:294
+- **verified**：medusa-config 只把 localhost、127.0.0.1、::1 當成本機資料庫；其他主機名稱（例如 drn-postgres）必須設定 DATABASE_SSL_CA_PATH 並使用 TLS，否則啟動失敗
+  - 證據：apps/backend/medusa-config.ts:28-40；docs/ENV.md（DATABASE_SSL_CA_PATH 那一列）
+  - 備註：A7 改成自架 drn-postgres 走內部網路後，這段邏輯要修改
+- **verified**：Medusa 排程時間：會員每日排程在台北 03:00（容器時間 UTC 19:00）；ECPay 對帳 30 2 * * *（UTC）；另有每 10 或 15 分鐘的工作
+  - 證據：apps/backend/src/jobs/membership-daily.ts:1,25；ecpay-daily-reconcile.ts:205；ecpay-unpaid-cancel.ts:183；ecpay-payment-reconcile.ts:131
+  - 備註：備份排在台北 04:15，避開 03:00 的會員排程。pg_dump 本身不阻擋寫入
+
+## 容器執行環境
+
+- **verified**：Docker Desktop 首次啟動要在 GUI 按下 Accept 接受 DSSA，不接受就無法執行。若用命令列安裝，可加 --accept-license，但官方範例裡 hdiutil 和 install 都要 sudo。4.88 之後預設的 GUI 安裝不需要特權。
+  - 證據：https://docs.docker.com/desktop/setup/install/mac-install/
+  - 備註：頁面另寫明 Mac 上 --backend 只支援 docker-vmm。
+- **verified**：Docker Desktop 自動啟動只有「Start Docker Desktop when you sign in to your computer」這個選項，預設關閉。文件沒有 Mac 上免登入或開機即啟動的模式（只有 Windows 有 --always-run-service）。
+  - 證據：https://docs.docker.com/desktop/settings-and-maintenance/settings/ ; https://docs.docker.com/desktop/troubleshoot-and-support/faqs/general/
+  - 備註：結論：需要 GUI 登入工作階段。
+- **verified**：Docker Desktop 資源：Memory limit 預設為主機的 50%（本機等於 8 GB），可設 CPU limit，Swap 預設 1 GB，另有 Disk usage limit。Resource Saver 預設開啟，只在「沒有任何容器執行」滿 5 分鐘後才停 VM。
+  - 證據：https://docs.docker.com/desktop/settings-and-maintenance/settings/ ; https://docs.docker.com/desktop/use-desktop/resource-saver/
+  - 備註：有容器在跑時，Resource Saver 不會停 VM。
+- **verified**：Docker Desktop 更新：「Automatically check for updates」預設開，「Always download updates」預設關。實際是每週發版：4.92（09-21）、4.93（09-28）、4.94（10-05）、4.95（10-12，Compose v5.6.0）。4.94 把新容器的預設 logging driver 改成 local。
+  - 證據：https://docs.docker.com/desktop/release-notes/
+  - 備註：套用更新時是否會重啟 VM、讓容器中斷：更新說明頁回 404，無法確認。TODO(需查證)
+- **partial**：Docker Desktop 2026 年在 macOS 26 和 Apple Silicon 上仍有未解的啟動問題：for-mac #7709（docker desktop start 卡住）、#7872（invalid database 無法啟動）、#7825（VirtioFS 切換到 gRPC FUSE 時 kernel crash）。
+  - 證據：https://github.com/docker/for-mac/issues?q=is%3Aissue+%22macOS+26%22
+  - 備註：只看了標題和狀態，沒讀內文。
+- **verified**：Docker Desktop 的資料放在單一磁碟映像（Docker.raw）。刪除容器內的檔案不會自動釋放空間，要執行 docker run --privileged --pid=host docker/desktop-reclaim-space 回收。
+  - 證據：https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/
+- **verified**：OrbStack 授權：個人非商業使用免費。自由接案、商業或非營利單位，或年收入超過 1 萬美元，都要依人數購買。Pro 方案 8 美元／人／月或 96 美元／年，新安裝有 30 天 Pro 試用。
+  - 證據：https://orbstack.dev/pricing ; https://docs.orbstack.dev/licensing ; https://docs.orbstack.dev/faq
+- **verified**：OrbStack 設定：memory_mib 預設最多 8 GB；cpu 以百分比設定，且不是預留量。可用 orb config 設定；有 headless 模式（brew install orbstack、orb start）。沒有 GUI 時不支援自動更新，要用 brew upgrade --greedy orbstack。admin 權限可選（orb config set setup.use_admin false）。
+  - 證據：https://docs.orbstack.dev/settings ; https://docs.orbstack.dev/headless ; https://docs.orbstack.dev/faq
+- **partial**：OrbStack 沒有文件說明開機時免登入啟動，也找不到官方的「登入時啟動」設定說明。2.2.4（2026-10-12）的修正「Fixed the VM being force-stopped on logout」顯示 VM 綁在使用者工作階段上。
+  - 證據：https://docs.orbstack.dev/release-notes ; https://docs.orbstack.dev/headless
+  - 備註：有沒有「登入時啟動」設定、GUI 自動更新會不會重啟容器，都還沒查證。TODO(需查證)
+- **partial**：OrbStack 磁碟 data.img 是 8 TB 的 sparse file，刪資料後會自動縮小。近期仍有未解問題：#2700（macOS 26.6、M4 Pro 上 VM 被 SIGKILL，維護者懷疑是裝了兩份）、#2692（VM 每幾分鐘乾淨退出一次）、#2691（還有空間卻報 StorageFull）。
+  - 證據：https://docs.orbstack.dev/faq ; https://github.com/orbstack/orbstack/issues/2700 ; https://github.com/orbstack/orbstack/issues?q=is%3Aissue+%22macOS+26%22
+  - 備註：#2692 和 #2691 只看了標題。
+- **verified**：Homebrew 的 colima formula 是 v0.10.3、授權 MIT，只依賴 lima。service 區塊為 run [opt_bin/"colima", "start", "-f"]、keep_alive successful_exit: true，日誌寫到 var/log/colima.log。
+  - 證據：https://raw.githubusercontent.com/Homebrew/homebrew-core/main/Formula/c/colima.rb
+- **verified**：brew services 不加 sudo 時，service 檔寫入 ~/Library/LaunchAgents（started at login）。加 sudo 時寫入 /Library/LaunchDaemons（started at boot），並可用 --sudo-service-user 指定執行身分。
+  - 證據：https://docs.brew.sh/Manpage
+  - 備註：所以 brew services start colima 是 LaunchAgent。Colima 沒有文件說明能否以 LaunchDaemon 執行；sudo 時 working_dir Dir.home 和 HOME 會變成什麼也未知。TODO(需查證)
+- **partial**：launchd 的 KeepAlive SuccessfulExit=true 表示「只在程式以 0 結束時才重新啟動」。所以 brew 管理的 colima 如果 start 失敗（非 0）不會重試；而 colima stop 讓前景程序以 0 結束時，可能被 launchd 再拉起來。停止應改用 brew services stop colima。
+  - 證據：man launchd.plist（本機 macOS 26.4，SuccessfulExit 段落）；colima.rb service 區塊
+  - 備註：第二點是由語意推論，要實測。
+- **verified**：Lima 2.2 以上可以用 limactl autostart enable <instance> --condition=boot，在 /Library/LaunchDaemons/io.lima-vm.daemon.<instance>.plist 安裝 LaunchDaemon，開機時在任何人登入前就啟動。註冊時會要一次 sudo，可用 --user 指定 macOS 使用者。--condition=login 則安裝在 ~/Library/LaunchAgents。brew 版 lima 是 2.2.1（2026-10-03，Apache-2.0）。
+  - 證據：https://lima-vm.io/docs/usage/autostart/ ; https://lima-vm.io/docs/reference/limactl_autostart_enable/ ; https://raw.githubusercontent.com/Homebrew/homebrew-core/main/Formula/l/lima.rb ; https://github.com/lima-vm/lima/releases
+  - 備註：這是 Lima 的功能，Colima 沒有對應指令。--keep-alive 旗標可能只在 2.3.0-beta.1，要用 limactl autostart enable --help 確認。
+- **partial**：Lima #5087：在 M4 Mac mini、macOS 26.5 上用 LaunchDaemon 開機啟動時，關機時 VZ driver 被孤立，重開後顯示「vz driver is running but host agent is not」並持續 crash-loop。已由 PR #5088 修正（2026-09-30 關閉），但 release notes 沒寫進了哪個版本。
+  - 證據：https://github.com/lima-vm/lima/issues/5087 ; https://github.com/lima-vm/lima/releases
+  - 備註：2.2.1 有沒有包含 #5088 不明。TODO(需查證)
+- **verified**：Colima 預設 cpu 2、memory 2 GiB、disk 100 GiB；vmType 預設 qemu（vz 要明確指定）；vz 時 mountType 預設 virtiofs。vmType、mountType、runtime、arch 建立後都不能改，disk 只能加大。portForwarder 預設 ssh。預設把 $HOME 以可寫方式掛進 VM。network.address 需要 root。
+  - 證據：https://raw.githubusercontent.com/abiosoft/colima/main/embedded/defaults/colima.yaml ; https://github.com/abiosoft/colima/blob/main/docs/FAQ.md
+  - 備註：brew 版 lima 在 macOS 不依賴 qemu，所以一定要加 --vm-type vz。
+- **verified**：Lima 從 v1.0 起，macOS 13.5 以上預設用 VZ；1.0 起 VZ 的預設掛載是 virtiofs（需 macOS 13 以上）。既有 instance 的 vmType 不能改。
+  - 證據：https://lima-vm.io/docs/config/vmtype/ ; https://lima-vm.io/docs/config/mount/
+- **verified**：Colima 磁碟：啟動時依 colima.yaml 自動擴大（0.5.3 起）；啟動時會釋放 VM 內未使用的空間（0.5.0 起）；也可手動執行 colima ssh -- sudo fstrim -a。
+  - 證據：https://github.com/abiosoft/colima/blob/main/docs/FAQ.md
+- **verified**：Colima 在 macOS 26 上的問題：#1577（macOS 26.5.1，「vz driver is running but host agent is not」，仍開啟，暫解是 colima stop -f）；#1490（自寫 LaunchAgent 用 KeepAlive=true 時 limactl 程序暴增到數千，改用 brew 的 SuccessfulExit 形式或 brew services 可避免）。
+  - 證據：https://github.com/abiosoft/colima/issues/1577 ; https://github.com/abiosoft/colima/issues/1490
+  - 備註：維護者都還沒回應。
+- **partial**：colima delete 有 --data（-d，預設 false）旗標，說明為「delete container runtime data」；但指令說明又寫「deletes everything」。不加 --data 時，named volume（drn_pgdata）是否保留並不明確。
+  - 證據：https://raw.githubusercontent.com/abiosoft/colima/main/cmd/delete.go
+  - 備註：不論結果如何，正式環境一律禁止 colima delete。TODO(需查證)
+- **verified**：Lima vz 的主磁碟以 DiskImageCachingModeCached＋DiskImageSynchronizationModeFsync 掛載。Apple 對 fsync 模式的說明是「system's best-effort synchronization」，full 模式才是「to the permanent storage」。macOS fsync(2) man page 也警告：硬碟斷電時資料可能只寫入一部分，資料庫應使用 F_FULLFSYNC。
+  - 證據：https://raw.githubusercontent.com/lima-vm/lima/master/pkg/driver/vz/vm_darwin.go ; https://developer.apple.com/documentation/virtualization/vzdiskimagesynchronizationmode ; man 2 fsync（本機 macOS 26.4）
+  - 備註：意思是：Postgres 在 VM 內呼叫 fsync，不等於主機端做了 F_FULLFSYNC，突然斷電時最後幾筆已提交的交易可能遺失。Docker Desktop 和 OrbStack 對應的設定還沒查。TODO(需查證)
+- **partial**：PostgreSQL 要求底層檔案系統具備 POSIX 語意，而且 fsync 必須真的寫到永久儲存。所以資料目錄應放在 VM 內 ext4 磁碟上的 named volume（drn_pgdata），不要用經過 virtiofs 的 bind mount。Lima 文件沒有說明 virtiofs 的 fsync 和擁有者語意。
+  - 證據：https://www.postgresql.org/docs/16/creating-cluster.html ; https://lima-vm.io/docs/config/mount/
+  - 備註：virtiofs 的持久性語意沒有官方文件。TODO(需查證)
+- **verified**：Apple container 最新為 1.5.0（09-29），只支援 macOS 26 和 Apple silicon，授權 Apache-2.0，pkg 安裝要管理員密碼。沒有 compose 子指令、沒有 --restart、沒有 healthcheck。版本號是產品版本而非語意化版本，偶有破壞性變更（例如 1.5.0 移除了 k8s start）。
+  - 證據：https://github.com/apple/container ; https://github.com/apple/container/blob/main/docs/command-reference.md ; https://github.com/apple/container/releases
+  - 備註：不符合本專案需求（compose、restart policy），排除。
+- **partial**：Docker 官方對 unless-stopped 的定義：「when the container is stopped (manually or otherwise), it isn't restarted even after Docker daemon restarts」；手動停止後，要等 daemon 重啟才會恢復 policy；容器要先跑滿 10 秒，policy 才生效。moby restartmanager 的判斷是 IsUnlessStopped() && !hasBeenManuallyStopped。
+  - 證據：https://docs.docker.com/engine/containers/start-containers-automatically/ ; https://docs.docker.com/reference/cli/docker/container/run/ ; https://fuchsia.googlesource.com/third_party/github.com/moby/moby/+/5e7229d32d88eedcaea8ab4f5c6de80884f0c420/restartmanager/restartmanager.go
+  - 備註：VM 正常關機或 daemon 關閉造成的停止，算不算文件中的「otherwise」，文件寫得模糊（看原始碼應該不算），必須用重啟演練實測。
+- **verified**：Compose 規格支援 mem_limit（要與 deploy.limits.memory 一致）、depends_on 長語法的 condition: service_healthy、healthcheck（interval、timeout、start_period、start_interval）、ports 的 "127.0.0.1:8001:8001" 寫法（不寫 IP 會綁到 0.0.0.0）。brew 的 docker-compose 是 5.6.0（Apache-2.0），要在 ~/.docker/config.json 加 cliPluginsExtraDirs 才能當 plugin 用。brew 的 docker formula 是 29.9.0，只有 CLI，沒有 daemon。
+  - 證據：https://docs.docker.com/reference/compose-file/services/ ; https://raw.githubusercontent.com/Homebrew/homebrew-core/main/Formula/d/docker-compose.rb ; https://raw.githubusercontent.com/Homebrew/homebrew-core/main/Formula/d/docker.rb
+  - 備註：Docker Desktop、OrbStack、Colima 都是 Docker Engine 加同一套 compose CLI，這部分行為相同。目前的 infra/docker-compose.prod.yml:34,43,53 已經用了 mem_limit。
+- **partial**：depends_on 的 service_healthy 只有在 Compose 啟動時才執行。官方啟動順序文件沒有涵蓋 daemon 重啟時的情況；社群回報主機重開後，engine 依 restart policy 拉起容器時不會照順序。
+  - 證據：https://docs.docker.com/compose/how-tos/startup-order/ ; https://forums.docker.com/t/docker-compose-project-does-not-start-properly-upon-reboot-service-restart/146857
+  - 備註：開機後要再執行一次 docker compose up -d，或讓應用程式自己重試。
+- **verified**：Apple 官方：「When you use FileVault, you are automatically logged into your user account after you unlock your disk.」關閉方式是設定 DisableFDEAutoLogin。本機查詢該鍵不存在，也就是在主控台解鎖 FileVault 後會自動登入，LaunchAgent 會啟動。
+  - 證據：https://support.apple.com/en-ph/102001 ; 本機 defaults read /Library/Preferences/com.apple.loginwindow DisableFDEAutoLogin 回報 does not exist
+  - 備註：解鎖之前，任何 LaunchAgent 或 LaunchDaemon 都不會執行（資料卷還鎖著）。這點由 Apple「重開後可經 SSH 解鎖」的說明推得，屬推論。
+- **verified**：fdesetup authrestart 可以讓下一次重開跳過 FileVault 解鎖，但只對那一次有效；要以 root 執行並輸入密碼；會在記憶體和 SMC 多存一份解鎖金鑰，降低保護。本機 fdesetup supportsauthrestart 回傳 true。
+  - 證據：man fdesetup（本機 macOS 26.4，authrestart 段落）；本機 fdesetup supportsauthrestart 輸出 true
+  - 備註：斷電後的冷開機還是要人工解鎖。
+- **verified**：pmset 的 sleep 是「system sleep timer (value in minutes, or 0 to disable)」，autorestart 是「automatic restart on power loss」。目前 sleep=1、autorestart=0，系統閒置 1 分鐘就睡眠，斷電後也不會自動開機。
+  - 證據：man pmset（本機 macOS 26.4）；任務提供的 pmset 觀測值
+  - 備註：這不是容器執行環境的範圍，但系統一睡眠，任何執行環境的 VM 都會停。
+- **verified**：brew pin 可以讓套件在 brew upgrade 時不被升級，但有 auto_updates 的 cask（Docker Desktop、OrbStack）會自己在 Homebrew 之外更新。沒設 HOMEBREW_NO_INSTALL_UPGRADE 時，brew install 會順便升級已安裝但過期的套件。
+  - 證據：本機 brew pin --help ; man brew（HOMEBREW_NO_INSTALL_UPGRADE 段落）
+- **verified**：本機規格：10 核（4 個效能核＋6 個節能核）、16 GiB RAM、macOS 26.4 (25E246)。colima、limactl、docker、orb、container 都還沒安裝。交接文件寫的「24 GB 以上 RAM」與實際不符。
+  - 證據：本機 sysctl hw.ncpu hw.perflevel0.physicalcpu hw.perflevel1.physicalcpu hw.memsize ; docs/handoff/CODE_HANDOFF.md:11
+
+## 安全威脅
+
+- **partial**：(a) 任何人都能呼叫 POST /auth/user/emailpass/register，建立沒有 actor 的 auth identity（每次都跑一次 scrypt、寫一筆資料）。POST /auth/:auth_provider/user 只能從 provider 的 user_metadata.email 建管理員，而 emailpass 建 identity 時不寫 user_metadata，所以無法自建管理員；但這條路由仍然對外。
+  - 證據：node_modules/.pnpm/@medusajs+medusa@2.21.2_*/node_modules/@medusajs/medusa/dist/api/auth/[actor_type]/[auth_provider]/register/route.js:6-40；.../api/auth/[auth_provider]/user/route.js:14-16,64-73；node_modules/.pnpm/@medusajs+auth-emailpass@2.21.2_*/node_modules/@medusajs/auth-emailpass/dist/services/emailpass.js:137-145
+  - 備註：TODO(需查證)：部署後實測 POST /auth/emailpass/user（帶 register token）應回 400「Email is required」。
+- **partial**：(a) Medusa 2.21.2 不設任何安全標頭（沒有 helmet、HSTS、X-Frame-Options、frame-ancestors），也沒有關閉 X-Powered-By。
+  - 證據：在 medusa、framework 的 dist 中 grep 'powered-by|x-frame-options|frame-ancestors|strict-transport|helmet' 沒有結果
+  - 備註：TODO(需查證)：上線後用 curl -I 確認實際回應標頭。
+- **verified**：(b) Medusa 2.21.2 核心沒有登入限速、鎖定或嘗試次數計數。在 medusa、framework、auth、auth-emailpass、utils 的 dist 中搜尋 rate limit／429，唯一命中是 Medusa Cloud 驗證的 jwks-rsa 設定。emailpass 的 authenticate 只比對密碼。
+  - 證據：node_modules/.pnpm/@medusajs+auth-emailpass@2.21.2_*/node_modules/@medusajs/auth-emailpass/dist/services/emailpass.js:52-91；node_modules/.pnpm/@medusajs+auth@2.21.2_*/node_modules/@medusajs/auth/dist/providers/medusa-cloud-auth.js:42-46
+- **verified**：(b) Cloudflare Free 方案的 rate limiting：1 條規則；比對欄位只有 Path 與 Verified Bot；以 IP 計數；週期 10 秒；封鎖時間 10 秒。
+  - 證據：https://developers.cloudflare.com/waf/rate-limiting-rules/（Last updated 2026-08-25）
+- **verified**：(b) Cloudflare Free 方案的 WAF 自訂規則 5 條，可用除了 Log 以外的動作，不支援 regex。Free Managed Ruleset 所有方案都有；Cloudflare Managed Ruleset 與 OWASP Core 要 Pro 以上。
+  - 證據：https://developers.cloudflare.com/waf/custom-rules/（2026-08-25）；https://developers.cloudflare.com/waf/managed-rules/（2026-09-08）
+- **verified**：(b) Cloudflare Access 免費方案 $0、上限 50 人。Bypass 政策不執行任何 Access 控制、也不記錄請求；Bypass 與 Service Auth 最先評估。同一根路徑設了多條規則時，較具體的路徑優先，沒有設規則的子路徑繼承上層。
+  - 證據：https://www.cloudflare.com/teams-access/；https://developers.cloudflare.com/cloudflare-one/access-controls/policies/（2026-10-01）；https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/（2026-04-17）
+- **verified**：(b)(c) Bot Fight Mode 不能用 WAF 自訂規則或 Page Rules 跳過，可能挑戰 API 流量，而且作用於整個 zone、不能限定路徑，會阻斷綠界的伺服器回呼。
+  - 證據：https://developers.cloudflare.com/bots/get-started/bot-fight-mode/（2026-08-03）
+- **verified**：(c) Cloudflare Tunnel 只需要對外連線（port 7844；443 只用在選用功能），可以封鎖所有入站流量。ingress 規則依主機名與路徑比對，path 支援 regex，最後必須有 catch-all 規則（例如 http_status:404）；cloudflared 轉發時不會刪減路徑。
+  - 證據：https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/tunnel-with-firewall/（2026-10-12）；https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/configuration-file/（2026-09-01）
+- **verified**：(c) 拿到 tunnel token 的人都能執行這條 tunnel，也就是可以加上自己的 connector 來接收流量（包括管理員登入請求）。token 外洩時的處理：Rotate token，再強制中斷所有既有連線。cfargotunnel.com 只代理同一帳號內的 DNS 記錄。
+  - 證據：https://developers.cloudflare.com/tunnel/advanced/tunnel-tokens/（2026-09-11）；https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/（2026-04-17）
+- **partial**：(c) 在 macOS 上執行 sudo cloudflared service install 會裝成 launch daemon（root、開機啟動、設定在 /etc/cloudflared）；不加 sudo 則裝成 launch agent（登入後才啟動）。日誌在 /Library/Logs/com.cloudflare.cloudflared.*.log。--token-file／TUNNEL_TOKEN_FILE 需要 2025.4.0 以上；logfile 不會自動輪替；metrics 預設綁 127.0.0.1:20241-20245，在容器內則是 0.0.0.0。
+  - 證據：https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/as-a-service/macos/（2026-04-17）；https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/run-parameters/（2026-04-17）；https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/monitor-tunnels/metrics/
+  - 備註：搜尋摘要提到 dashboard 安裝會把 token 寫進 /Library/LaunchDaemons/com.cloudflare.cloudflared.plist 的 ProgramArguments；官方 macOS 頁面沒有寫，TODO(需查證)：確認該 plist 的檔案權限。
+- **verified**：(c) Docker Desktop for Mac 的 Linux VM 是安全邊界，容器內的 root 不等於 Mac 的 root。實際的 socket 在 ~/.docker/run/docker.sock（/var/run/docker.sock 只是 symlink）。用 --user 安裝時，一台機器只能由一個使用者帳號執行。
+  - 證據：https://docs.docker.com/desktop/setup/install/mac-permission-requirements/
+- **verified**：(c) macOS 應用程式防火牆只管入站連線（可封鎖全部入站、依 app 允許或拒絕、stealth mode 不回應 ICMP 與掃描）；Tunnel 是出站連線，不受影響。
+  - 證據：https://support.apple.com/guide/security/firewall-security-in-macos-seca0e83763f/web（Published 2021-02-18）；https://support.apple.com/guide/mac-help/use-stealth-mode-to-keep-your-mac-more-secure-mh17133/mac
+- **partial**：(c) Medusa 設了 trust proxy 1，express-session 設 proxy:true；正式環境的 session cookie 是 Secure、SameSite=lax，所以要靠 X-Forwarded-Proto=https 才會送出 cookie。Cloudflare 邊緣會把 X-Forwarded-Proto 設成訪客實際使用的協定；建議 Medusa 端以 CF-Connecting-IP 判斷訪客 IP，X-Forwarded-For 是可以被串接的。
+  - 證據：node_modules/.pnpm/@medusajs+framework@2.21.2_*/node_modules/@medusajs/framework/dist/http/express-loader.js:30-35,55,83；https://developers.cloudflare.com/fundamentals/reference/http-headers/（2026-10-09）
+  - 備註：TODO(需查證)：cloudflared 是否把邊緣的 X-Forwarded-Proto 原樣轉給 origin；上線後檢查登入回應的 Set-Cookie 有沒有 Secure。
+- **verified**：(e) @medusajs/telemetry 在白名單中，可以執行 postinstall，執行期也會送出遙測資料；設 MEDUSA_DISABLE_TELEMETRY 可關閉。
+  - 證據：node_modules/.pnpm/@medusajs+telemetry@2.21.2/node_modules/@medusajs/telemetry/dist/store.js:21；.../telemetry/package.json:31
+- **verified**：(f) Medusa 核心在非開發模式會輸出 JSON 格式的 HTTP access log，內容有 client_ip、含查詢字串的完整路徑（例如管理員搜尋顧客時 ?q= 後面的 email 或電話）、referrer、user_agent。LOG_LEVEL 預設是 http，所以預設就會記錄；設成 info 就不記。5xx 錯誤會用 logger.error(err) 記下整個錯誤物件。
+  - 證據：node_modules/.pnpm/@medusajs+framework@2.21.2_*/node_modules/@medusajs/framework/dist/http/express-loader.js:108-145；node_modules/.pnpm/@medusajs+cli@2.21.2_*/node_modules/@medusajs/cli/dist/reporter/index.js:14,49-53；.../framework/dist/http/middlewares/error-handler.js:104,114
+  - 備註：資料庫唯一鍵衝突的錯誤訊息會不會帶出 email 值，TODO(需查證)。容器日誌輪替設定是 json-file 10m×3（docker-compose.prod.yml:21-23）。
+- **verified**：(g) Docker Desktop 對員工少於 250 人且年營收低於 1,000 萬美元的小型企業免費。
+  - 證據：https://docs.docker.com/subscription/desktop-license/
+- **verified**：綠界文件：ReturnURL 只支援 443 port 與合法網域、不可帶 port，未正確回 1|OK 會重送。賣家主機在國外、透過 CDN 服務時，ReturnURL 要設主機本身的網址，不要設 CDN 網址。綠界主機 IP 不固定，防火牆請以 FQDN 設定；入站來源網域是 postgate-stage.ecpay.com.tw（測試）與 postgate.ecpay.com.tw（正式）。
+  - 證據：https://developers.ecpay.com.tw/2878/；https://developers.ecpay.com.tw/8987/；https://developers.ecpay.com.tw/7400/
+  - 備註：走 Tunnel 時只有 Cloudflare（CDN）網址可用，需要用 stage 實測。綠界 IP 不固定，所以不建議在 Cloudflare 做 IP 白名單。
+- **verified**：阻擋項：在 Full setup 的 zone 上，Universal SSL 只涵蓋根網域與第一層子網域，dr.nature.smilelife.tw 與 api.dr.nature.smilelife.tw 這類多層子網域走代理時不會有有效憑證。要涵蓋的話需要 Advanced Certificate Manager（所有方案都是付費加購）；上傳自訂憑證只限 Business／Enterprise；Partial（CNAME）setup 也只限 Business／Enterprise。
+  - 證據：https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/limitations/（2026-10-09）；https://developers.cloudflare.com/ssl/edge-certificates/advanced-certificate-manager/（2026-08-14）；https://developers.cloudflare.com/ssl/edge-certificates/custom-certificates/（2026-09-10）；https://developers.cloudflare.com/dns/zone-setups/partial-setup/
+  - 備註：目前 api.dr.nature 是 DNS only 指到 VPS，暫時頁用的是 VPS 上的 Let's Encrypt 憑證，所以現在能用。Tunnel 的 CNAME 必須開代理，官方頁面沒有明寫，TODO(需查證)。
+- **verified**：Always Use HTTPS 在 Free 方案可用，但會套用到整個 zone 的所有主機名，包括 smilelife.tw 下的其他網站。
+  - 證據：https://developers.cloudflare.com/ssl/edge-certificates/additional-options/always-use-https/（2026-08-14）
+- **verified**：第一個管理員可以用 medusa user -e <email> --invite 建立：只會在輸出印一次邀請 token，指令列上不會出現密碼。
+  - 證據：node_modules/.pnpm/@medusajs+medusa@2.21.2_*/node_modules/@medusajs/medusa/dist/commands/user.js:11,37-51
+
+## 批評複查（rechecks）
+
+- Cloudflare Free 方案的 Universal SSL 只涵蓋 apex 和第一層子網域，api.dr.nature.smilelife.tw（第三層）開代理後拿不到有效憑證（cloudflare-tunnel、security-threats、repo-deploy-surface 都這樣寫）。
+  - 結果：確認。官方頁原文：deeper subdomains「are not covered and will not serve a valid certificate」，Free 方案只發 ECDSA 憑證。CNAME（partial）setup 雖然每個子網域都有自己的憑證，但這個 zone 的 NS 在 Cloudflare，屬於 full setup，不適用。所以 repo-deploy-surface 的 open question「是不是 partial setup」可以關閉。
+  - 證據：https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/limitations/ （Last updated Oct 9, 2026）；本機實測 openssl s_client smilelife.tw：SAN=DNS:smilelife.tw, DNS:*.smilelife.tw，issuer Google Trust Services WE1，到期 2027-01-09；dig NS smilelife.tw → elaine.ns.cloudflare.com, sonny.ns.cloudflare.com
+- Bot Fight Mode 作用於整個 zone，不能用 WAF custom rules 或 Page Rules 略過，可能會挑戰 API 流量；唯一的例外是 IP Access rule 先命中。
+  - 結果：確認。原文：「You cannot bypass or skip Bot Fight Mode using WAF custom rules or Page Rules」，Skip/Bypass/Allow「have no effect」，「may challenge API or mobile app traffic」，例外是「it will not trigger if an IP Access rule matches the request first」。頁面沒有提到 configuration rules。
+  - 證據：https://developers.cloudflare.com/bots/get-started/bot-fight-mode/ （Last updated Aug 3, 2026）
+- 開著 FileVault 時，在主控台解鎖磁碟後會自動登入該使用者，所以 LaunchAgent 會啟動（container-runtime 據此選了 LaunchAgent）。
+  - 結果：主控台解鎖這部分確認，但出處比較弱：這句話出自 Apple 一篇講 802.1X Login Window Mode 的支援文章（Published 2025-03-21），不是 FileVault 的專文。關閉方式是 DisableFDEAutoLogin。經 SSH 解鎖這條路沒有查到依據：本機 man page 只說解鎖後「SSH (and other enabled services) are fully available」，沒有提到圖形登入，仍是 TODO(需查證)，要實測。
+  - 證據：https://support.apple.com/en-us/102001 （標題 Use Login Window Mode for 802.1X authentication to a network；原文「When you use FileVault, you are automatically logged into your user account after you unlock your disk.」）；本機 man 7 apple_ssh_and_filevault（Darwin 1 July 2025）
+- 綠界要求 ReturnURL 指向主機本身、不要用 CDN 網址，所以 Tunnel 架構有風險（cloudflare-tunnel、repo-deploy-surface、security-threats）。
+  - 結果：部分成立，需要修正措辭。中文原文的條件是「若賣家使用CDN服務…也就是賣家的主機不在台灣、但透過CDN服務提供網站資料…ReturnURL請設定主機的URL…以避免主機無法接收付款結果」。這是針對海外主機加 CDN 的情境，而且屬於建議，不是禁令；英文頁 22701 則沒有限定情境。Tunnel 會把 POST 原樣轉到源站，風險在於 Cloudflare 的安全功能有沒有擋下，以及 ECPay 能不能接受 ECDSA 憑證。結論仍要用 stage 實測。另外，中文頁寫「只支援 TLS 1.2」，postgate 的 IP「不須另外申請，請自行使用ping指令查詢」。
+  - 證據：https://developers.ecpay.com.tw/2858/ ；https://developers.ecpay.com.tw/8987/ ；https://developers.ecpay.com.tw/22701/ （英文 Special Note）；dig postgate-stage.ecpay.com.tw → 175.99.72.67、postgate.ecpay.com.tw → 175.99.72.1（2026-10-13）
+
+## 補查的缺口
+
+- [1] 在 arm64 的 Mac mini 上能不能原生建置和執行：Dockerfile 釘的 node digest 是不是多架構，postgres、redis、cloudflared 有沒有 arm64（repo-deploy-surface 列為 unverified，沒有人解決）
+  - 發現：可以。Dockerfile 釘的 sha256:cd7807…ac8 是 node:22.22.3-alpine3.22 的 index digest，裡面有 linux/arm64/v8（manifest sha256:9e027f78…372d），所以 build 和 runtime 都能在 Mac mini 上原生跑；這個 tag 最後更新是 2026-05-14。postgres:16-alpine（index sha256:721873c3…80ea，2026-09-21）、postgres:16（sha256:ca0bd484…641d，2026-10-07）、redis:7-alpine（sha256:858f009f…3499，2026-09-21）、cloudflare/cloudflared:2026.10.0（sha256:9b49eed8…2b07，2026-10-05）都有 linux/arm64。這些 index digest 可以拿來釘 compose 映像（CODE 釘之前要再查一次）。
+  - 證據：https://hub.docker.com/v2/repositories/library/node/tags/22.22.3-alpine3.22 ；…/library/postgres/tags/16-alpine ；…/library/postgres/tags/16 ；…/library/redis/tags/7-alpine ；https://hub.docker.com/v2/repositories/cloudflare/cloudflared/tags/2026.10.0 （2026-10-13 查詢）；infra/backend.Dockerfile:9,20
+- [3] 排程的 cron 用哪個時區（medusa-production、repo-deploy-surface 都列為 TODO；MVP 要求排程，備份時間也要避開排程）
+  - 發現：cron 用的是 worker 程序的本地時區。Medusa 2.21.2 的 workflow-engine-redis 只把 cron 當 repeat.pattern 傳給 BullMQ，沒有傳 tz。BullMQ 5.13.0 呼叫 cron-parser 4.9.0 的 parseExpression 時也沒有 tz，cron-parser 沒有 tz 就用 luxon 的本地時間（DateTime.local）。repo 的 Dockerfile 只設了 NODE_ENV，沒有設 TZ；docs/ENV.md 白名單也沒有 TZ。所以只要容器不設 TZ，就是 UTC（node 官方映像本身不設 TZ，這點是推論）。程式註解假設 membership-daily '0 19 * * *' 是台北 03:00、ecpay-daily-reconcile '30 2 * * *' 是台北 10:30，這個前提成立。規則：不得在 .env 或 compose 加 TZ。驗收時可在 drn-worker 裡跑 `node -e 'console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)'`，預期輸出 UTC。
+  - 證據：node_modules/.pnpm/@medusajs+workflow-engine-redis@2.21.2_*/node_modules/@medusajs/workflow-engine-redis/dist/utils/workflow-orchestrator-storage.js:504-524；node_modules/.pnpm/bullmq@5.13.0/node_modules/bullmq/dist/cjs/classes/repeat.js:188-191；node_modules/.pnpm/cron-parser@4.9.0/node_modules/cron-parser/lib/expression.js:28-29、lib/date.js:225-232；infra/backend.Dockerfile:21
+- [附加] backup-monitoring 的 TODO：docker exec 會不會把 pg_dump 的離場碼原樣傳回
+  - 發現：會。官方文件沒寫，但 docker CLI 原始碼的 getExecExitStatus 會讀取 exec 的 ExitCode，非 0 時回傳 cli.StatusError{StatusCode}；daemon 連不上時回傳 -1。所以備份腳本可以拿 docker exec 的離場碼當第一道判斷，原本規劃的目錄數和檔案大小檢查留作第二道。看的是 master 分支，29.9.0 的 tag 沒有逐行比對（partial）。
+  - 證據：https://raw.githubusercontent.com/docker/cli/master/cli/command/container/exec.go:204-216；https://docs.docker.com/reference/cli/docker/container/exec/ （文件沒有寫明）
+- [附加] compose 資料卷名稱會不會符合 drn_pgdata 的命名規則
+  - 發現：compose 檔沒寫 `name:` 的話，資料卷會自動加上專案名稱前綴，變成 drn_drn_pgdata、drn_drn_redisdata、drn_drn_uploads，和 CLAUDE.md 的命名表不一致。每個頂層 volume 都要寫 `name: drn_pgdata` 這類名稱；網路已經寫了 `name: drn_net`。
+  - 證據：https://docs.docker.com/reference/compose-file/volumes/ （「The name is used as is and is not scoped with the stack name」；external 範例是 {project_name}_db-data）；infra/docker-compose.prod.yml:8,63-65
+
+<!-- kept 198 findings, dropped 54 host-specific ones -->

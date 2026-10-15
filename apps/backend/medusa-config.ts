@@ -1,7 +1,10 @@
-import { readFileSync } from "fs"
-import { ContainerRegistrationKeys, MedusaError, Modules, loadEnv, defineConfig } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules, loadEnv, defineConfig } from "@medusajs/framework/utils"
 import { authProvidersFromEnv } from "./src/lib/auth/config"
+import { databaseDriverOptionsFromEnv } from "./src/lib/database/config"
 import { emailDeliveryFromEnv } from "./src/lib/email/config"
+import { fileModuleFromEnv } from "./src/lib/file/config"
+import { assertLineOaEnv } from "./src/lib/line/config"
+import { assertRedisForProduction } from "./src/lib/runtime/redis-guard"
 import {
   ecpayInvoiceConfigured,
   ecpayInvoiceOptionsFromEnv,
@@ -14,32 +17,11 @@ loadEnv(process.env.NODE_ENV || "development", process.cwd())
 // Variable names must stay within docs/ENV.md (checked by scripts/check-env-names.mjs).
 // Module options follow the Medusa deployment guide (docs.medusajs.com/learn/deployment/general),
 // verified against Medusa 2.21.2 on 2026-10-13.
-// Non-local databases (Supabase in production) must use TLS with certificate
-// verification. Medusa 2.21.2 defaults to ssl=false (utils create-pg-connection), so the
-// CA must be supplied explicitly; startup fails closed if it is missing.
+// A database reached over a network must use TLS with certificate verification; startup fails
+// closed without the CA. The machine itself and the compose-internal drn-postgres are exempt, and
+// the pg host-override query parameters are refused (src/lib/database/config.ts, D8).
 const databaseUrl = process.env.DATABASE_URL
-const databaseHost = (() => {
-  try {
-    return databaseUrl ? new URL(databaseUrl).hostname : ""
-  } catch {
-    return ""
-  }
-})()
-const isLocalDatabase = ["", "localhost", "127.0.0.1", "::1"].includes(databaseHost)
-const databaseDriverOptions = isLocalDatabase
-  ? undefined
-  : (() => {
-    const caPath = process.env.DATABASE_SSL_CA_PATH
-    if (!caPath) {
-      throw new MedusaError(
-        MedusaError.Types.INVALID_DATA,
-        `DATABASE_SSL_CA_PATH is required for non-local database host ${databaseHost}`
-      )
-    }
-    return {
-      connection: { ssl: { ca: readFileSync(caPath, "utf8"), rejectUnauthorized: true } },
-    }
-  })()
+const databaseDriverOptions = databaseDriverOptionsFromEnv()
 
 const redisUrl = process.env.REDIS_URL
 const workerMode = (process.env.MEDUSA_WORKER_MODE || "shared") as
@@ -48,7 +30,9 @@ const workerMode = (process.env.MEDUSA_WORKER_MODE || "shared") as
   | "server"
 
 // Without REDIS_URL (local dev, unit tests) Medusa falls back to its in-memory
-// event bus, workflow engine and locking. Production always sets REDIS_URL.
+// event bus, workflow engine and locking. Production refuses to boot without it (P12-24):
+// server and worker are separate processes and share events only through Redis.
+assertRedisForProduction()
 const redisModules = redisUrl
   ? [
     {
@@ -107,6 +91,8 @@ if (ecpayInvoiceConfigured()) {
 }
 // E-mail delivery (verification codes, P5-01 review auth-2): a bad EMAIL_PROVIDER stops the boot.
 emailDeliveryFromEnv()
+// [LINE-05] LINE OA: a test stub host (LINE_OA_API_BASE_URL) stops a production boot.
+assertLineOaEnv()
 
 const fulfillmentModules = process.env.ECPAY_LOGISTICS_MERCHANT_ID
   ? [
@@ -127,6 +113,10 @@ const fulfillmentModules = process.env.ECPAY_LOGISTICS_MERCHANT_ID
 // state lives in the cache module (Medusa 2.21.2 auth-module setState/getState), hence the
 // explicit dependency; the default in-memory cache is enough for ONE server process (state
 // lasts 20 minutes and is lost on restart; several server replicas would need cache-redis).
+// Uploads (P12-15): local provider under <cwd>/static with a public URL derived from
+// MEDUSA_BACKEND_URL; production refuses to boot without it.
+const fileModules = fileModuleFromEnv()
+
 const auth = authProvidersFromEnv()
 const authModule = {
   resolve: "@medusajs/medusa/auth",
@@ -158,5 +148,16 @@ module.exports = defineConfig({
   // registered, so the flag alone leaves the module disabled; the explicit module entry
   // below replaces the default (disabled) one. Verified in @medusajs/framework 2.21.2.
   featureFlags: { rbac: true },
-  modules: [...redisModules, { resolve: "@medusajs/medusa/rbac" }, authModule, ...paymentModules, ...fulfillmentModules],
+  // [P6-01] Blog (pillar / cluster posts, categories, tags): src/modules/blog.
+  // [P9-01] Affiliate partners and stores: src/modules/affiliate.
+  modules: [
+    ...redisModules,
+    { resolve: "@medusajs/medusa/rbac" },
+    authModule,
+    ...fileModules,
+    ...paymentModules,
+    ...fulfillmentModules,
+    { resolve: "./src/modules/blog" },
+    { resolve: "./src/modules/affiliate" },
+  ],
 })

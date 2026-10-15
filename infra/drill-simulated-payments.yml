@@ -1,0 +1,12 @@
+# [P12-02] Override layered on docker-compose.prod.yml ONLY for an ATM/CVS sandbox drill
+# (drn-drill.sh simpay on): stage-only flag that makes the vendor back-office "simulate payment"
+# count as paid. Never used by drn.compose-up or drn-maint end, so a reboot or a maintenance end
+# always rebuilds the containers without it. Both containers read it (the provider in the worker
+# re-verifies notices too).
+services:
+  drn-backend:
+    environment:
+      ECPAY_ACCEPT_SIMULATED_PAYMENTS: "true"
+  drn-worker:
+    environment:
+      ECPAY_ACCEPT_SIMULATED_PAYMENTS: "true"

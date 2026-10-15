@@ -35,3 +35,9 @@ test-results/
 **/.env.local
 **/uploads/
 *.tsbuildinfo
+
+# Storefront build output and any basic-auth password file
+apps/storefront/.next/
+apps/storefront/out/
+apps/storefront/next-env.d.ts
+*.htpasswd

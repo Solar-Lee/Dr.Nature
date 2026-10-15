@@ -12,7 +12,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const RULES_PATH = join(ROOT, "docs/compliance/claims.json");
-const DEFAULT_TARGETS = ["content", "apps/storefront/src"];
+// Where customer-facing copy lives (CC-07: the storefront has no src/; its copy is in lib/, content/
+// and app/). A missing path is skipped silently by lintPaths, so a test asserts each one exists.
+export const DEFAULT_TARGETS = ["content", "apps/storefront/lib", "apps/storefront/content", "apps/storefront/app"];
 const TEXT_EXT = new Set([".md", ".mdx", ".json", ".ts", ".tsx", ".js", ".jsx", ".html", ".txt", ".yml", ".yaml"]);
 const SKIP_DIRS = new Set(["node_modules", ".next", ".medusa", "dist", "coverage", "__tests__", "test", "tests"]);
 

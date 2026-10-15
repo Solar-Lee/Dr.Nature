@@ -8,6 +8,7 @@
 !apps/backend
 apps/backend/node_modules
 apps/backend/.medusa
+apps/backend/static
 apps/backend/integration-tests
 **/.env*
 **/*.key

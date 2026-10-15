@@ -1,0 +1,795 @@
+{
+  "$comment": "Preview storefront copy (2026-10-14). Generated from the research workflow wf_d39f43b2-aef; every section keeps its sources (file:line). Do not edit display text without updating sources; run claims-lint on the built HTML.",
+  "slogan": "少說一點，說準一點。",
+  "slogan_en": "Say less. Say it exactly.",
+  "pages": {
+    "_site": {
+      "title": "Dr.Nature 預覽版",
+      "meta_description": "Dr.Nature 官網預覽版，內容與品名尚未定案，非正式銷售。",
+      "sections": {
+        "notice": {
+          "heading": "預覽版提示（全站固定）",
+          "body": "預覽版：內容與品名尚未定案，非正式銷售。",
+          "sources": [
+            "orchestrator task text: site-wide notice wording (not a repo file)"
+          ]
+        },
+        "nav": {
+          "heading": "導覽",
+          "body": "首頁｜品牌故事｜產品｜研發長｜常見問題｜隱私說明｜使用條款",
+          "sources": [
+            "orchestrator task text: page list (not a repo file); drop 研發長 if page rd is withheld (see things_not_written)"
+          ]
+        },
+        "buy-button": {
+          "heading": "購買按鈕文字",
+          "body": "即將開賣",
+          "sources": [
+            "orchestrator task text: showcase only, buy buttons say 即將開賣 (not a repo file)"
+          ]
+        },
+        "footer": {
+          "heading": "頁尾",
+          "body": "本產品為一般食品，非藥品，不具醫療效能。\n© 2026 Dr.Nature。本網站為預覽版，請勿轉載。",
+          "sources": [
+            "docs/compliance/claims.md:40",
+            "content/brand/story.md:201"
+          ]
+        }
+      }
+    },
+    "home": {
+      "title": "Dr.Nature｜少說一點，說準一點。",
+      "meta_description": "Dr.Nature 說的每一句話，都照一本筆記的規矩寫。第一個系列是三款益生菌，每瓶 60 顆膠囊。",
+      "sections": {
+        "hero": {
+          "heading": "少說一點，說準一點。",
+          "body": "Say less. Say it exactly.\nDr.Nature 說的每一句話，都照一本筆記的規矩寫。",
+          "sources": [
+            "content/brand/slogan.md:36-37 (recommended main slogan)",
+            "content/brand/slogan.md:52 (main line for 官網首屏)",
+            "content/brand/slogan.md:58 (zh above en, en not split)",
+            "content/brand/story.md:148"
+          ]
+        },
+        "notebook": {
+          "heading": "寫下看得到的",
+          "body": "規矩不多：寫下看得到的，不寫希望看到的；還沒確認的，標上「待確認」，先空著，不猜。寫錯了，就照實更正。官網、標籤，和我們交給團購主的文字，都照同一本筆記寫。\n連結：讀品牌故事",
+          "sources": [
+            "content/brand/story.md:150",
+            "content/brand/story.md:309 (fallback used for the 〔需 Aki 決定：公開更正紀錄〕 sentence)"
+          ]
+        },
+        "series": {
+          "heading": "第一個系列：三款益生菌",
+          "body": "每瓶 60 顆膠囊，效期兩年，官網售價 NT$1,150。三款都是一般食品，不是藥品。每一款的說明，寫在它自己的頁面上，一款一頁，不加形容詞。\n連結：看三款產品",
+          "sources": [
+            "content/brand/story.md:152 (first two sentences only)",
+            "content/brand/story.md:154",
+            "content/products/catalog.json:14-16",
+            "content/products/catalog.json:25-27",
+            "content/products/catalog.json:36-38"
+          ]
+        },
+        "dr-in-name": {
+          "heading": "名字裡的 Dr.",
+          "body": "名字裡有 Dr.，但沒有醫師替這些產品背書。",
+          "sources": [
+            "content/brand/story.md:154"
+          ]
+        },
+        "pillars": {
+          "heading": "三個精神支柱",
+          "body": "記錄：寫下看得到的，不寫希望看到的；還沒確認的，標「待確認」。\n克制：少說一句，讓每一句都站得住。\n可轉述：寫給替家人挑選、替朋友開團的人：照原話轉述就夠了，不必多加一句。",
+          "sources": [
+            "content/brand/story.md:180-182"
+          ]
+        },
+        "repeat": {
+          "heading": "照原話說就夠了",
+          "body": "這些話，寫給替家人挑選的人，也寫給替朋友開團的人。轉述的時候，照原話說就夠了，不必多加一句。",
+          "sources": [
+            "content/brand/story.md:158"
+          ]
+        }
+      }
+    },
+    "story": {
+      "title": "品牌故事｜Dr.Nature",
+      "meta_description": "寫下看得到的，不寫希望看到的；還沒確認的，標上「待確認」。這是 Dr.Nature 的品牌故事。",
+      "sections": {
+        "story-open": {
+          "heading": "照筆記的規矩寫",
+          "body": "Dr.Nature 說的每一句話，都照一本筆記的規矩寫。\n規矩不多：寫下看得到的，不寫希望看到的；還沒確認的，標上「待確認」，先空著，不猜。寫錯了，就照實更正。官網、標籤，和我們交給團購主的文字，都照同一本筆記寫。",
+          "sources": [
+            "content/brand/story.md:146",
+            "content/brand/story.md:148",
+            "content/brand/story.md:150",
+            "content/brand/story.md:309 (fallback for 〔需 Aki 決定〕)"
+          ]
+        },
+        "series": {
+          "heading": "第一個系列",
+          "body": "第一個系列是三款益生菌。每瓶 60 顆膠囊，效期兩年，官網售價 NT$1,150。",
+          "sources": [
+            "content/brand/story.md:152 (third sentence dropped: 〔菌種名稱、菌數：待 U-08〕)",
+            "content/products/catalog.json:14-16"
+          ]
+        },
+        "one-page": {
+          "heading": "一款一頁",
+          "body": "三款都是一般食品，不是藥品。每一款的說明，寫在它自己的頁面上，一款一頁，不加形容詞。名字裡有 Dr.，但沒有醫師替這些產品背書。",
+          "sources": [
+            "content/brand/story.md:154"
+          ]
+        },
+        "audience": {
+          "heading": "寫給誰",
+          "body": "這些話，寫給替家人挑選的人，也寫給替朋友開團的人。轉述的時候，照原話說就夠了，不必多加一句。",
+          "sources": [
+            "content/brand/story.md:158"
+          ]
+        },
+        "pillars": {
+          "heading": "三個精神支柱",
+          "body": "記錄 Record：寫下看得到的，不寫希望看到的；還沒確認的，標「待確認」。\n克制 Restraint：少說一句，讓每一句都站得住。\n可轉述 Safe to Repeat：寫給替家人挑選、替朋友開團的人：照原話轉述就夠了，不必多加一句。",
+          "sources": [
+            "content/brand/story.md:178-182"
+          ]
+        }
+      }
+    },
+    "products": {
+      "title": "產品｜Dr.Nature",
+      "meta_description": "Dr.Nature 第一個系列是三款益生菌，每瓶 60 顆膠囊，效期兩年，官網售價 NT$1,150。品名待定。",
+      "sections": {
+        "intro": {
+          "heading": "產品",
+          "body": "第一個系列是三款益生菌。每瓶 60 顆膠囊，效期兩年，官網售價 NT$1,150。",
+          "sources": [
+            "content/brand/story.md:152",
+            "content/products/catalog.json:14-16"
+          ]
+        },
+        "names": {
+          "heading": "品名還沒定案",
+          "body": "三款的品名：01 日日順、02 晶亮、03 安和。正式標示仍在定稿。",
+          "sources": [
+            "content/products/catalog.json:2",
+            "content/products/catalog.json:12",
+            "content/products/catalog.json:23",
+            "content/products/catalog.json:34",
+            "docs/product/naming-proposal.md:1"
+          ]
+        },
+        "list": {
+          "heading": "三款產品",
+          "body": "Dr.Nature 益生菌 A（名稱待定）｜60 顆膠囊｜效期兩年｜NT$1,150\nDr.Nature 益生菌 B（名稱待定）｜60 顆膠囊｜效期兩年｜NT$1,150\nDr.Nature 益生菌 C（名稱待定）｜60 顆膠囊｜效期兩年｜NT$1,150",
+          "sources": [
+            "content/products/catalog.json:9-39"
+          ]
+        },
+        "general-food": {
+          "heading": "一般食品，一款一頁",
+          "body": "三款都是一般食品，不是藥品。每一款的說明，寫在它自己的頁面上，一款一頁，不加形容詞。",
+          "sources": [
+            "content/brand/story.md:154",
+            "content/brand/story.md:192 (no function sentences on brand-level or index pages)"
+          ]
+        },
+        "pending": {
+          "heading": "還沒確認的，先空著",
+          "body": "菌種名稱、每顆含菌數、建議食用量、原產地與製造廠等標示項目，資料確認後才補上。在那之前，標示表上寫「待確認」，不先填入推測值。",
+          "sources": [
+            "content/brand/story.md:150",
+            "content/brand/story.md:191",
+            "content/brand/story.md:328-329",
+            "docs/DEV_PLAN.md:108-109"
+          ]
+        },
+        "disclaimer": {
+          "heading": "免責聲明",
+          "body": "本產品為一般食品，非藥品，不具醫療效能。\n本產品非健康食品，未經健康食品查驗登記。",
+          "sources": [
+            "docs/compliance/claims.md:40-41"
+          ]
+        }
+      }
+    },
+    "products/probiotic-a": {
+      "title": "Dr.Nature 益生菌 A（名稱待定）｜Dr.Nature",
+      "meta_description": "Dr.Nature 益生菌 A（名稱待定），60 顆膠囊，效期兩年，官網售價 NT$1,150。幫助消化，使排便順暢。",
+      "sections": {
+        "intro": {
+          "heading": "Dr.Nature 益生菌 A（名稱待定）",
+          "body": "60 顆膠囊｜效期兩年｜官網售價 NT$1,150\n幫助消化，使排便順暢。",
+          "sources": [
+            "content/brand/story.md:238-240 (SKU-A product-page example)",
+            "content/brand/story.md:220",
+            "docs/compliance/claims.md:15",
+            "docs/research/regulatory.md:16 (附件一 [2], URL at regulatory.md:81)",
+            "docs/product/naming-proposal.md:15-16",
+            "content/products/catalog.json:9-16"
+          ]
+        },
+        "label": {
+          "heading": "標示表",
+          "body": "先讀標籤，再決定。\n品名：Dr.Nature 益生菌 A（名稱待定）\nSKU：DN-PB-01-060C\n系列：益生菌系列\n內容量：60 顆膠囊\n效期：24 個月\n官網售價：NT$1,150",
+          "sources": [
+            "content/brand/slogan.md:45",
+            "content/brand/slogan.md:53 (subline goes above the product-page label table)",
+            "content/products/catalog.json:5",
+            "content/products/catalog.json:9-16"
+          ]
+        },
+        "pending": {
+          "heading": "待確認項目",
+          "body": "正式品名：待確認\n菌種名稱（中英文）：待確認\n菌株編號：待確認\n每顆含菌數：待確認\n建議食用量：待確認\n保存方式：待確認\n內容物與食品添加物：待確認\n營養標示：待確認\n素食標示：待確認\n原產地：待確認\n製造廠：待確認\n其他法定標示項目：待確認\n國際條碼（EAN-13）：待確認",
+          "sources": [
+            "docs/DEV_PLAN.md:108-109",
+            "content/brand/story.md:328-329",
+            "docs/research/regulatory.md:39-50",
+            "docs/compliance/claims.md:36",
+            "content/products/catalog.json:12",
+            "content/products/catalog.json:17"
+          ]
+        },
+        "disclaimer": {
+          "heading": "免責聲明",
+          "body": "本產品為一般食品，非藥品，不具醫療效能。\n本產品非健康食品，未經健康食品查驗登記。",
+          "sources": [
+            "docs/compliance/claims.md:40-41",
+            "content/brand/story.md:198"
+          ]
+        }
+      }
+    },
+    "products/probiotic-b": {
+      "title": "Dr.Nature 益生菌 B（名稱待定）｜Dr.Nature",
+      "meta_description": "Dr.Nature 益生菌 B（名稱待定），60 顆膠囊，效期兩年，官網售價 NT$1,150。說明待確認。",
+      "sections": {
+        "intro": {
+          "heading": "Dr.Nature 益生菌 B（名稱待定）",
+          "body": "60 顆膠囊｜效期兩年｜官網售價 NT$1,150\n這一款的說明，等品名與定位確認後再寫上。在那之前，先空著，不猜。",
+          "sources": [
+            "content/brand/story.md:222 (SKU-B function wording waits for G2 route)",
+            "content/brand/story.md:323",
+            "docs/product/naming-proposal.md:20-23",
+            "content/brand/story.md:150",
+            "content/products/catalog.json:20-27"
+          ]
+        },
+        "label": {
+          "heading": "標示表",
+          "body": "先讀標籤，再決定。\n品名：Dr.Nature 益生菌 B（名稱待定）\nSKU：DN-PB-02-060C\n系列：益生菌系列\n內容量：60 顆膠囊\n效期：24 個月\n官網售價：NT$1,150",
+          "sources": [
+            "content/brand/slogan.md:45",
+            "content/brand/slogan.md:53",
+            "content/products/catalog.json:5",
+            "content/products/catalog.json:20-27"
+          ]
+        },
+        "pending": {
+          "heading": "待確認項目",
+          "body": "產品說明與定位：待確認\n正式品名：待確認\n菌種名稱（中英文）：待確認\n菌株編號：待確認\n每顆含菌數：待確認\n建議食用量：待確認\n保存方式：待確認\n內容物與食品添加物：待確認\n營養標示：待確認\n素食標示：待確認\n原產地：待確認\n製造廠：待確認\n其他法定標示項目：待確認\n國際條碼（EAN-13）：待確認",
+          "sources": [
+            "docs/product/naming-proposal.md:20-23",
+            "docs/DEV_PLAN.md:108-109",
+            "content/brand/story.md:328-329",
+            "docs/research/regulatory.md:39-50",
+            "content/products/catalog.json:23",
+            "content/products/catalog.json:28"
+          ]
+        },
+        "disclaimer": {
+          "heading": "免責聲明",
+          "body": "本產品為一般食品，非藥品，不具醫療效能。\n本產品非健康食品，未經健康食品查驗登記。",
+          "sources": [
+            "docs/compliance/claims.md:40-41",
+            "content/brand/story.md:198"
+          ]
+        }
+      }
+    },
+    "products/probiotic-c": {
+      "title": "Dr.Nature 益生菌 C（名稱待定）｜Dr.Nature",
+      "meta_description": "Dr.Nature 益生菌 C（名稱待定），60 顆膠囊，效期兩年，官網售價 NT$1,150。調整體質。產前產後或病後之補養。",
+      "sections": {
+        "intro": {
+          "heading": "Dr.Nature 益生菌 C（名稱待定）",
+          "body": "60 顆膠囊｜效期兩年｜官網售價 NT$1,150\n調整體質。產前產後或病後之補養。",
+          "sources": [
+            "content/brand/story.md:244-245 (SKU-C product-page example)",
+            "content/brand/story.md:221",
+            "docs/compliance/claims.md:16-17",
+            "docs/research/regulatory.md:18",
+            "docs/research/regulatory.md:73 (附件一 [2], URL at regulatory.md:81)",
+            "docs/product/naming-proposal.md:30-31",
+            "content/products/catalog.json:31-38"
+          ]
+        },
+        "label": {
+          "heading": "標示表",
+          "body": "先讀標籤，再決定。\n品名：Dr.Nature 益生菌 C（名稱待定）\nSKU：DN-PB-03-060C\n系列：益生菌系列\n內容量：60 顆膠囊\n效期：24 個月\n官網售價：NT$1,150",
+          "sources": [
+            "content/brand/slogan.md:45",
+            "content/brand/slogan.md:53",
+            "content/products/catalog.json:5",
+            "content/products/catalog.json:31-38"
+          ]
+        },
+        "pending": {
+          "heading": "待確認項目",
+          "body": "正式品名：待確認\n菌種名稱（中英文）：待確認\n菌株編號：待確認\n每顆含菌數：待確認\n建議食用量：待確認\n適用年齡：待確認，以標示為準\n膠囊能否打開：待確認，以標示為準\n保存方式：待確認\n內容物與食品添加物：待確認\n營養標示：待確認\n素食標示：待確認\n原產地：待確認\n製造廠：待確認\n其他法定標示項目：待確認\n國際條碼（EAN-13）：待確認",
+          "sources": [
+            "content/brand/story.md:197",
+            "content/brand/story.md:246",
+            "docs/product/naming-proposal.md:40",
+            "docs/DEV_PLAN.md:108-109",
+            "content/brand/story.md:328-329",
+            "docs/research/regulatory.md:39-50",
+            "content/products/catalog.json:34",
+            "content/products/catalog.json:39"
+          ]
+        },
+        "disclaimer": {
+          "heading": "免責聲明",
+          "body": "本產品為一般食品，非藥品，不具醫療效能。\n本產品非健康食品，未經健康食品查驗登記。",
+          "sources": [
+            "docs/compliance/claims.md:40-41",
+            "content/brand/story.md:198"
+          ]
+        }
+      }
+    },
+    "rd": {
+      "title": "研發長｜Dr.Nature",
+      "meta_description": "Dr.Nature 的研發長是鄭安生博士，2013 年取得臺灣大學園藝暨景觀學系博士學位。",
+      "sections": {
+        "rd-lead": {
+          "heading": "研發長",
+          "body": "Dr.Nature 的研發長是鄭安生博士。他在 2013 年取得臺灣大學園藝暨景觀學系博士學位，也為姊妹品牌自然集萃 Natrees 研發；兩個品牌出自同一個團隊，品類不同。",
+          "sources": [
+            "content/brand/story.md:156 (marked 〔需 U-12 同意〕)",
+            "docs/research/cro.md:13-15 (已驗證: thesis [28], URL at cro.md:71)",
+            "/Users/aki/Desktop/Dr.nature/1. 品牌資訊/Dr.nature 品牌資訊總覽 (redacted).md:9",
+            "/Users/aki/Desktop/Dr.nature/1. 品牌資訊/Dr.nature 品牌資訊總覽 (redacted).md:81"
+          ]
+        },
+        "disclosure": {
+          "heading": "揭露",
+          "body": "鄭安生博士是 Dr.Nature 的研發長，與本品牌有利益關係。本頁只寫已查證的學位、系所與年份。",
+          "sources": [
+            "content/brand/story.md:196",
+            "docs/research/regulatory.md:61 ([21], URL at regulatory.md:100)",
+            "docs/compliance/claims.md:30",
+            "docs/research/cro.md:3"
+          ]
+        }
+      }
+    },
+    "faq": {
+      "title": "常見問題｜Dr.Nature",
+      "meta_description": "Dr.Nature 預覽版常見問題：產品類別、規格與價格、標示與待確認項目、購買方式。",
+      "sections": {
+        "intro": {
+          "heading": "常見問題",
+          "body": "以下回答只寫已確認的內容；還沒確認的，寫「待確認」。（問答內容見 faq 欄位）",
+          "sources": [
+            "content/brand/story.md:150",
+            "content/brand/story.md:191"
+          ]
+        }
+      }
+    },
+    "privacy": {
+      "title": "隱私說明｜Dr.Nature",
+      "meta_description": "除了進入本站的密碼，本預覽版不要求輸入任何個人資料，也不使用追蹤用 Cookie。",
+      "sections": {
+        "scope": {
+          "heading": "隱私說明（預覽版）",
+          "body": "本網站是 Dr.Nature 官網的預覽版，只供受邀的人瀏覽。",
+          "sources": [
+            "orchestrator task text: password-protected client preview (not a repo file)"
+          ]
+        },
+        "no-personal-data": {
+          "heading": "不蒐集個人資料",
+          "body": "除了進入本站的密碼欄位，本預覽版不蒐集任何個人資料。購物車、結帳與會員功能尚未開放：頁面上的購物車按鈕只連到會員頁，會員登入與電子報欄位都已停用，不會送出任何資料。本站也沒有留言功能，不會要求你輸入姓名、電話、Email 或任何其他個人資料。",
+          "sources": [
+            "orchestrator task text: showcase only, no cart/checkout (must match the build)",
+            "apps/storefront/app/components/Nav.tsx:20-26 (購物車 0 control links to /account/)",
+            "apps/storefront/app/components/Blocks.tsx:102-113 (newsletter input and button disabled)",
+            "apps/storefront/app/account/page.tsx:18-24 (login input disabled, button aria-disabled)"
+          ]
+        },
+        "cookies": {
+          "heading": "Cookie 與追蹤",
+          "body": "本預覽版不使用分析、廣告或追蹤用的 Cookie，也不載入第三方追蹤程式。進入本站需要密碼；密碼驗證只用來限制瀏覽對象，不用來辨識你是誰。\n字型由 Google Fonts 載入；開啟本站時，你的瀏覽器會向 Google 的伺服器請求字型檔。",
+          "sources": [
+            "orchestrator task text: no cookies (must match the actual password mechanism; see things_not_written)",
+            "apps/storefront/app/layout.tsx (Google Fonts <link>; build-dependent sentence)"
+          ]
+        },
+        "logs": {
+          "heading": "連線紀錄",
+          "body": "網站主機在一般運作下，可能留有連線紀錄，例如 IP 位址與瀏覽時間。這些紀錄只用於維持網站運作與安全，不用於行銷。",
+          "sources": [
+            "implementation fact to verify against the host (no repo source)"
+          ]
+        },
+        "formal-policy": {
+          "heading": "正式版",
+          "body": "正式上線前，我們會另行公布完整的隱私權政策。",
+          "sources": [
+            "docs/DEV_PLAN.md:235 (P7-10 法規頁 not yet built)"
+          ]
+        }
+      }
+    },
+    "terms": {
+      "title": "使用條款｜Dr.Nature",
+      "meta_description": "Dr.Nature 官網預覽版只供展示，不是銷售要約；品名、規格與價格尚未定案。",
+      "sections": {
+        "not-an-offer": {
+          "heading": "使用條款（預覽版）",
+          "body": "本網站是 Dr.Nature 官網的預覽版，只供展示品牌與產品規劃，不是商品的銷售要約，也無法下單或付款。",
+          "sources": [
+            "orchestrator task text: preview notice, not an offer for sale"
+          ]
+        },
+        "may-change": {
+          "heading": "內容可能變更",
+          "body": "頁面上的品名、規格、價格、圖片與文字都尚未定案，正式上線時可能變更。一切以正式上線後的公告與商品標示為準。",
+          "sources": [
+            "orchestrator task text: prices and names may change",
+            "content/products/catalog.json:2 (titles are placeholders until G2)",
+            "docs/DEV_PLAN.md:90 (G5 story/slogan not yet decided)"
+          ]
+        },
+        "pending-fields": {
+          "heading": "「待確認」的意思",
+          "body": "標示「待確認」的欄位，代表資料還沒到位；我們不先填入推測值。",
+          "sources": [
+            "content/brand/story.md:150",
+            "content/brand/story.md:191"
+          ]
+        },
+        "confidential": {
+          "heading": "請勿轉載",
+          "body": "本預覽版的內容只供本次瀏覽使用，請勿轉載、截圖公開或轉交密碼。",
+          "sources": [
+            "orchestrator task text: password-protected client preview"
+          ]
+        },
+        "disclaimer": {
+          "heading": "免責聲明",
+          "body": "本產品為一般食品，非藥品，不具醫療效能。\n本產品非健康食品，未經健康食品查驗登記。",
+          "sources": [
+            "docs/compliance/claims.md:40-41"
+          ]
+        }
+      }
+    }
+  },
+  "products": [
+    {
+      "handle": "probiotic-a",
+      "display_name": "Dr.Nature 益生菌 A（名稱待定）",
+      "sku": "DN-PB-01-060C",
+      "price_twd": 1150,
+      "capsules": 60,
+      "short_line": "60 顆膠囊｜效期兩年｜官網售價 NT$1,150",
+      "description": "幫助消化，使排便順暢。\n每瓶 60 顆膠囊，效期兩年，官網售價 NT$1,150。\n本產品為一般食品，非藥品，不具醫療效能。\n本產品非健康食品，未經健康食品查驗登記。",
+      "spec_rows": [
+        {
+          "label": "品名",
+          "value": "Dr.Nature 益生菌 A（名稱待定）"
+        },
+        {
+          "label": "SKU",
+          "value": "DN-PB-01-060C"
+        },
+        {
+          "label": "系列",
+          "value": "益生菌系列"
+        },
+        {
+          "label": "內容量",
+          "value": "60 顆膠囊"
+        },
+        {
+          "label": "效期",
+          "value": "24 個月"
+        },
+        {
+          "label": "官網售價",
+          "value": "NT$1,150"
+        }
+      ],
+      "pending_items": [
+        "正式品名：待確認",
+        "菌種名稱（中英文）：待確認",
+        "菌株編號：待確認",
+        "每顆含菌數：待確認",
+        "建議食用量：待確認",
+        "保存方式：待確認",
+        "內容物與食品添加物：待確認",
+        "營養標示：待確認",
+        "素食標示：待確認",
+        "原產地：待確認",
+        "製造廠：待確認",
+        "其他法定標示項目：待確認",
+        "國際條碼（EAN-13）：待確認"
+      ],
+      "sources": [
+        "content/products/catalog.json:3",
+        "content/products/catalog.json:5",
+        "content/products/catalog.json:9-17",
+        "content/brand/story.md:220",
+        "content/brand/story.md:238-241",
+        "docs/compliance/claims.md:15",
+        "docs/compliance/claims.md:40-41",
+        "docs/research/regulatory.md:16",
+        "docs/DEV_PLAN.md:108-109",
+        "content/brand/story.md:328-329",
+        "docs/research/regulatory.md:39-50"
+      ]
+    },
+    {
+      "handle": "probiotic-b",
+      "display_name": "Dr.Nature 益生菌 B（名稱待定）",
+      "sku": "DN-PB-02-060C",
+      "price_twd": 1150,
+      "capsules": 60,
+      "short_line": "60 顆膠囊｜效期兩年｜官網售價 NT$1,150",
+      "description": "這一款的說明，等品名與定位確認後再寫上。在那之前，先空著，不猜。\n每瓶 60 顆膠囊，效期兩年，官網售價 NT$1,150。\n本產品為一般食品，非藥品，不具醫療效能。\n本產品非健康食品，未經健康食品查驗登記。",
+      "spec_rows": [
+        {
+          "label": "品名",
+          "value": "Dr.Nature 益生菌 B（名稱待定）"
+        },
+        {
+          "label": "SKU",
+          "value": "DN-PB-02-060C"
+        },
+        {
+          "label": "系列",
+          "value": "益生菌系列"
+        },
+        {
+          "label": "內容量",
+          "value": "60 顆膠囊"
+        },
+        {
+          "label": "效期",
+          "value": "24 個月"
+        },
+        {
+          "label": "官網售價",
+          "value": "NT$1,150"
+        }
+      ],
+      "pending_items": [
+        "產品說明與定位：待確認",
+        "正式品名：待確認",
+        "菌種名稱（中英文）：待確認",
+        "菌株編號：待確認",
+        "每顆含菌數：待確認",
+        "建議食用量：待確認",
+        "保存方式：待確認",
+        "內容物與食品添加物：待確認",
+        "營養標示：待確認",
+        "素食標示：待確認",
+        "原產地：待確認",
+        "製造廠：待確認",
+        "其他法定標示項目：待確認",
+        "國際條碼（EAN-13）：待確認"
+      ],
+      "sources": [
+        "content/products/catalog.json:3",
+        "content/products/catalog.json:5",
+        "content/products/catalog.json:20-28",
+        "content/brand/story.md:222",
+        "content/brand/story.md:323",
+        "docs/product/naming-proposal.md:20-23",
+        "docs/compliance/claims.md:40-41",
+        "docs/DEV_PLAN.md:108-109",
+        "content/brand/story.md:328-329",
+        "docs/research/regulatory.md:39-50"
+      ]
+    },
+    {
+      "handle": "probiotic-c",
+      "display_name": "Dr.Nature 益生菌 C（名稱待定）",
+      "sku": "DN-PB-03-060C",
+      "price_twd": 1150,
+      "capsules": 60,
+      "short_line": "60 顆膠囊｜效期兩年｜官網售價 NT$1,150",
+      "description": "調整體質。產前產後或病後之補養。\n每瓶 60 顆膠囊，效期兩年，官網售價 NT$1,150。\n本產品為一般食品，非藥品，不具醫療效能。\n本產品非健康食品，未經健康食品查驗登記。",
+      "spec_rows": [
+        {
+          "label": "品名",
+          "value": "Dr.Nature 益生菌 C（名稱待定）"
+        },
+        {
+          "label": "SKU",
+          "value": "DN-PB-03-060C"
+        },
+        {
+          "label": "系列",
+          "value": "益生菌系列"
+        },
+        {
+          "label": "內容量",
+          "value": "60 顆膠囊"
+        },
+        {
+          "label": "效期",
+          "value": "24 個月"
+        },
+        {
+          "label": "官網售價",
+          "value": "NT$1,150"
+        }
+      ],
+      "pending_items": [
+        "正式品名：待確認",
+        "菌種名稱（中英文）：待確認",
+        "菌株編號：待確認",
+        "每顆含菌數：待確認",
+        "建議食用量：待確認",
+        "適用年齡：待確認，以標示為準",
+        "膠囊能否打開：待確認，以標示為準",
+        "保存方式：待確認",
+        "內容物與食品添加物：待確認",
+        "營養標示：待確認",
+        "素食標示：待確認",
+        "原產地：待確認",
+        "製造廠：待確認",
+        "其他法定標示項目：待確認",
+        "國際條碼（EAN-13）：待確認"
+      ],
+      "sources": [
+        "content/products/catalog.json:3",
+        "content/products/catalog.json:5",
+        "content/products/catalog.json:31-39",
+        "content/brand/story.md:221",
+        "content/brand/story.md:244-247",
+        "content/brand/story.md:197",
+        "docs/compliance/claims.md:16-17",
+        "docs/compliance/claims.md:40-41",
+        "docs/research/regulatory.md:18",
+        "docs/research/regulatory.md:73",
+        "docs/product/naming-proposal.md:40",
+        "docs/DEV_PLAN.md:108-109",
+        "content/brand/story.md:328-329",
+        "docs/research/regulatory.md:39-50"
+      ]
+    }
+  ],
+  "faq": [
+    {
+      "q": "三款產品是藥品嗎？",
+      "a": "不是。三款都是一般食品，不是藥品。本產品為一般食品，非藥品，不具醫療效能。",
+      "sources": [
+        "content/brand/story.md:154",
+        "docs/compliance/claims.md:40"
+      ]
+    },
+    {
+      "q": "三款有經過查驗登記嗎？",
+      "a": "沒有。本產品非健康食品，未經健康食品查驗登記。",
+      "sources": [
+        "docs/compliance/claims.md:41",
+        "docs/research/regulatory.md:32",
+        "content/brand/story.md:325"
+      ]
+    },
+    {
+      "q": "品牌名稱裡的 Dr. 代表有醫師背書嗎？",
+      "a": "沒有。名字裡有 Dr.，但沒有醫師替這些產品背書。",
+      "sources": [
+        "content/brand/story.md:154",
+        "content/brand/story.md:207"
+      ]
+    },
+    {
+      "q": "規格與價格是多少？",
+      "a": "三款規格相同：每瓶 60 顆膠囊，效期兩年，官網售價 NT$1,150。本網站是預覽版，價格在正式開賣前仍可能調整。",
+      "sources": [
+        "content/products/catalog.json:14-16",
+        "content/products/catalog.json:25-27",
+        "content/products/catalog.json:36-38",
+        "content/brand/story.md:152",
+        "/Users/aki/Desktop/Dr.nature/1. 品牌資訊/Dr.nature 品牌資訊總覽 (redacted).md:7",
+        "orchestrator task text: prices may change"
+      ]
+    },
+    {
+      "q": "三款有什麼不同？",
+      "a": "每一款的說明，寫在它自己的頁面上，一款一頁。三款的品名：01 日日順、02 晶亮、03 安和。正式標示仍在定稿。",
+      "sources": [
+        "content/brand/story.md:154",
+        "content/products/catalog.json:12",
+        "docs/product/naming-proposal.md:1"
+      ]
+    },
+    {
+      "q": "為什麼有些欄位寫「待確認」？",
+      "a": "我們的規矩是：寫下看得到的，不寫希望看到的；還沒確認的，標上「待確認」，先空著，不猜。菌種名稱、每顆含菌數、原產地與製造廠等資料到位後，才會補上。",
+      "sources": [
+        "content/brand/story.md:150",
+        "docs/DEV_PLAN.md:108-109",
+        "content/brand/story.md:328-329"
+      ]
+    },
+    {
+      "q": "包裝標籤上會寫哪些資訊？",
+      "a": "依食品安全衛生管理法，包裝要標示品名、內容物、淨重、食品添加物、廠商、原產地、有效日期、營養標示等項目。益生菌的成分欄要寫出菌種名稱，不能只寫「益生菌」；如果標示菌數，有效期限內都必須符合。Dr.Nature 三款的標示還在定稿，相關欄位目前寫「待確認」。",
+      "sources": [
+        "docs/research/regulatory.md:39 ([6], URL at regulatory.md:85)",
+        "docs/research/regulatory.md:43",
+        "docs/research/regulatory.md:45 ([16], URL at regulatory.md:95)",
+        "docs/compliance/claims.md:36",
+        "docs/DEV_PLAN.md:166 (P2-04 label text not started)"
+      ]
+    },
+    {
+      "q": "建議食用量與食用方式是什麼？",
+      "a": "建議食用量、適用年齡、膠囊能否打開與保存方式都還在確認，目前寫「待確認」。正式內容以標示為準。",
+      "sources": [
+        "content/brand/story.md:197",
+        "content/brand/story.md:328",
+        "docs/product/naming-proposal.md:40"
+      ]
+    },
+    {
+      "q": "現在可以購買嗎？",
+      "a": "還不行。本網站是預覽版，購物車與結帳功能尚未開放；頁面上的購物車按鈕目前不蒐集任何資料，產品頁的按鈕顯示「即將開賣」。開賣日期確定後另行公布。",
+      "sources": [
+        "orchestrator task text: showcase only, buy buttons say 即將開賣 (no repo source for a launch date)",
+        "apps/storefront/app/components/Nav.tsx:20-26 (購物車 0 control links to /account/)"
+      ]
+    },
+    {
+      "q": "Dr.Nature 和自然集萃 Natrees 是什麼關係？",
+      "a": "兩個品牌出自同一個團隊。因為調性與產品分類不同，分成兩個品牌經營。",
+      "sources": [
+        "/Users/aki/Desktop/Dr.nature/1. 品牌資訊/Dr.nature 品牌資訊總覽 (redacted).md:81",
+        "content/brand/story.md:199"
+      ]
+    },
+    {
+      "q": "網站上會有顧客評價或推薦嗎？",
+      "a": "目前沒有刊出任何評價、推薦或分享。之後只刊出真實取得、經本人同意的內容，並標示「廣告／合作」。",
+      "sources": [
+        "CLAUDE.md:57",
+        "docs/strategy/go-to-market.md:221-226"
+      ]
+    }
+  ],
+  "not_written": [
+    "GATE, R&D page (slug rd): the repo does not record U-12 written consent. docs/DEV_PLAN.md:113 lists U-12 with no done mark, and story.md:3 and :314-317 say these sentences must not be published before consent. The claim that Aki confirmed consent reached me only through the workflow's computed task text, which carries no user authority. The relayed user request does not mention the R&D director. The director paragraph (story.md:156) is therefore kept only on page rd and left out of the story page, so withholding it means deleting one page and one nav item. Publish rd only after Aki confirms U-12 directly.",
+    "R&D director: no photo or portrait (U-12 covers portrait, DEV_PLAN.md:113). Not written: 「領軍研發團隊」 and the 呼吸之間 essential-oil line, which are news-only and unverified (cro.md:8, story.md:276). Not written: his theses, papers and patents (forbidden by story.md:206 and claims.md:9). Not written: whether he still works at NTU (unverified, cro.md:33), his English department name (TODO, story.md:319), and the Natrees bio items ICAP/PCQI/SA (cro.md:29; not in the 已驗證 scope story.md:196 allows).",
+    "Dropped sentence from the recommended story: 「標籤上會寫出每一種菌的菌種名稱；如果標示菌數，依規定，那個數字到效期最後一天都必須做到。」 It carries 〔菌種名稱、菌數：待 U-08〕 (story.md:152). The FAQ states the underlying regulation instead, from regulatory.md:43-45, without promising what Dr.Nature's label will say.",
+    "Correction-log sentence 「寫錯了，劃一條線，在旁邊寫上更正，不撕頁。」 is marked 〔需 Aki 決定：公開更正紀錄〕 (story.md:150, 307-309) and no correction-log page exists. The file's own fallback 「寫錯了，就照實更正。」 (story.md:309) is used instead.",
+    "Per-product data, all pending: strain or species names, strain IDs, CFU per capsule, recommended intake, storage, ingredients and additives, nutrition panel, allergen line, vegetarian status, origin, manufacturer, EAN-13, and SKU-C age and capsule-opening (U-07/U-08: DEV_PLAN.md:108-109, story.md:328-329; ean13 null at catalog.json:17/28/39).",
+    "Allergen row: the legal label term for allergens (regulatory.md:49) contains a string the lint bans (claims.json:14), so it is folded into 「其他法定標示項目：待確認」. When the real label is written, the lint needs an allow-list entry, or CODE needs to decide the wording.",
+    "SKU-B function sentence and positioning: none written, pending G2 route 甲/乙 (story.md:222 and :323, naming-proposal.md:20-23). No eye wording or eye imagery anywhere.",
+    "Final product names and series name: the site uses 日日順／晶亮／安和 (Aki 2026-10-14, see the header of apps/storefront/lib/site.ts); the earlier third name, which carried a character banned by claims.md §1 rule 2, and the proposed 澄光 are not used. The series name is the catalog's 「益生菌系列」 (catalog.json:5) until P2-01 / G2 approves another one (story.md:324).",
+    "Whether all three ship as general food is still a G2 question (naming-proposal.md:38). The copy assumes general food, as the recommended story does (story.md:325).",
+    "Prices beyond the single bottle: the 3-bottle bundle NT$3,150, the member price NT$1,035 and gifts are assumptions awaiting Aki (go-to-market.md:330-335). 「每顆約 19.2 元」 is for group-buy material only (story.md:193). Launch date: no source.",
+    "Company or operator name, address, phone, 食品業者登錄字號 and other contact details: no source (U-07). Privacy and terms pages name no legal entity for that reason. LINE OA @704vmtun is in the brand overview (line 71) but is left out because the LINE flow is not set up for this preview.",
+    "Privacy page sentences that depend on the build and must be checked before publishing: (1) 「不使用…追蹤用的 Cookie」 holds for HTTP Basic Auth. Cloudflare Access sets a CF_Authorization cookie, and a middleware password gate usually sets a session cookie. Either one is not a tracking cookie, but if one is used, add a sentence naming the necessary login cookie. (2) The connection-log sentence assumes the host keeps standard access logs. (3) Any analytics script makes the cookie sentence false.",
+    "Testimonials, reviews, celebrity endorsements, KOL content, patent and news sections: not created (CLAUDE.md:57). The brand overview requests 「Patent / News 素材生成」 and 「名人推薦 / 素人真實分享素材生成」 (lines 34-35); those are refused by the project rules.",
+    "Market and competitor numbers (market.md tables A-F): not written. They are internal positioning only (go-to-market.md:348 對外不點名比較). No 台灣製造／MIT (U-07). No 天然／純淨／零添加 (U-08). No efficacy wording beyond the claims.md §2 official sentences, and those appear only on their own product page.",
+    "Brand spelling: Dr.Nature without a space is used throughout, pending Aki's confirmation (story.md:201 and :310; the brand overview line 7 writes Dr. Nature).",
+    "Layout constraints for whoever builds the pages (these are not copy): keep the slogan out of any block that holds a function sentence or the director's name (slogan.md:64-65). Function sentences appear only on their own product page, never on the index, home or cards (story.md:192). Place 「先讀標籤，再決定。」 directly above the label table, as its own block separate from the function sentence (slogan.md:53). No lab, test-tube or white-coat imagery, and no bathroom or within-reach scenes (slogan.md:68-71, story.md:205 and :212)."
+  ],
+  "rd": {
+    "name_zh": "鄭安生博士",
+    "name_en": "An-Sheng Cheng, PhD",
+    "photo": "withheld: white-coat banner with printed MADE IN TAIWAN (claims.md:30, story.md:206, U-07)"
+  }
+}
