@@ -415,7 +415,7 @@ a:hover > .arrow {
   position: relative;
   /* one viewport, like the prototype: copy on top, bottle in the middle, wordmark anchored at the bottom
      (minus the notice and, below 1024px, the sticky top bar: --chrome-h in the motion block) */
-  height: calc(100dvh - var(--chrome-h));
+  height: calc(100svh - var(--chrome-h));
   min-height: 600px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -426,7 +426,7 @@ a:hover > .arrow {
 @media (max-width: 899px) {
   .hero {
     height: auto;
-    min-height: calc(100dvh - var(--chrome-h));
+    min-height: calc(100svh - var(--chrome-h));
   }
 }
 .hero-top {
@@ -631,7 +631,7 @@ a:hover > .arrow {
   min-height: 70dvh;
 }
 .fx .three {
-  height: calc(100dvh - var(--bar-h));
+  height: calc(100svh - var(--bar-h));
 }
 .fx .three .left,
 .fx .three .right {
@@ -1388,6 +1388,13 @@ html:not(.fx) .tabs a[aria-current] {
   :root {
     --bar-h: 0px;
   }
+}
+/* Choreographed heights use svh (the small viewport, stable while a phone's address bar hides or
+   shows): ScrollTrigger skips refreshing for those resizes on touch devices (ignoreMobileResize),
+   so a dvh box would change size under stale scrub ranges. The base .daily-panel rule keeps dvh
+   for the static layout. */
+.fx .daily-panel {
+  min-height: 42svh;
 }
 /* 05 under the scroll choreography: GSAP writes the scene cards' transform (drift + odd-card
    stagger), so the scroll reveal only fades them; a transform transition here would lag every

@@ -25,6 +25,10 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
       const { ScrollTrigger } = await import("gsap/ScrollTrigger");
       if (cancelled) return;
       gsap.registerPlugin(ScrollTrigger);
+      // Phones: an address bar hiding/showing (< 25% of the height) must not re-measure the pins mid
+      // scroll; the choreographed heights use svh so nothing depends on that refresh. Explicit, so
+      // it does not hang on GSAP's touch-only default.
+      ScrollTrigger.config({ ignoreMobileResize: true });
       document.documentElement.classList.add("fx");
       // Below 1024px the sticky top bar (56px) stays over the page: both pins start under it so the
       // hero copy and the 03 kicker are never hidden. Functions, so every refresh re-measures.
@@ -84,6 +88,7 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
           end: () => `+=${window.innerHeight * n}`,
           pin: "#s03 .three",
           scrub: true,
+          invalidateOnRefresh: true,
           onUpdate: (self) => apply(self.progress),
           onRefresh: (self) => apply(self.progress),
         });
