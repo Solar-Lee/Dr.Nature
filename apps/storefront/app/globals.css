@@ -1403,3 +1403,30 @@ html:not(.fx) .tabs a[aria-current] {
   font-size: 1.15rem;
   line-height: 1.2;
 }
+/* WCAG 2.2.2 pause switch (MotionToggle, footer first column). Paused state is
+   html[data-motion="paused"]; Bottle3D reads the same attribute (lane B). */
+html[data-motion="paused"] .marquee .track {
+  animation-play-state: paused;
+}
+.foot-motion {
+  margin-top: 16px;
+}
+.motion-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  cursor: pointer;
+}
+.motion-toggle[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}

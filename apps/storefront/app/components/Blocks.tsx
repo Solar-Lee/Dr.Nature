@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Bottle } from "./Bottle";
+import { MotionToggle } from "./MotionToggle";
 import { DISCLAIMER, FOOTER, HOME, JOURNAL, LINE_BLOCK, LINE_ID, NAV, PRODUCTS, SPEC } from "@/lib/site";
 
 export function Slot({ label, note = "影像製作中", className = "slot", style }: { label: string; note?: string; className?: string; style?: React.CSSProperties }) {
@@ -130,6 +131,9 @@ export function Footer() {
           <Link href="/" className="wordmark" aria-label="Dr.Nature 首頁">
             Dr<span className="dot">.</span>Nature
           </Link>
+          <div className="foot-motion">
+            <MotionToggle />
+          </div>
         </div>
         <div>
           <h2 className="foot-head">產品</h2>
