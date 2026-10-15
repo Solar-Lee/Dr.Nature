@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { lines, page, rd, section } from "@/lib/content";
 
 const p = page("rd");
-export const metadata: Metadata = { title: "研發", description: p.meta_description };
+export const metadata: Metadata = { title: "研發", description: p.meta_description, alternates: { canonical: "/rd/" } };
 
 // Only the verified degree, department and year (docs/research/cro.md); Aki confirmed on 2026-10-14
 // the director agreed to be shown. No photo: the only one on file is a white-coat banner (claims.md:30).

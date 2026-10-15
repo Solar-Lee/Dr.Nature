@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SeriesCards } from "../components/Blocks";
 import { DISCLAIMER, HOME, SERIES, SPEC } from "@/lib/site";
 
-export const metadata: Metadata = { title: "產品", description: `${SERIES}：三款益生菌，每瓶 ${SPEC.capsules} 顆膠囊，效期 ${SPEC.shelfLifeYears} 年，官網售價 ${SPEC.priceText}。` };
+export const metadata: Metadata = { title: "產品", description: `${SERIES}：三款益生菌，每瓶 ${SPEC.capsules} 顆膠囊，效期 ${SPEC.shelfLifeYears} 年，官網售價 ${SPEC.priceText}。`, alternates: { canonical: "/products/" } };
 
 export default function Products() {
   return (

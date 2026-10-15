@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Bottle3D } from "./components/Bottle3D";
 import { HomeStory } from "./components/HomeStory";
 import { ContactBlocks, JournalGrid, Marquee, SeriesCards, Slot } from "./components/Blocks";
 import { HOME, JOURNAL, PRODUCTS } from "@/lib/site";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 // Home: the six-part story from DESIGN's prototype (01 序 … 06 讀懂自然), then the series cards,
 // 知識誌, LINE / 電子報. Section ids match NAV.story so the left index tracks the scroll.

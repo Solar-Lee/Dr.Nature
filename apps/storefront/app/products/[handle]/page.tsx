@@ -13,7 +13,11 @@ export function generateStaticParams(): Params[] {
 export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
   const { handle } = await params;
   const p = PRODUCTS.find((x) => x.handle === handle);
-  return { title: p ? `${p.num} ${p.name}` : "產品", description: p ? `${p.name}，${SPEC.capsules} 顆膠囊，效期 ${SPEC.shelfLifeYears} 年，官網售價 ${SPEC.priceText}。` : undefined };
+  return {
+    title: p ? `${p.num} ${p.name}` : "產品",
+    description: p ? `${p.name}，${SPEC.capsules} 顆膠囊，效期 ${SPEC.shelfLifeYears} 年，官網售價 ${SPEC.priceText}。` : undefined,
+    alternates: p ? { canonical: `/products/${p.handle}/` } : undefined,
+  };
 }
 
 const PENDING = ["菌種名稱（中英文）", "菌株編號", "每顆含菌數", "建議食用量", "保存方式", "內容物與食品添加物", "營養標示", "素食標示", "原產地", "製造廠", "其他法定標示項目", "國際條碼（EAN-13）"];

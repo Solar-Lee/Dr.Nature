@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "退換貨政策" };
+export const metadata: Metadata = { title: "退換貨政策", alternates: { canonical: "/returns/" } };
 
 export default function Returns() {
   return (

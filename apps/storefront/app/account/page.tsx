@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LINE_ID } from "@/lib/site";
 
-export const metadata: Metadata = { title: "會員", description: "Dr.Nature 會員中心：訂單、等級與權益。正式上線後開放。" };
+export const metadata: Metadata = { title: "會員", description: "Dr.Nature 會員中心：訂單、等級與權益。正式上線後開放。", alternates: { canonical: "/account/" } };
 
 // The cart box on every page and the 會員 nav item land here. Until checkout and membership ship,
 // the honest next steps are the LINE OA (launch notice only; G3 = ③, webhook not live yet, so no
