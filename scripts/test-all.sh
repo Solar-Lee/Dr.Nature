@@ -103,6 +103,17 @@ if [ -f e2e/package.json ] && [ -f apps/storefront/package.json ]; then
   fi
 fi
 
+# 7. [CC-07] Compliance scan of what visitors and LINE users actually read: the storefront copy, the
+#    built HTML from storefront:build, and the LINE reply data. Only paths that exist are passed
+#    (claims-lint skips a missing path silently, so it must never be the only argument).
+claims_paths=()
+for p in apps/storefront/lib apps/storefront/content apps/storefront/out apps/backend/src/data/line-replies.json; do
+  if [ -e "$p" ]; then claims_paths+=("$p"); fi
+done
+if [ "${#claims_paths[@]}" -gt 0 ]; then
+  run_suite "claims-lint:storefront (${#claims_paths[@]} paths)" node scripts/claims-lint.mjs "${claims_paths[@]}"
+fi
+
 if [ "${#failed[@]}" -gt 0 ]; then
   echo "FAILED: ${failed[*]}"
   exit 1
