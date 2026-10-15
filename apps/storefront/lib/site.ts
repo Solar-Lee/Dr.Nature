@@ -5,7 +5,10 @@
 // Facts (capsules, shelf life, price, SKU) from content/products/catalog.json.
 
 export const BRAND = "Dr.Nature";
-export const SERIES = "Daily Flora 日常菌相系列";
+// Series name from content/products/catalog.json:5 (series.PB) until P2-01 approves another one
+// (story.md:324 defers it to G2). 「Daily Flora 日常菌相系列」 had no approved source, and 菌相
+// is a physiology hint at brand level (story.md:192).
+export const SERIES = "益生菌系列";
 export const LINE_ID = "@704vmtun"; // public LINE OA bot id (brand overview, redacted copy)
 
 export type Product = {
@@ -28,7 +31,7 @@ export const PRODUCTS: Product[] = [
     num: "01",
     name: "日日順益生菌",
     short: "日日順",
-    en: "DAILY FLORA",
+    en: "PROBIOTIC SERIES",
     sku: "DN-PB-01-060C",
     tint: 1,
     claim: "幫助消化，使排便順暢。",
@@ -40,7 +43,7 @@ export const PRODUCTS: Product[] = [
     num: "02",
     name: "晶亮益生菌",
     short: "晶亮",
-    en: "DAILY FLORA",
+    en: "PROBIOTIC SERIES",
     sku: "DN-PB-02-060C",
     tint: 2,
     claim: null,
@@ -52,7 +55,7 @@ export const PRODUCTS: Product[] = [
     num: "03",
     name: "安和益生菌",
     short: "安和",
-    en: "DAILY FLORA",
+    en: "PROBIOTIC SERIES",
     sku: "DN-PB-03-060C",
     tint: 3,
     claim: "調整體質。產前產後或病後之補養。",
