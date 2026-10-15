@@ -413,8 +413,9 @@ a:hover > .arrow {
 /* ---------- home: 01 hero ---------- */
 .hero {
   position: relative;
-  /* one viewport, like the prototype: copy on top, bottle in the middle, wordmark anchored at the bottom */
-  height: calc(100dvh - 30px);
+  /* one viewport, like the prototype: copy on top, bottle in the middle, wordmark anchored at the bottom
+     (minus the notice and, below 1024px, the sticky top bar: --chrome-h in the motion block) */
+  height: calc(100dvh - var(--chrome-h));
   min-height: 600px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -425,7 +426,7 @@ a:hover > .arrow {
 @media (max-width: 899px) {
   .hero {
     height: auto;
-    min-height: calc(100dvh - 30px);
+    min-height: calc(100dvh - var(--chrome-h));
   }
 }
 .hero-top {
@@ -630,7 +631,7 @@ a:hover > .arrow {
   min-height: 70dvh;
 }
 .fx .three {
-  height: 100dvh;
+  height: calc(100dvh - var(--bar-h));
 }
 .fx .three .left,
 .fx .three .right {
@@ -1376,6 +1377,18 @@ html:not(.fx) .tabs a[aria-current] {
 }
 
 /* ---------- motion (lane B) ---------- */
+/* Viewport chrome above the pinned home sections: the 30px notice scrolls away, the 56px sticky
+   top bar (below 1024px) stays, so the hero and the 03 stage pin under it (ScrollFX reads the
+   bar's height for the pin starts). */
+:root {
+  --bar-h: 56px;
+  --chrome-h: calc(30px + var(--bar-h));
+}
+@media (min-width: 1024px) {
+  :root {
+    --bar-h: 0px;
+  }
+}
 /* 05 under the scroll choreography: GSAP writes the scene cards' transform (drift + odd-card
    stagger), so the scroll reveal only fades them; a transform transition here would lag every
    scrubbed frame and race GSAP's first read. */

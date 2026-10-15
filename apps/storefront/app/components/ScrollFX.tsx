@@ -26,9 +26,15 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
       if (cancelled) return;
       gsap.registerPlugin(ScrollTrigger);
       document.documentElement.classList.add("fx");
+      // Below 1024px the sticky top bar (56px) stays over the page: both pins start under it so the
+      // hero copy and the 03 kicker are never hidden. Functions, so every refresh re-measures.
+      const bar = () => {
+        const t = document.querySelector<HTMLElement>(".topbar");
+        return t && getComputedStyle(t).display !== "none" ? t.offsetHeight : 0;
+      };
       ctx = gsap.context(() => {
         // 01 → 02: pin the hero under the dark panel; the panel's dark columns rise in a staircase.
-        ScrollTrigger.create({ trigger: "#s01", start: "top top", end: "bottom top", pin: true, pinSpacing: false });
+        ScrollTrigger.create({ trigger: "#s01", start: () => `top ${bar()}px`, end: () => `bottom ${bar()}px`, pin: true, pinSpacing: false });
         gsap.fromTo(
           "#s02 .stairs span",
           { scaleY: 0 },
@@ -74,7 +80,7 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
         };
         ScrollTrigger.create({
           trigger: "#s03",
-          start: "top top",
+          start: () => `top ${bar()}px`,
           end: () => `+=${window.innerHeight * n}`,
           pin: "#s03 .three",
           scrub: true,
