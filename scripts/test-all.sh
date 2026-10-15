@@ -53,6 +53,8 @@ fi
 if [ -f apps/storefront/package.json ]; then
   run_suite "storefront:typecheck" pnpm --dir apps/storefront exec tsc --noEmit
   run_suite "storefront:build" bash -c 'pnpm --dir apps/storefront exec next build >/dev/null 2>&1 && test -f apps/storefront/out/404.html && test -f apps/storefront/out/products/calm/index.html'
+  # WCAG contrast of the colour pairs in globals.css (tokens read live); exit code only, no tail.
+  run_suite "storefront:contrast" node scripts/contrast-check.mjs apps/storefront/app/globals.css
 fi
 
 # 2b. Backend (Medusa): typecheck, Medusa lint rules, and HTTP integration tests.

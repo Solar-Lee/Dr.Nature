@@ -11,9 +11,28 @@
   --red: #d7261b;
   --red-2: #b81f15;
   --line: #cfcdc6;
+  --line-strong: #8a8a86; /* form-field and pending-tag boundaries: 3.47:1 on #fff, 3.04:1 on paper */
+  --surface: #ffffff; /* fields and the light centre of the product stages */
+  --surface-2: #fbfbf9; /* spec table, R&D name card, "coming soon" panel */
+  --hover: #f6f5f2; /* card hover */
+  --stage-hi: #f9f8f5; /* 03 stage glow */
+  --video-hi: #f7f6f3; /* hero video placeholder gradient */
+  --video-lo: #dddbd5;
+  /* dark surfaces (02 statement, 06 panel); white text needs every stop <= #767672 (4.56:1) */
+  --ink-dark: #1a1a1a;
+  --ink-dark-2: #4a4a48;
+  --ink-dark-3: #666663;
+  --line-dark: #8a8a86;
+  --ink-dim: #8a8a86; /* dimmed words on --ink-dark before they light up: 5.02:1 */
+  --on-dark: #ffffff; /* text, outlines and focus ring on the dark surfaces and on red */
+  --slot-dark: #2a2a2a; /* image placeholder inside the 02 sentence */
+  --hair-dark: #333333; /* hairline under the 02 section (decorative) */
   --tint-1: #e6e5e0;
   --tint-2: #e2e5e7;
   --tint-3: #ebe4de;
+  --bottle: #fcfcfa;
+  --bottle-shade: #e2e1dc;
+  --bottle-edge: #d8d7d1;
   --nav-w: 168px;
   --gutter: clamp(16px, 3.5vw, 40px);
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -48,6 +67,11 @@ canvas {
 :focus-visible {
   outline: 2px solid var(--red);
   outline-offset: 3px;
+}
+/* the red ring is 1.8:1 or less on the dark surfaces; white is >= 5.7:1 on every dark stop */
+.dark :focus-visible,
+.panel-dark :focus-visible {
+  outline-color: var(--on-dark);
 }
 .skip {
   position: absolute;
@@ -103,7 +127,8 @@ p {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--red);
+  /* small red text uses --red-2 (5.68:1 on paper); --red (4.40:1) stays for fills, the dot and rails */
+  color: var(--red-2);
 }
 .kicker.plain {
   color: var(--ink-2);
@@ -153,12 +178,18 @@ p {
   height: 56px;
   padding: 0 var(--gutter);
   background: color-mix(in srgb, var(--paper) 94%, transparent);
+  /* unprefixed only: the build emits both forms from it; with the -webkit- line written after it,
+     Lightning CSS kept only the prefixed one and Chrome, Edge and Firefox lost the blur */
   backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
 }
 .topbar .wordmark {
   font-size: 22px;
+  /* tap targets >= 44px (DESIGN_BRIEF D-10); the 56px bar centres them, so nothing moves.
+     inline-block + line-height, not flex: flex would split "Dr", "." and "Nature" into separate
+     items and drop the kerning between them */
+  display: inline-block;
+  line-height: 44px;
 }
 .topbar-right {
   display: flex;
@@ -176,11 +207,15 @@ p {
   font-weight: 700;
   text-decoration: none;
   min-width: 96px;
+  min-height: 44px;
 }
 .menu summary {
   list-style: none;
   cursor: pointer;
-  padding: 7px 12px;
+  /* 24px line + 2 x 9px + 2 x 1px = 44px without changing the summary's display */
+  padding: 9px 12px;
+  line-height: 24px;
+  min-height: 44px;
   border: 1px solid var(--ink);
   font-size: 13px;
   font-weight: 700;
@@ -327,7 +362,7 @@ p {
   gap: 18px;
   padding: 13px 20px;
   background: var(--red);
-  color: #fff;
+  color: var(--on-dark);
   text-decoration: none;
   font-size: 14px;
   font-weight: 700;
@@ -352,8 +387,8 @@ p {
 }
 .btn.light {
   background: transparent;
-  color: #fff;
-  border-color: #fff;
+  color: var(--on-dark);
+  border-color: var(--on-dark);
 }
 .btn[aria-disabled="true"] {
   background: var(--paper-2);
@@ -369,9 +404,13 @@ a:hover > .arrow {
   transform: translateX(4px);
 }
 .textlink {
+  /* 44px tap height (D-10): 25px line + 2 x 9.5px. The 1px rule under the text is drawn as a
+     background line 1px below the text box, so it stays where the old border-bottom was. */
+  display: inline-block;
+  padding: 9.5px 0;
+  line-height: 25px;
+  background: linear-gradient(var(--ink), var(--ink)) left 0 bottom 7.5px / 100% 1px no-repeat;
   text-decoration: none;
-  border-bottom: 1px solid var(--ink);
-  padding-bottom: 1px;
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
@@ -459,7 +498,7 @@ a:hover > .arrow {
 }
 .hero-meta b {
   display: block;
-  color: var(--red);
+  color: var(--red-2);
   font-size: 12px;
   letter-spacing: 0.06em;
 }
@@ -482,7 +521,7 @@ a:hover > .arrow {
 .hero-video {
   position: absolute;
   inset: 8% 0 0;
-  background: radial-gradient(70% 70% at 60% 45%, #f7f6f3 0%, var(--paper-2) 55%, #dddbd5 100%);
+  background: radial-gradient(70% 70% at 60% 45%, var(--video-hi) 0%, var(--paper-2) 55%, var(--video-lo) 100%);
   z-index: 0;
 }
 .hero-video .tag {
@@ -493,7 +532,6 @@ a:hover > .arrow {
   font-size: 11.5px;
   color: var(--ink-2);
   letter-spacing: 0.06em;
-  opacity: 0.75;
 }
 .stage3d {
   position: relative;
@@ -512,11 +550,15 @@ a:hover > .arrow {
   .hero-stage .stage3d {
     /* explicit size: an absolutely positioned box with width:auto would shrink to the canvas's own
        intrinsic size (circular with the renderer's ResizeObserver) */
+    /* the box's right edge sits at 50% + 0.86 x width (translateX(-14%)) and the CSS tilt widens
+       its bounding box by ~6.5% a side, so width <= (50% - gutter) / 0.93 keeps the bottle inside
+       the hero's right gutter at 900-1200px; height follows through aspect-ratio */
     position: absolute;
     top: 12%;
     left: 50%;
-    width: min(72vh, 600px);
-    height: min(72vh, 600px);
+    width: min(72vh, 600px, calc((50% - var(--gutter)) / 0.93));
+    height: auto;
+    aspect-ratio: 1;
     max-height: none;
     transform: translateX(-14%);
   }
@@ -527,7 +569,9 @@ a:hover > .arrow {
 .giant {
   font-family: var(--latin);
   font-weight: 700;
-  font-size: clamp(5rem, 19vw, 17rem);
+  /* floor 3.75rem: at the old 5rem floor the 80px wordmark (329px Helvetica Neue, 337px WebKit)
+     overflowed the 288px content box at 320px and clipped; 19vw now governs from 316px up */
+  font-size: clamp(3.75rem, 19vw, 17rem);
   line-height: 0.82;
   letter-spacing: -0.045em;
   white-space: nowrap;
@@ -540,10 +584,10 @@ a:hover > .arrow {
 /* ---------- home: 02 dark ---------- */
 .dark {
   position: relative;
-  background: #1a1a1a;
-  color: #f1f0ec;
+  background: var(--ink-dark);
+  color: var(--paper);
   padding: clamp(80px, 14vw, 180px) var(--gutter);
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--hair-dark);
 }
 .dark h2 {
   font-size: clamp(1.8rem, 1.2rem + 2.6vw, 3.6rem);
@@ -551,12 +595,20 @@ a:hover > .arrow {
   max-width: 20em;
 }
 .dark .dim {
-  color: #6f6f6b;
+  color: var(--ink-dim);
   transition: color 900ms var(--ease);
 }
 .js-reveal .dark [data-inview] .dim,
 .fx .dark .dim {
-  color: #f1f0ec;
+  color: var(--paper);
+}
+/* nothing lights the dimmed words when motion is reduced (no .fx, no scroll reveal), so they are
+   shown lit from the start instead of reading as disabled */
+@media (prefers-reduced-motion: reduce) {
+  .dark .dim {
+    color: var(--paper);
+    transition: none;
+  }
 }
 /* staircase wipe (ScrollFX scrubs scaleY of the columns); the section's own paint sits on them */
 .dark .stairs {
@@ -569,8 +621,13 @@ a:hover > .arrow {
 }
 .dark .stairs span {
   display: block;
-  background: #1a1a1a;
+  background: var(--ink-dark);
   transform-origin: 50% 100%;
+  /* the 8 columns end on fractional device pixels (e.g. 51.5px x 2.625); each scaled column is
+     anti-aliased on its own, so the shared edge pixel let the light hero show through as a
+     hairline in Firefox, Chrome and WebKit. A 1px shadow to the right covers that pixel under the
+     next column; shadows add no scrollable overflow, so the last column cannot widen the page */
+  box-shadow: 1px 0 0 var(--ink-dark);
 }
 .fx .dark {
   background: transparent;
@@ -597,8 +654,8 @@ a:hover > .arrow {
   width: 1.9em;
   height: 1.1em;
   margin: 0 0.25em;
-  border: 1px solid #555;
-  background: #2a2a2a;
+  border: 1px solid var(--line-dark);
+  background: var(--slot-dark);
 }
 
 /* ---------- home: 03 three numbers ---------- */
@@ -662,8 +719,8 @@ html:not(.fx) .numstep:not([data-active]) {
 }
 .ptag {
   display: inline-block;
-  border: 1px solid var(--red);
-  color: var(--red);
+  border: 1px solid var(--red-2);
+  color: var(--red-2);
   font-size: 11.5px;
   padding: 3px 8px;
   margin-top: 10px;
@@ -677,6 +734,10 @@ html:not(.fx) .numstep:not([data-active]) {
   margin-top: 32px;
 }
 .tabs a {
+  /* 44px tap height (D-10); the label stays 10px under the rail, the extra height goes below */
+  display: inline-flex;
+  align-items: flex-start;
+  min-height: 44px;
   text-decoration: none;
   font-size: 12.5px;
   color: var(--ink-2);
@@ -710,7 +771,7 @@ html:not(.fx) .tabs a[aria-current] {
   place-items: center;
   padding: 24px;
   min-height: 60dvh;
-  background: radial-gradient(60% 60% at 50% 45%, #f9f8f5 0%, var(--paper) 70%);
+  background: radial-gradient(60% 60% at 50% 45%, var(--stage-hi) 0%, var(--paper) 70%);
 }
 .three .right .stage3d {
   width: min(78vw, 560px);
@@ -834,15 +895,15 @@ html:not(.fx) .tabs a[aria-current] {
   vertical-align: middle;
 }
 .panel-dark {
-  background: linear-gradient(180deg, #4a4a48 0%, #8a8a86 55%, #bdbcb8 100%);
-  color: #fff;
+  background: linear-gradient(180deg, var(--ink-dark) 0%, var(--ink-dark-2) 70%, var(--ink-dark-3) 100%);
+  color: var(--on-dark);
   padding: clamp(56px, 8vw, 110px) var(--gutter);
   display: grid;
   gap: 18px;
   border-bottom: 1px solid var(--line);
 }
 .panel-dark .kicker {
-  color: #e8e7e2;
+  color: var(--paper-2);
 }
 .panel-dark .cta {
   display: flex;
@@ -881,7 +942,7 @@ html:not(.fx) .tabs a[aria-current] {
   transition: background 200ms;
 }
 .pcard:hover {
-  background: #f6f5f2;
+  background: var(--hover);
 }
 .pcard .head {
   display: flex;
@@ -899,7 +960,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .pcard .stage {
   --tint: var(--tint-1);
-  background: radial-gradient(70% 70% at 50% 40%, #fff 0%, var(--tint) 75%);
+  background: radial-gradient(70% 70% at 50% 40%, var(--surface) 0%, var(--tint) 75%);
   aspect-ratio: 4 / 3.6;
   display: grid;
   place-items: center;
@@ -910,6 +971,98 @@ html:not(.fx) .tabs a[aria-current] {
 .pcard .meta {
   font-size: 13px;
   color: var(--ink-2);
+}
+
+/* ---------- illustrative bottle (Bottle.tsx) ---------- */
+/* The CSS bottle (示意，非實物) in the series cards, restored from 05d52b3. Bottle.tsx sets --w
+   inline on .bottle; the card stage behind it takes --tint (Blocks.tsx). DESIGN replaces it (D-07). */
+.stand {
+  display: grid;
+  justify-items: center;
+}
+.bottle {
+  --w: 150px;
+  position: relative;
+  width: var(--w);
+  aspect-ratio: 45.8 / 92;
+  display: grid;
+  grid-template-rows: 20% 4% 1fr;
+  justify-items: center;
+}
+.bottle .cap {
+  width: 78%;
+  border-radius: 6px 6px 2px 2px;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.06) 0 2px, transparent 2px 5px),
+    linear-gradient(90deg, var(--bottle-shade) 0%, var(--surface) 30%, var(--bottle) 62%, var(--bottle-edge) 100%);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.06);
+}
+.bottle .neck {
+  width: 70%;
+  background: linear-gradient(90deg, var(--bottle-edge), var(--bottle) 40%, var(--bottle-shade));
+}
+.bottle .body {
+  position: relative;
+  width: 100%;
+  border-radius: 18% 18% 12% 12% / 9% 9% 6% 6%;
+  background: linear-gradient(90deg, var(--bottle-edge) 0%, var(--bottle) 26%, var(--surface) 42%, var(--bottle) 60%, var(--bottle-shade) 86%, var(--bottle-edge) 100%);
+  box-shadow: inset 0 10px 14px -10px rgba(0, 0, 0, 0.12);
+  display: grid;
+  align-items: center;
+}
+.bottle .label {
+  margin: 0 7%;
+  height: 56%;
+  background: var(--bottle);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 8% 9%;
+  box-shadow: inset 0 0 0 1px rgba(21, 21, 21, 0.08);
+  color: var(--ink);
+  text-align: left;
+}
+.bottle .label .mini {
+  font-family: var(--latin);
+  font-weight: 700;
+  font-size: calc(var(--w) * 0.07);
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.bottle .label .mini i {
+  color: var(--red);
+  font-style: normal;
+}
+.bottle .label b {
+  font-family: var(--latin);
+  font-weight: 700;
+  font-size: calc(var(--w) * 0.3);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  align-self: center;
+}
+.bottle .label span {
+  font-size: calc(var(--w) * 0.062);
+  font-weight: 700;
+  line-height: 1.2;
+  border-top: 1px solid var(--ink);
+  padding-top: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.bottle .label span::after {
+  content: "";
+  width: calc(var(--w) * 0.04);
+  height: calc(var(--w) * 0.04);
+  background: var(--red);
+}
+/* --w is set on the sibling .bottle, not on .stand, so the shadow is sized from the stand's column */
+.bottle-shadow {
+  width: 110%;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(21, 21, 21, 0.28), transparent);
 }
 
 /* ---------- journal ---------- */
@@ -939,10 +1092,16 @@ html:not(.fx) .tabs a[aria-current] {
   scrollbar-width: none;
 }
 .jtabs a {
+  /* 44px tap height (D-10); the label stays 4px over the active underline, the extra height goes above */
+  display: inline-flex;
+  align-items: flex-end;
+  min-height: 44px;
   text-decoration: none;
   color: var(--ink-2);
   white-space: nowrap;
   padding-bottom: 4px;
+  /* every tab carries the 2px rule (transparent until active) so the labels share one baseline */
+  border-bottom: 2px solid transparent;
 }
 .jtabs a[aria-current] {
   color: var(--ink);
@@ -975,7 +1134,7 @@ html:not(.fx) .tabs a[aria-current] {
   align-content: start;
 }
 .jcard:hover {
-  background: #f6f5f2;
+  background: var(--hover);
 }
 .jcard .slot {
   aspect-ratio: 3 / 2;
@@ -983,7 +1142,7 @@ html:not(.fx) .tabs a[aria-current] {
 .jcard .cat {
   font-size: 11.5px;
   font-weight: 700;
-  color: var(--red);
+  color: var(--red-2);
   letter-spacing: 0.06em;
 }
 .jcard h3 {
@@ -1014,6 +1173,12 @@ html:not(.fx) .tabs a[aria-current] {
   display: grid;
   gap: 12px;
   align-content: start;
+  /* a grid item's automatic minimum is its min-content width, and WebKit gives the e-mail input an
+     intrinsic width (~321px) wider than a phone column: the column pushed the page 8px sideways at
+     375px and 47px at 320px. min-width: 0 lets the column shrink; minmax(0, 1fr) does the same
+     for the column's own children (heading, text, form) */
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
 }
 .contact h2 {
   font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.3rem);
@@ -1024,17 +1189,31 @@ html:not(.fx) .tabs a[aria-current] {
   flex-wrap: wrap;
   margin-top: 6px;
 }
-.nl input {
-  flex: 1 1 220px;
+/* one text-field style. `.nl input` and `.soon input` are hooks for the two fields until their
+   markup carries class="input" (Blocks.tsx newsletter, account/page.tsx); then drop the hooks. */
+.input,
+.nl input,
+.soon input {
   font: inherit;
   font-size: 14px;
   padding: 11px 14px;
-  border: 1px solid var(--line);
-  background: #fff;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
   color: var(--ink);
 }
-.nl input::placeholder {
-  color: #8a8a86;
+.input::placeholder,
+.nl input::placeholder,
+.soon input::placeholder {
+  color: var(--ink-2);
+}
+.input:disabled,
+.nl input:disabled,
+.soon input:disabled {
+  color: var(--ink-2);
+}
+.nl input {
+  flex: 1 1 220px;
+  min-width: 0; /* same reason: let the field shrink below its intrinsic width inside the flex row */
 }
 .nl button {
   font: inherit;
@@ -1093,6 +1272,17 @@ html:not(.fx) .tabs a[aria-current] {
 .sitemap a:hover {
   text-decoration-color: var(--ink);
 }
+/* footer links on phones, tablets and touch screens: 24px line + 2 x 10px = 44px (D-10) */
+@media (max-width: 1023px), (pointer: coarse) {
+  .sitemap ul {
+    gap: 0;
+  }
+  .sitemap a,
+  .sitemap .pending {
+    display: inline-block;
+    padding: 10px 0;
+  }
+}
 .sitemap .pending {
   color: var(--ink-2);
 }
@@ -1105,6 +1295,29 @@ html:not(.fx) .tabs a[aria-current] {
   color: var(--ink-2);
   border-top: 1px solid var(--line);
   padding-top: 16px;
+}
+/* Legal grid (VI-06). The footer markup puts both disclaimer lines in .disclaimer-row (one element
+   holding both lines, or one .disclaimer-row per line) as direct children of .legal, then
+   FOOTER.legal and FOOTER.company. Until that markup exists nothing below matches, so the flex row
+   above stays as it is; engines without :has() keep the flex row with the disclaimers on their
+   own full-width line. Phones stack everything; from 760px © sits left and the company line right. */
+.footer .legal .disclaimer-row {
+  flex-basis: 100%;
+  display: grid;
+  gap: 4px;
+}
+.footer .legal:has(> .disclaimer-row) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px 16px;
+}
+.footer .legal:has(> .disclaimer-row) > .disclaimer-row {
+  grid-column: 1 / -1;
+}
+@media (min-width: 760px) {
+  .footer .legal:has(> .disclaimer-row) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
 }
 
 /* ---------- generic pages ---------- */
@@ -1145,7 +1358,7 @@ html:not(.fx) .tabs a[aria-current] {
   min-height: 70dvh;
   display: grid;
   place-items: center;
-  background: radial-gradient(60% 60% at 50% 45%, #fff 0%, var(--tint) 70%);
+  background: radial-gradient(60% 60% at 50% 45%, var(--surface) 0%, var(--tint) 70%);
 }
 .pdp .stage .stage3d {
   width: min(80vw, 560px);
@@ -1179,7 +1392,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .label-table {
   border: 1px solid var(--line);
-  background: #fbfbf9;
+  background: var(--surface-2);
   padding: 20px 20px 6px;
 }
 .label-table h2 {
@@ -1210,7 +1423,7 @@ html:not(.fx) .tabs a[aria-current] {
 .pending-list li {
   font-size: 12.5px;
   padding: 5px 10px;
-  border: 1px dashed #9a9a96;
+  border: 1px dashed var(--line-strong);
   color: var(--ink-2);
   line-height: 1.3;
 }
@@ -1227,7 +1440,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .rd-name {
   border: 1px solid var(--line);
-  background: #fbfbf9;
+  background: var(--surface-2);
   padding: clamp(24px, 4vw, 44px);
   display: grid;
   gap: 8px;
@@ -1288,7 +1501,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .soon {
   border: 1px solid var(--line);
-  background: #fbfbf9;
+  background: var(--surface-2);
   padding: clamp(24px, 4vw, 40px);
   display: grid;
   gap: 12px;
@@ -1303,15 +1516,54 @@ html:not(.fx) .tabs a[aria-current] {
   font-size: 13px;
   color: var(--ink-2);
 }
-.soon input {
-  font: inherit;
-  font-size: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  background: #fff;
+
+/* ---------- fallbacks for older engines ---------- */
+/* Why @supports and not a plain fallback line above the modern one:
+   - "height: 100vh" written above "height: 100dvh" does not survive the build (Lightning CSS drops
+     it because Next's default targets all support dvh); an @supports block is kept as written.
+   - "background: rgba(...)" above "background: color-mix(..., var(--x) ...)" never wins in an
+     engine without color-mix(): a value containing var() passes parsing and only fails at
+     computed-value time, which resets the property to transparent instead of falling back.
+   Each rule mirrors one declaration above (same selector and media condition). The .hero and
+   .fx .three heights belong to the motion lane and carry their own fallbacks. */
+/* color-mix(): iOS Safari < 16.2, Chrome < 111, Firefox < 113 */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .topbar {
+    background: rgba(241, 240, 236, 0.94);
+  }
+  .btn.ghost:hover {
+    background: rgba(21, 21, 21, 0.06);
+  }
 }
-.soon input:disabled {
-  color: #8a8a86;
+/* dvh / svh: iOS Safari < 15.4, Chrome < 108, Firefox < 101 */
+@supports not (height: 1dvh) {
+  @media (min-width: 1024px) {
+    .sidenav {
+      height: 100vh;
+    }
+  }
+  @media (max-width: 899px) {
+    .hero-stage {
+      min-height: 46vh;
+    }
+  }
+  .three .left {
+    min-height: 70vh;
+  }
+  .three .right {
+    min-height: 60vh;
+  }
+  .daily-panel {
+    min-height: 42vh;
+  }
+  @media (min-width: 960px) {
+    .pdp .stage {
+      height: 100vh;
+    }
+  }
+  .pdp .stage {
+    min-height: 70vh;
+  }
 }
 
 /* ---------- motion ---------- */
