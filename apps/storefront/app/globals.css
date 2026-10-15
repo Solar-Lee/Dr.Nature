@@ -1162,6 +1162,12 @@ html:not(.fx) .tabs a[aria-current] {
   display: grid;
   gap: 12px;
   align-content: start;
+  /* a grid item's automatic minimum is its min-content width, and WebKit gives the e-mail input an
+     intrinsic width (~321px) wider than a phone column: the column pushed the page 8px sideways at
+     375px and 47px at 320px. min-width: 0 lets the column shrink; minmax(0, 1fr) does the same
+     for the column's own children (heading, text, form) */
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
 }
 .contact h2 {
   font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.3rem);
@@ -1196,6 +1202,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 .nl input {
   flex: 1 1 220px;
+  min-width: 0; /* same reason: let the field shrink below its intrinsic width inside the flex row */
 }
 .nl button {
   font: inherit;
