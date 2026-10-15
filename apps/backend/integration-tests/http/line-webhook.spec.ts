@@ -3,6 +3,8 @@
 // [LINE-06] Auto-replies reach the Messaging API (a local stub on an OS-assigned port,
 // LINE_OA_API_BASE_URL) with the content of src/data/line-replies.json (or the built-in replies
 // while it is absent).
+// [LINE-07] With LINE_OA_FORWARD_URL set, the verified request is forwarded byte for byte to
+// the group-buy bot (a slow local stub) without delaying the 200.
 //
 // What these tests cannot prove: that LINE's servers reach the URL (Cloudflare Access bypass
 // and the webhook URL in the LINE Developers console are Aki's, LINE's Verify button is the
@@ -72,6 +74,44 @@ medusaIntegrationTestRunner({
       stubCalls = []
     })
     const replyCalls = () => stubCalls.filter((c) => c.path === "/v2/bot/message/reply")
+
+    // Plays the group-buy bot: records raw bytes and answers only after 3 s.
+    let bot: http.Server
+    let botUrl = ""
+    let botSeen: { headers: http.IncomingHttpHeaders; body: Buffer }[] = []
+    const botTimers = new Set<NodeJS.Timeout>()
+    beforeAll(async () => {
+      bot = http.createServer((req, res) => {
+        const chunks: Buffer[] = []
+        req.on("data", (c: Buffer) => chunks.push(c))
+        req.on("end", () => {
+          botSeen.push({ headers: req.headers, body: Buffer.concat(chunks) })
+          const t = setTimeout(() => {
+            botTimers.delete(t)
+            res.writeHead(200).end()
+          }, 3000)
+          botTimers.add(t)
+        })
+      })
+      await new Promise<void>((r) => bot.listen(0, "127.0.0.1", () => r()))
+      botUrl = `http://127.0.0.1:${(bot.address() as AddressInfo).port}/line/webhook`
+    })
+    afterAll(async () => {
+      botTimers.forEach(clearTimeout)
+      bot.closeAllConnections()
+      await new Promise((r) => bot.close(r))
+    })
+    beforeEach(() => {
+      botSeen = []
+    })
+    const withForward = async (fn: () => Promise<{ status: number }>) => {
+      process.env.LINE_OA_FORWARD_URL = botUrl
+      try {
+        return await fn()
+      } finally {
+        delete process.env.LINE_OA_FORWARD_URL
+      }
+    }
 
     const post = (body: string | Buffer, signature?: string, contentType = "application/json; charset=utf-8") => {
       const headers: Record<string, string> = { "content-type": contentType }
@@ -213,6 +253,32 @@ medusaIntegrationTestRunner({
       await settle()
       expect(handledLines(id)).toHaveLength(1)
       expect(replyCalls()).toHaveLength(0)
+    })
+
+    it("forwards the verified request once, byte for byte, without waiting for the bot", async () => {
+      const id = eventId()
+      const body = `{\n  "destination": "U0000000000000000000000000000bot1",\n  "events": [${JSON.stringify(textEvent(id, "PLACEHOLDER")).replace("PLACEHOLDER", "\\u5718購 🙂")}]\n}\n`
+      const signature = lineSignature(body, SECRET)
+      const started = Date.now()
+      const res = await withForward(() => post(body, signature))
+      const elapsed = Date.now() - started
+      expect(res.status).toBe(200)
+      expect(elapsed).toBeLessThan(2500) // the bot answers only after 3 s
+      for (let i = 0; i < 40 && botSeen.length < 1; i++) await new Promise((r) => setTimeout(r, 25))
+      await settle()
+      expect(botSeen).toHaveLength(1)
+      expect(botSeen[0].body.equals(Buffer.from(body, "utf8"))).toBe(true)
+      expect(botSeen[0].headers["x-line-signature"]).toBe(signature)
+      expect(botSeen[0].headers["content-type"]).toBe("application/json; charset=utf-8")
+      expect(handledLines(id)).toHaveLength(1) // our own handling still runs
+    })
+
+    it("does not forward a request whose signature fails, nor anything when the URL is unset", async () => {
+      const body = JSON.stringify({ destination: "U0000000000000000000000000000bot1", events: [textEvent(eventId(), "團購")] })
+      expect((await withForward(() => post(body, lineSignature(body, "another-secret")))).status).toBe(401)
+      expect((await signed(body)).status).toBe(200) // LINE_OA_FORWARD_URL unset here
+      await settle()
+      expect(botSeen).toHaveLength(0)
     })
 
     it("serves nothing on GET", async () => {
