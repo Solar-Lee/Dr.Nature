@@ -22,6 +22,8 @@ export type Product = {
   /** The one function sentence allowed for this SKU (claims.md §2), or null when none is decided. */
   claim: string | null;
   claimNote: string;
+  /** Status tag on the home 03 stage and the PDP. Internal-review wording only: no 法規審核 /
+   * 審核中, which reads as an authority's pre-clearance (認定準則 第4條; regulatory.md:32). */
   pendingTag: string;
 };
 
@@ -36,7 +38,7 @@ export const PRODUCTS: Product[] = [
     tint: 1,
     claim: "幫助消化，使排便順暢。",
     claimNote: "此句為食品標示及廣告法規允許的例句（claims.md §2）。",
-    pendingTag: "副標法規審核中",
+    pendingTag: "說明文字複核中",
   },
   {
     handle: "clear",
@@ -48,7 +50,7 @@ export const PRODUCTS: Product[] = [
     tint: 2,
     claim: null,
     claimNote: "這一款的說明，等配方路線與定位確認後再寫上。在那之前，先空著，不猜。",
-    pendingTag: "定位確認中",
+    pendingTag: "說明文字待確認",
   },
   {
     handle: "calm",
@@ -60,7 +62,7 @@ export const PRODUCTS: Product[] = [
     tint: 3,
     claim: "調整體質。產前產後或病後之補養。",
     claimNote: "此句為食品標示及廣告法規允許的例句（claims.md §2）。",
-    pendingTag: "副標法規審核中",
+    pendingTag: "說明文字複核中",
   },
 ];
 
@@ -117,7 +119,7 @@ export const JOURNAL = {
   // (naming-proposal.md:28, 晶亮 condition), no 換季 (story.md:212,232), no organ names and no
   // SKU-C function words such as 體質 at brand level (story.md:192,204,221).
   categories: ["全部", "益生菌知識", "標示與標籤", "效期與保存", "家人與團購"],
-  note: "範例題目 · 發布前需法規審核",
+  note: "範例題目 · 發布前內部複核",
   posts: [
     { slug: "storage-after-opening", cat: "益生菌知識", title: "益生菌開封後，怎麼保存比較好？" },
     { slug: "read-the-label", cat: "益生菌知識", title: "挑選益生菌，先看包裝上的哪幾項標示" },

@@ -30,7 +30,7 @@ export default async function Post({ params }: { params: Promise<Params> }) {
         <div className="wrap" style={{ display: "grid", gap: 24, maxWidth: 820 }}>
           <Slot label="文章主圖 1200×800" note="圖片製作中" style={{ aspectRatio: "3 / 2" }} />
           <div className="prose">
-            <p>這一篇還在撰寫中。文章內容會先經過食品標示與廣告法規審核，才會發布。</p>
+            <p>這一篇還在撰寫中。文章內容發布前，會先經過內部合規複核。</p>
             <p>
               <Link href="/journal/" className="textlink">
                 回知識誌

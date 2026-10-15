@@ -3,7 +3,7 @@ import Link from "next/link";
 import { JournalGrid } from "../components/Blocks";
 import { JOURNAL } from "@/lib/site";
 
-export const metadata: Metadata = { title: "知識誌", description: `Dr.Nature 知識誌：${JOURNAL.categories.slice(1).join("、")}。所有文章發布前都經法規審核。` };
+export const metadata: Metadata = { title: "知識誌", description: `Dr.Nature 知識誌：${JOURNAL.categories.slice(1).join("、")}。所有文章發布前經內部合規複核。` };
 
 // Static export: the category filter is client-side via the ?cat query (see JournalTabs).
 export default function Journal() {
