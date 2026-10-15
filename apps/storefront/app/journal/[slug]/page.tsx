@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Slot } from "../../components/Blocks";
+import { ContactBlocks, Slot } from "../../components/Blocks";
 import { JOURNAL } from "@/lib/site";
 
 type Params = { slug: string };
@@ -19,26 +19,43 @@ export default async function Post({ params }: { params: Promise<Params> }) {
   const { slug } = await params;
   const p = JOURNAL.posts.find((x) => x.slug === slug);
   if (!p) notFound();
+  // A way forward from a placeholder post: other topics in the same category, else the first
+  // three other posts, then the LINE / 電子報 block.
+  const siblings = JOURNAL.posts.filter((x) => x.cat === p.cat && x.slug !== p.slug);
+  const more = siblings.length > 0 ? siblings : JOURNAL.posts.filter((x) => x.slug !== p.slug).slice(0, 3);
   return (
-    <article>
-      <header className="page-head">
-        <span className="kicker">{p.cat}</span>
-        <h1 className="enter">{p.title}</h1>
-        <p className="muted">{JOURNAL.note}</p>
-      </header>
-      <section className="section" style={{ paddingTop: 0 }}>
-        <div className="wrap" style={{ display: "grid", gap: 24, maxWidth: 820 }}>
-          <Slot label="文章主圖 1200×800" note="圖片製作中" style={{ aspectRatio: "3 / 2" }} />
-          <div className="prose">
-            <p>這一篇還在撰寫中。文章內容會先經過食品標示與廣告法規審核，才會發布。</p>
-            <p>
-              <Link href="/journal/" className="textlink">
-                回知識誌
-              </Link>
-            </p>
+    <>
+      <article>
+        <header className="page-head">
+          <span className="kicker">{p.cat}</span>
+          <h1 className="enter">{p.title}</h1>
+          <p className="muted">{JOURNAL.note}</p>
+        </header>
+        <section className="section" style={{ paddingTop: 0 }}>
+          <div className="wrap" style={{ display: "grid", gap: 24, maxWidth: 820 }}>
+            <Slot label="文章主圖 1200×800" note="圖片製作中" style={{ aspectRatio: "3 / 2" }} />
+            <div className="prose">
+              <p>這一篇還在撰寫中。文章內容發布前，會先經過內部合規複核。</p>
+              <h2 style={{ fontSize: "1.1rem", marginTop: 36 }}>{siblings.length > 0 ? "同分類的其他題目" : "其他題目"}</h2>
+              <ul style={{ margin: "12px 0 0", paddingLeft: "1.2em", display: "grid", gap: 10 }}>
+                {more.map((x) => (
+                  <li key={x.slug}>
+                    <Link href={`/journal/${x.slug}/`} className="textlink">
+                      {x.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <p style={{ marginTop: 28 }}>
+                <Link href="/journal/" className="textlink">
+                  回知識誌
+                </Link>
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
-    </article>
+        </section>
+      </article>
+      <ContactBlocks />
+    </>
   );
 }

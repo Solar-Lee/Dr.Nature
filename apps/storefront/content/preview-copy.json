@@ -153,7 +153,7 @@
         },
         "names": {
           "heading": "品名還沒定案",
-          "body": "三款的品名：01 日日順、02 晶亮、03 安和。正式標示仍在審核中。",
+          "body": "三款的品名：01 日日順、02 晶亮、03 安和。正式標示仍在定稿。",
           "sources": [
             "content/products/catalog.json:2",
             "content/products/catalog.json:12",
@@ -395,9 +395,12 @@
         },
         "no-personal-data": {
           "heading": "不蒐集個人資料",
-          "body": "除了進入本站的密碼欄位，本預覽版沒有會員註冊、購物車、結帳、表單或留言功能，不會要求你輸入姓名、電話、Email 或任何其他個人資料。",
+          "body": "除了進入本站的密碼欄位，本預覽版不蒐集任何個人資料。購物車、結帳與會員功能尚未開放：頁面上的購物車按鈕只連到會員頁，會員登入與電子報欄位都已停用，不會送出任何資料。本站也沒有留言功能，不會要求你輸入姓名、電話、Email 或任何其他個人資料。",
           "sources": [
-            "orchestrator task text: showcase only, no cart/checkout (must match the build)"
+            "orchestrator task text: showcase only, no cart/checkout (must match the build)",
+            "apps/storefront/app/components/Nav.tsx:20-26 (購物車 0 control links to /account/)",
+            "apps/storefront/app/components/Blocks.tsx:102-113 (newsletter input and button disabled)",
+            "apps/storefront/app/account/page.tsx:18-24 (login input disabled, button aria-disabled)"
           ]
         },
         "cookies": {
@@ -705,7 +708,7 @@
     },
     {
       "q": "三款有什麼不同？",
-      "a": "每一款的說明，寫在它自己的頁面上，一款一頁。三款的品名：01 日日順、02 晶亮、03 安和。正式標示仍在審核中。",
+      "a": "每一款的說明，寫在它自己的頁面上，一款一頁。三款的品名：01 日日順、02 晶亮、03 安和。正式標示仍在定稿。",
       "sources": [
         "content/brand/story.md:154",
         "content/products/catalog.json:12",
@@ -743,9 +746,10 @@
     },
     {
       "q": "現在可以購買嗎？",
-      "a": "還不行。本網站是預覽版，沒有購物車與結帳功能，產品頁的按鈕顯示「即將開賣」。開賣日期確定後另行公布。",
+      "a": "還不行。本網站是預覽版，購物車與結帳功能尚未開放；頁面上的購物車按鈕目前不蒐集任何資料，產品頁的按鈕顯示「即將開賣」。開賣日期確定後另行公布。",
       "sources": [
-        "orchestrator task text: showcase only, buy buttons say 即將開賣 (no repo source for a launch date)"
+        "orchestrator task text: showcase only, buy buttons say 即將開賣 (no repo source for a launch date)",
+        "apps/storefront/app/components/Nav.tsx:20-26 (購物車 0 control links to /account/)"
       ]
     },
     {
@@ -771,9 +775,9 @@
     "Dropped sentence from the recommended story: 「標籤上會寫出每一種菌的菌種名稱；如果標示菌數，依規定，那個數字到效期最後一天都必須做到。」 It carries 〔菌種名稱、菌數：待 U-08〕 (story.md:152). The FAQ states the underlying regulation instead, from regulatory.md:43-45, without promising what Dr.Nature's label will say.",
     "Correction-log sentence 「寫錯了，劃一條線，在旁邊寫上更正，不撕頁。」 is marked 〔需 Aki 決定：公開更正紀錄〕 (story.md:150, 307-309) and no correction-log page exists. The file's own fallback 「寫錯了，就照實更正。」 (story.md:309) is used instead.",
     "Per-product data, all pending: strain or species names, strain IDs, CFU per capsule, recommended intake, storage, ingredients and additives, nutrition panel, allergen line, vegetarian status, origin, manufacturer, EAN-13, and SKU-C age and capsule-opening (U-07/U-08: DEV_PLAN.md:108-109, story.md:328-329; ean13 null at catalog.json:17/28/39).",
-    "Allergen row: the legal label term 「過敏原」 (regulatory.md:49) trips the lint's 過敏 rule (claims.json:14), so it is folded into 「其他法定標示項目：待確認」. When the real label is written, the lint needs an allow-list entry, or CODE needs to decide the wording.",
+    "Allergen row: the legal label term for allergens (regulatory.md:49) contains a string the lint bans (claims.json:14), so it is folded into 「其他法定標示項目：待確認」. When the real label is written, the lint needs an allow-list entry, or CODE needs to decide the wording.",
     "SKU-B function sentence and positioning: none written, pending G2 route 甲/乙 (story.md:222 and :323, naming-proposal.md:20-23). No eye wording or eye imagery anywhere.",
-    "Final product names and series name: 日日順／晶亮／舒敏 and the proposed 澄光／安和 are not used (G2 open, DEV_PLAN.md:87). 「益生菌系列」 appears only as a spec row taken from catalog.json:5; the series name still waits on G2 (story.md:324).",
+    "Final product names and series name: the site uses 日日順／晶亮／安和 (Aki 2026-10-14, see the header of apps/storefront/lib/site.ts); the earlier third name, which carried a character banned by claims.md §1 rule 2, and the proposed 澄光 are not used. The series name is the catalog's 「益生菌系列」 (catalog.json:5) until P2-01 / G2 approves another one (story.md:324).",
     "Whether all three ship as general food is still a G2 question (naming-proposal.md:38). The copy assumes general food, as the recommended story does (story.md:325).",
     "Prices beyond the single bottle: the 3-bottle bundle NT$3,150, the member price NT$1,035 and gifts are assumptions awaiting Aki (go-to-market.md:330-335). 「每顆約 19.2 元」 is for group-buy material only (story.md:193). Launch date: no source.",
     "Company or operator name, address, phone, 食品業者登錄字號 and other contact details: no source (U-07). Privacy and terms pages name no legal entity for that reason. LINE OA @704vmtun is in the brand overview (line 71) but is left out because the LINE flow is not set up for this preview.",

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { lines, page, section } from "@/lib/content";
-import { HOME } from "@/lib/site";
+import { lines, page, section, slogan } from "@/lib/content";
 
 const p = page("story");
 export const metadata: Metadata = { title: "品牌故事", description: p.meta_description };
@@ -12,17 +11,20 @@ export default function Story() {
   const onePage = section("story", "one-page");
   const audience = section("story", "audience");
   const pillars = lines(section("story", "pillars"));
+  // The opener band carries the main slogan (slogan.md:52 lists 品牌頁 H1 as its place; G5 decided
+  // 2026-10-15). It used to repeat HOME.s02, which is now the story's first sentence (story.md:148)
+  // and would duplicate the h1 below.
+  const [sloganA, sloganB] = slogan.split(/(?<=，)/);
   return (
     <>
-      <section className="dark" aria-label="我們只說">
+      <section className="dark" aria-label="品牌故事開場">
         <span className="kicker" style={{ color: "#e8e7e2" }}>
           品牌故事
         </span>
         <h2 style={{ marginTop: 16 }}>
-          {HOME.s02.a}
+          {sloganA}
           <br />
-          {HOME.s02.b1}
-          {HOME.s02.b2}
+          {sloganB}
         </h2>
       </section>
       <header className="page-head">

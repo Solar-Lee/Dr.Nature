@@ -85,8 +85,8 @@ export default function Home() {
           </Link>
         </div>
         <nav className="jtabs" aria-label="分類">
-          {JOURNAL.categories.map((c, i) => (
-            <Link key={c} href={i === 0 ? "/journal/" : `/journal/?cat=${encodeURIComponent(c)}`} aria-current={i === 0 ? "true" : undefined}>
+          {JOURNAL.categories.map((c) => (
+            <Link key={c} href={JOURNAL.href(c)} aria-current={c === JOURNAL.all ? "true" : undefined}>
               {c}
             </Link>
           ))}
