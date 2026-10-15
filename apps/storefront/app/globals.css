@@ -589,7 +589,8 @@ a:hover > .arrow {
   padding: clamp(80px, 14vw, 180px) var(--gutter);
   border-bottom: 1px solid var(--hair-dark);
 }
-.dark h2 {
+.dark h2,
+.dark .opener {
   font-size: clamp(1.8rem, 1.2rem + 2.6vw, 3.6rem);
   line-height: 1.35;
   max-width: 20em;
@@ -1243,7 +1244,7 @@ html:not(.fx) .tabs a[aria-current] {
 }
 @media (min-width: 760px) {
   .sitemap {
-    grid-template-columns: 1.2fr 1fr 1fr 1fr;
+    grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr;
   }
 }
 .sitemap .wordmark {

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { lines, page, section, slogan } from "@/lib/content";
 
 const p = page("story");
-export const metadata: Metadata = { title: "品牌故事", description: p.meta_description };
+export const metadata: Metadata = { title: "品牌故事", description: p.meta_description, alternates: { canonical: "/story/" } };
 
 export default function Story() {
   const open = lines(section("story", "story-open"));
@@ -21,11 +21,11 @@ export default function Story() {
         <span className="kicker" style={{ color: "#e8e7e2" }}>
           品牌故事
         </span>
-        <h2 style={{ marginTop: 16 }}>
+        <p className="opener" style={{ marginTop: 16 }}>
           {sloganA}
           <br />
           {sloganB}
-        </h2>
+        </p>
       </section>
       <header className="page-head">
         <h1 className="enter">{open[0]}</h1>
@@ -78,7 +78,7 @@ export default function Story() {
               return (
                 <div key={head} data-reveal style={{ ["--i" as string]: i, borderTop: "1px solid var(--ink)", padding: "22px 0", display: "grid", gap: 6 }}>
                   <dt style={{ fontWeight: 700, fontSize: "1.5rem" }}>
-                    <span className="num" style={{ color: "var(--red)", fontSize: 13, marginRight: 12 }}>
+                    <span className="num" style={{ color: "var(--red-2)", fontSize: 13, marginRight: 12 }}>
                       0{i + 1}
                     </span>
                     {zh} <span className="en" style={{ fontSize: "0.6em" }}>{en}</span>

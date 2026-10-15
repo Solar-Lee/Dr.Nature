@@ -113,7 +113,7 @@ function drawLabel(num: string, name: string, sub: string) {
 }
 
 export const Bottle3D = forwardRef<Bottle3DHandle, Props>(function Bottle3D(
-  { num, name, sub = "60 顆膠囊 · DAILY FLORA", className = "stage3d", tilt = 0, scale = 1 },
+  { num, name, sub = "60 顆膠囊 · PROBIOTIC SERIES", className = "stage3d", tilt = 0, scale = 1 },
   ref,
 ) {
   const host = useRef<HTMLDivElement>(null);

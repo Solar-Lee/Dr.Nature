@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   const { cat } = await params;
   const c = JOURNAL.cats.find((x) => x.slug === cat);
   if (!c) return { title: JOURNAL.title };
-  return { title: `${c.name}｜${JOURNAL.title}`, description: `Dr.Nature 知識誌「${c.name}」分類的文章。所有文章發布前經內部合規複核。` };
+  return { title: `${c.name}｜${JOURNAL.title}`, description: `Dr.Nature 知識誌「${c.name}」分類的文章。所有文章發布前經內部合規複核。`, alternates: { canonical: `/journal/c/${c.slug}/` } };
 }
 
 export default async function JournalCategory({ params }: { params: Promise<Params> }) {

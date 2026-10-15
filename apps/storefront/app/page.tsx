@@ -52,9 +52,9 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="s06" aria-label="讀懂自然">
+      <section id="s06" aria-label="結語">
         <div className="wide">
-          <Slot label="情境全幅影像" className="slot" style={{ minHeight: "38dvh", borderLeft: 0, borderRight: 0 }} />
+          <Slot label="情境全幅影像" className="slot" style={{ minHeight: "38svh", borderLeft: 0, borderRight: 0 }} />
         </div>
         <Marquee />
         <div className="panel-dark">

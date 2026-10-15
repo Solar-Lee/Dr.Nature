@@ -9,8 +9,8 @@ import { NOTICE } from "@/lib/site";
 // NEXT_PUBLIC_BASE_URL is whitelisted in docs/ENV.md (default = the production storefront).
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || "https://dr.nature.smilelife.tw"),
-  title: { default: "Dr.Nature｜以科學，讀懂自然。", template: "%s｜Dr.Nature" },
-  description: "Dr.Nature Daily Flora 日常菌相系列：三款益生菌，同一個瓶子，三個編號。60 顆膠囊，效期 2 年。",
+  title: { default: "Dr.Nature｜少說一點，說準一點。", template: "%s｜Dr.Nature" },
+  description: "Dr.Nature 益生菌系列：三款益生菌，同一個瓶子，三個編號。60 顆膠囊，效期 2 年。",
   robots: { index: false, follow: false, nocache: true },
 };
 

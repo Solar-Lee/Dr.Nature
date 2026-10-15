@@ -15,7 +15,7 @@ export default function Account() {
       <header className="page-head">
         <h1 className="enter">會員</h1>
         <p className="lede enter" style={{ ["--i" as string]: 1 }}>
-          登入、訂單、物流狀態、發票、等級與權益，都在這裡。
+          正式上線後，登入、訂單、物流狀態、發票、等級與權益會在這裡。
         </p>
       </header>
       <section className="section" style={{ paddingTop: 0 }}>

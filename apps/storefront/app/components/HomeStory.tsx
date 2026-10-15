@@ -7,7 +7,7 @@ import { useMemo, useRef } from "react";
 import { Bottle3D, type Bottle3DHandle } from "./Bottle3D";
 import { Greeting } from "./Greeting";
 import { ScrollFX } from "./ScrollFX";
-import { HOME, PRODUCTS, SERIES, SPEC } from "@/lib/site";
+import { HOME, NAV, PRODUCTS, SERIES, SPEC } from "@/lib/site";
 
 const STAIRS = 8;
 
@@ -49,7 +49,7 @@ export function HomeStory() {
           </div>
           <div className="hero-stage">
             <div className="hero-video" aria-hidden="true">
-              <span className="tag">品牌影片（D-E01）製作中</span>
+              <span className="tag">品牌影片製作中</span>
             </div>
             <Bottle3D num={first.num} name={first.name} className="stage3d" tilt={0.14} scale={1.05} />
           </div>
@@ -58,7 +58,7 @@ export function HomeStory() {
           </p>
         </section>
 
-        <section id="s02" className="dark" aria-label="我們只說">
+        <section id="s02" className="dark" aria-label={NAV.story[1].label}>
           <div className="stairs" aria-hidden="true">
             {Array.from({ length: STAIRS }, (_, i) => (
               <span key={i} />

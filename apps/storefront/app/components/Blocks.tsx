@@ -110,7 +110,7 @@ export function ContactBlocks() {
           <label htmlFor="nl-email" className="visually-hidden" style={{ position: "absolute", left: -9999 }}>
             Email
           </label>
-          <input id="nl-email" type="email" placeholder="you@example.com" disabled aria-describedby="nl-hint" />
+          <input id="nl-email" className="input" type="email" placeholder="you@example.com" disabled aria-describedby="nl-hint" />
           <button type="button" disabled>
             訂閱
           </button>

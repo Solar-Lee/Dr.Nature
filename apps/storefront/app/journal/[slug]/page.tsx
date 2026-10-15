@@ -12,7 +12,7 @@ export function generateStaticParams(): Params[] {
 export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
   const { slug } = await params;
   const p = JOURNAL.posts.find((x) => x.slug === slug);
-  return { title: p ? p.title : "知識誌" };
+  return { title: p ? p.title : "知識誌", alternates: { canonical: `/journal/${slug}/` } };
 }
 
 export default async function Post({ params }: { params: Promise<Params> }) {
