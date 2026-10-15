@@ -124,3 +124,55 @@ axe：22 頁中 13 頁有 serious（`/` 有 aria-prohibited-attr、color-contras
 
 這支腳本不能證明：鍵盤操作與螢幕報讀的實際體驗（axe 只抓得到約兩到五成的問題）、真手機上的速度
 （Lighthouse 是模擬節流）、正式站經過 Cloudflare／nginx 後的數字。
+
+## 3. nginx：gzip 與 `/_next/static/` 長快取（PERF-01／PF-01，`infra/nginx/drn.conf`）
+
+改動只在 drn 的 443 `server` 區塊內（CLAUDE.md §1.3）：`gzip on; gzip_comp_level 5; gzip_min_length 1024;
+gzip_vary on; gzip_types text/css application/javascript text/javascript application/json image/svg+xml text/plain;`
+（text/html 在 gzip 開啟時一律壓縮），以及 `location ^~ /_next/static/`：`Cache-Control: public, max-age=31536000,
+immutable`，並重寫 `X-Robots-Tag`、`X-Content-Type-Options`（`add_header` 只有在該層沒有任何 `add_header`
+時才繼承上層；`auth_basic` 照常繼承，靜態檔仍需密碼）。指令的 context 與繼承規則依 nginx 官方文件
+（ngx_http_gzip_module、ngx_http_headers_module，2026-10-15 查）；`next start` 對 `/_next/static/` 送的也是同一個
+Cache-Control（next 16.4.0 `dist/server/lib/router-server.js`）。
+
+**本機無法跑 `nginx -t`**：這台 Mac 沒有 nginx 執行檔，Docker 依 CLAUDE.md §1b 不可用；只做了結構檢查
+（大括號平衡、每行以 `;`／`{`／`}` 結尾、新指令都在第二個 server 區塊）。`nginx -t` 由部署腳本在 VPS 上執行。
+
+### 3.1 部署（Aki 執行；CODE 不碰 VPS、不讀金鑰與 htpasswd）
+
+```
+pnpm --dir apps/storefront exec next build
+bash infra/vps/drn-preview-deploy.sh <ssh-key-path> <htpasswd-file>
+```
+
+腳本會先備份 `/opt/drn/drn.conf.prev`、`nginx -t` 通過才 `systemctl reload nginx`；`nginx -t` 因 drn.conf 失敗時自動還原、
+不重載；因其他檔案失敗時停手（CLAUDE.md §1.9）。回滾見腳本檔頭（`drn.conf.prev` 裝回、`nginx -t`、reload）。
+
+### 3.2 部署後驗收（curl；`-u <預覽帳號>` 只給帳號，curl 會在終端機問密碼，不留在指令歷史）
+
+```
+# 1) 找出 three.js 那支 chunk（含 WebGLRenderer 的檔案裡最大的一支；以部署的同一個 build 為準）
+CHUNK=$(basename "$(ls -S $(grep -l WebGLRenderer apps/storefront/out/_next/static/chunks/*.js) | head -1)")
+
+# 2) 靜態檔：gzip、一年 immutable、noindex 仍在（用 GET 讀標頭並量實際傳輸位元組）
+curl -s -u <預覽帳號> -H 'Accept-Encoding: gzip' -D - -o /dev/null \
+  -w 'size_download=%{size_download}\n' "https://dr.nature.smilelife.tw/_next/static/chunks/$CHUNK" \
+  | tr -d '\r' | grep -iE '^(HTTP/|content-encoding|cache-control|vary|x-robots-tag|x-content-type-options)|size_download'
+
+# 3) HTML 沒帶密碼仍是 401，且有 noindex
+curl -sI https://dr.nature.smilelife.tw/ | tr -d '\r' | grep -iE '^(HTTP/|www-authenticate|x-robots-tag)'
+
+# 4) HTML 帶密碼：gzip，但沒有 immutable
+curl -s -u <預覽帳號> -H 'Accept-Encoding: gzip' -D - -o /dev/null https://dr.nature.smilelife.tw/ \
+  | tr -d '\r' | grep -iE '^(HTTP/|content-encoding|cache-control|x-robots-tag)'
+```
+
+預期：
+- (2) 狀態 200、`content-encoding: gzip`、`cache-control: public, max-age=31536000, immutable`、`vary: Accept-Encoding`、
+  `x-robots-tag: noindex, nofollow`、`x-content-type-options: nosniff`，`size_download` ≤ 190000。
+  參考值（2026-10-15 本機 build，three chunk `3axxox4dx8k5w.js`）：原始 737,025 B，`gzip -5` 186,573 B；
+  全部 JS 1,463,301 B → 423,756 B。nginx 的壓縮結果與 gzip 指令列工具可能差幾百位元組。
+- (3) 狀態 401、`www-authenticate: Basic realm="Dr.Nature preview"`、`x-robots-tag: noindex, nofollow`。
+- (4) 狀態 200、`content-encoding: gzip`、沒有 `immutable`、`x-robots-tag` 仍在。
+
+回滾：見 3.1；本機 `git revert` 該提交後重新部署。
