@@ -107,14 +107,21 @@ export const HOME = {
 export const JOURNAL = {
   title: "知識誌",
   en: "ARCHIVE",
-  categories: ["全部", "益生菌知識", "腸道與日常作息", "用眼生活", "體質與家庭"],
+  // Categories and sample titles use the brand-level vocabulary of content/brand/story.md:218
+  // (標示、標籤、效期、有效日期、收單日) and its two audiences (story.md:158). No eye wording
+  // (naming-proposal.md:28, 晶亮 condition), no 換季 (story.md:212,232), no organ names and no
+  // SKU-C function words such as 體質 at brand level (story.md:192,204,221).
+  categories: ["全部", "益生菌知識", "標示與標籤", "效期與保存", "家人與團購"],
   note: "範例題目 · 發布前需法規審核",
   posts: [
     { slug: "storage-after-opening", cat: "益生菌知識", title: "益生菌開封後，怎麼保存比較好？" },
     { slug: "read-the-label", cat: "益生菌知識", title: "挑選益生菌，先看包裝上的哪幾項標示" },
-    { slug: "office-day-notes", cat: "腸道與日常作息", title: "飲水、纖維與作息：寫給上班族的一日飲食筆記" },
-    { slug: "screen-day-rhythm", cat: "用眼生活", title: "螢幕時代的一日作息：休息、光線與距離" },
-    { slug: "season-change-checklist", cat: "體質與家庭", title: "換季時的居家生活保養清單" },
+    // claims.md:36 (營養標示 for capsules: 每一份量＋每日參考值百分比)
+    { slug: "nutrition-panel", cat: "標示與標籤", title: "營養標示怎麼讀：每一份量與每日參考值" },
+    // story.md:197,218 (有效日期; 保存方式以標示為準)
+    { slug: "expiry-date", cat: "效期與保存", title: "有效日期寫在哪裡？下單前先對照" },
+    // story.md:158,200,250 (替朋友開團; 團購價寫明條件與收單日)
+    { slug: "group-buy-checklist", cat: "家人與團購", title: "替朋友開團之前：規格、價格與收單日怎麼寫清楚" },
     { slug: "how-to-read-strain-names", cat: "益生菌知識", title: "菌株名稱怎麼讀？從一串英文字開始" },
   ],
 };
