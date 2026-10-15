@@ -20,6 +20,13 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let ctx: { revert: () => void } | null = null;
     let cancelled = false;
+    // Once the visitor scrolls on their own, a late deep-link correction must not move the page.
+    let userMoved = false;
+    const moved = () => {
+      userMoved = true;
+    };
+    const intents = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
+    intents.forEach((t) => window.addEventListener(t, moved, { passive: true, once: true }));
     (async () => {
       const { gsap } = await import("gsap");
       const { ScrollTrigger } = await import("gsap/ScrollTrigger");
@@ -123,9 +130,31 @@ export function ScrollFX({ bottle, steps }: { bottle: RefObject<Bottle3DHandle |
         );
       });
       ScrollTrigger.refresh();
+
+      // A cold load of /#s0N (the side index on every other page links there) jumps before the pin
+      // spacers exist, and the browser's own (smooth) fragment scroll may still be running, so the
+      // section ends up off its start. Land on the pinned start (or the section top under the top
+      // bar) once everything is measured, and hold it for a few frames against that animation.
+      const landOnHash = () => {
+        const id = location.hash.slice(1);
+        if (userMoved || !/^s0[1-6]$/.test(id)) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        const pinned = ScrollTrigger.getAll().find((t) => t.trigger === el && t.pin);
+        const top = Math.max(0, Math.round(pinned ? pinned.start : el.getBoundingClientRect().top + window.scrollY - bar()));
+        let frames = 0;
+        const hold = () => {
+          if (cancelled || userMoved) return;
+          if (Math.abs(window.scrollY - top) > 1) window.scrollTo({ top, behavior: "instant" });
+          if (++frames < 12) requestAnimationFrame(hold);
+        };
+        hold();
+      };
+      landOnHash();
     })();
     return () => {
       cancelled = true;
+      intents.forEach((t) => window.removeEventListener(t, moved));
       ctx?.revert();
       document.documentElement.classList.remove("fx");
     };
